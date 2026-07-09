@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pentest-checklist"
+version = "0.1.0"
+description = "Deterministic, OWASP WSTG checklist-driven web application penetration testing tool"
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "MIT"}
+authors = [{name = "Internship Project"}]
+dependencies = [
+    "textual>=0.60.0",
+    "click>=8.1.0",
+    "rich>=13.0.0",
+    "pydantic>=2.0.0",
+    "python-docx>=1.1.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0", "pytest-asyncio"]
+
+[project.scripts]
+pct = "pentest_checklist.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["pentest_checklist*"]
