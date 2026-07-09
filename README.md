@@ -31,18 +31,91 @@ PCT is a terminal-native tool that brings together web application enumeration t
 
 ---
 
-## Install
+## Run with Docker (recommended — works on any machine)
+
+The Docker image bundles Python, the `pct` CLI/TUI, and the real enumeration
+binaries (`nmap`, `whatweb`, `wafw00f`, `subfinder`, `httpx`, `nuclei`), so
+scans produce real tool output instead of the simulated fallback — no local
+Python setup or tool installation required.
+
+### 1. Build the image
 
 ```bash
-cd pentest-checklist
-pip install -e .
+docker compose build
+# or, without compose:
+docker build -t pentest-checklist:latest .
 ```
 
-Requires Python ≥ 3.9.
+### 2. Run the CLI
+
+```bash
+# Create a new engagement
+docker compose run --rm pct new --target example.com --name "Example Corp Assessment"
+
+# Check status
+docker compose run --rm pct status
+
+# Generate a report (written inside the container's /data volume)
+docker compose run --rm pct report --format md --output /data/report.md
+```
+
+Without compose, using `docker run` directly (mount a named volume so
+engagement state and reports survive across container runs):
+
+```bash
+docker volume create pct-data
+
+docker run --rm -it \
+  -v pct-data:/data \
+  pentest-checklist:latest new --target example.com --name "Example Corp Assessment"
+
+docker run --rm -it -v pct-data:/data pentest-checklist:latest status
+```
+
+### 3. Open the interactive TUI
+
+The TUI needs an interactive TTY:
+
+```bash
+docker compose run --rm pct tui
+# or
+docker run --rm -it -v pct-data:/data pentest-checklist:latest tui
+```
+
+### 4. Copy a generated report out of the container
+
+Reports are written into the `/data` volume inside the container. To copy
+one to your host:
+
+```bash
+docker run --rm -v pct-data:/data -v "$(pwd)":/out alpine \
+  cp /data/report_<engagement-id>.md /out/
+```
+
+(Or generate straight into a bind-mounted directory: add
+`-v "$(pwd)/reports:/data/reports"` and pass `--output /data/reports/report.md`.)
+
+### Data persistence
+
+Engagement state (`~/.pentest_checklist/engagements/`) lives under `/data`
+inside the container, which is backed by the `pct-data` Docker volume (or
+whatever volume/bind-mount you attach at `/data`). Nothing is sent outside
+the container or over the network except the actual scans you run against
+your target.
 
 ---
 
-## Quick Start
+## Run without Docker (local Python)
+
+```bash
+pip install -e .
+```
+
+Requires Python ≥ 3.9. Enumeration tools (`nmap`, `httpx`, `whatweb`,
+`wafw00f`, `subfinder`, `nuclei`) are optional — any tool not found on
+`PATH` falls back to simulated output automatically.
+
+### Quick Start
 
 ```bash
 # 1. Create a new engagement
@@ -115,7 +188,9 @@ Each wrapper tries the real binary first. If not installed, it returns realistic
 
 ## Data Storage
 
-Engagements are saved as JSON files in `~/.pentest_checklist/engagements/`. No cloud, no external API calls.
+Engagements are saved as JSON files in `~/.pentest_checklist/engagements/`
+(or `/data/.pentest_checklist/engagements/` inside the Docker container,
+since `$HOME` is set to `/data` there). No cloud, no external API calls.
 
 ---
 

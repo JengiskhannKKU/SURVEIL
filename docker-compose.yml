@@ -1,0 +1,13 @@
+services:
+  pct:
+    build: .
+    image: pentest-checklist:latest
+    stdin_open: true
+    tty: true
+    volumes:
+      - pct-data:/data
+    entrypoint: ["pct"]
+    command: ["--help"]
+
+volumes:
+  pct-data:
