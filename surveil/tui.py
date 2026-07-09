@@ -461,9 +461,9 @@ class HelpModal(ModalScreen[None]):
 # Main TUI App
 # ============================================================
 class ChecklistApp(App[None]):
-    """PCT — Pentest Checklist Tool TUI."""
+    """surveil TUI."""
 
-    TITLE    = "PCT  ·  Pentest Checklist Tool"
+    TITLE    = "surveil"
     CSS      = APP_CSS
 
     BINDINGS = [

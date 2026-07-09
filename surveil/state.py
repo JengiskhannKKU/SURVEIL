@@ -9,7 +9,7 @@ from typing import Optional
 from .models import Engagement
 
 
-_STORE = Path.home() / ".pentest_checklist" / "engagements"
+_STORE = Path.home() / ".surveil" / "engagements"
 
 
 def _ensure_store() -> None:

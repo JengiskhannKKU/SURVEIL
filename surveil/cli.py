@@ -1,4 +1,4 @@
-"""CLI entry point for the Pentest Checklist Tool (pct)."""
+"""CLI entry point for surveil."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -21,9 +21,9 @@ console = Console()
 # Root group
 # ============================================================
 @click.group()
-@click.version_option(__version__, prog_name="pct")
+@click.version_option(__version__, prog_name="surveil")
 def main() -> None:
-    """PCT — Pentest Checklist Tool\n
+    """surveil\n
     Deterministic, OWASP WSTG checklist-driven web application
     penetration testing with structured finding management and
     professional report generation.
@@ -31,7 +31,7 @@ def main() -> None:
 
 
 # ============================================================
-# pct new
+# surveil new
 # ============================================================
 @main.command()
 @click.option("--target", "-t", required=True, help="Target hostname or IP (e.g. example.com)")
@@ -57,15 +57,15 @@ def new(target: str, name: str, notes: str) -> None:
             f"  Target:  [bold]{engagement.target}[/bold]\n"
             f"  Items:   {engagement.total_items} OWASP WSTG checklist items\n"
             f"  Saved:   [dim]{path}[/dim]\n\n"
-            f"[dim]Run  [bold]pct tui[/bold]  to open the interactive checklist.[/dim]",
-            title="[bold]PCT — New Engagement[/bold]",
+            f"[dim]Run  [bold]surveil tui[/bold]  to open the interactive checklist.[/dim]",
+            title="[bold]surveil — New Engagement[/bold]",
             border_style="green",
         )
     )
 
 
 # ============================================================
-# pct list
+# surveil list
 # ============================================================
 @main.command("list")
 def list_engagements() -> None:
@@ -74,7 +74,7 @@ def list_engagements() -> None:
 
     rows = state.list_all()
     if not rows:
-        console.print("[yellow]No engagements found. Run [bold]pct new --target <host>[/bold] to start.[/yellow]")
+        console.print("[yellow]No engagements found. Run [bold]surveil new --target <host>[/bold] to start.[/yellow]")
         return
 
     table = Table(
@@ -95,7 +95,7 @@ def list_engagements() -> None:
 
 
 # ============================================================
-# pct tui
+# surveil tui
 # ============================================================
 @main.command()
 @click.option("--id", "eng_id", default="", help="Engagement ID (defaults to latest)")
@@ -113,7 +113,7 @@ def tui(eng_id: str) -> None:
     else:
         engagement = state.load_latest()
         if engagement is None:
-            console.print("[yellow]No engagement found. Run [bold]pct new --target <host>[/bold] first.[/yellow]")
+            console.print("[yellow]No engagement found. Run [bold]surveil new --target <host>[/bold] first.[/yellow]")
             raise SystemExit(1)
         console.print(f"[dim]Loading latest engagement: [bold]{engagement.id}[/bold] ({engagement.name})[/dim]")
 
@@ -121,7 +121,7 @@ def tui(eng_id: str) -> None:
 
 
 # ============================================================
-# pct status
+# surveil status
 # ============================================================
 @main.command()
 @click.option("--id", "eng_id", default="", help="Engagement ID (defaults to latest)")
@@ -181,7 +181,7 @@ def status(eng_id: str) -> None:
 
 
 # ============================================================
-# pct report
+# surveil report
 # ============================================================
 @main.command()
 @click.option("--id",     "eng_id", default="",   help="Engagement ID (defaults to latest)")
@@ -221,7 +221,7 @@ def report(eng_id: str, output: str, format: str) -> None:
 
 
 # ============================================================
-# pct add-finding  (quick CLI shortcut)
+# surveil add-finding  (quick CLI shortcut)
 # ============================================================
 @main.command("add-finding")
 @click.option("--id",       "eng_id",  default="",  help="Engagement ID")
@@ -278,7 +278,7 @@ def add_finding(
 
 
 # ============================================================
-# pct delete
+# surveil delete
 # ============================================================
 @main.command()
 @click.argument("eng_id")

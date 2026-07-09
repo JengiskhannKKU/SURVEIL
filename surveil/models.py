@@ -1,4 +1,4 @@
-"""pentest_checklist — Data models."""
+"""surveil — Data models."""
 from __future__ import annotations
 
 import math

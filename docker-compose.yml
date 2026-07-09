@@ -1,13 +1,13 @@
 services:
-  pct:
+  surveil:
     build: .
-    image: pentest-checklist:latest
+    image: surveil:latest
     stdin_open: true
     tty: true
     volumes:
-      - pct-data:/data
-    entrypoint: ["pct"]
+      - surveil-data:/data
+    entrypoint: ["surveil"]
     command: ["--help"]
 
 volumes:
-  pct-data:
+  surveil-data:

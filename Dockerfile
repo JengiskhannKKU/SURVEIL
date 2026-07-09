@@ -11,7 +11,7 @@ RUN go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest 
 # ---- Stage 2: runtime image ----
 FROM python:3.11-slim-bookworm
 
-LABEL org.opencontainers.image.title="PCT — Pentest Checklist Tool" \
+LABEL org.opencontainers.image.title="surveil" \
       org.opencontainers.image.description="Deterministic, OWASP WSTG checklist-driven web application penetration testing tool"
 
 # System enumeration tools available directly from Debian repos.
@@ -29,19 +29,19 @@ COPY --from=gotools /root/go/bin/nuclei /usr/local/bin/nuclei
 
 WORKDIR /app
 COPY pyproject.toml README.md ./
-COPY pentest_checklist ./pentest_checklist
+COPY surveil ./surveil
 
 RUN pip install --no-cache-dir .
 
 # Fetch nuclei templates at build time so scans work fully offline afterwards.
 RUN nuclei -update-templates || true
 
-# Engagement state is persisted under $HOME/.pentest_checklist — mount a
+# Engagement state is persisted under $HOME/.surveil — mount a
 # volume here to keep engagements/reports across container restarts.
 ENV HOME=/data
 RUN mkdir -p /data && chmod 777 /data
 VOLUME ["/data"]
 WORKDIR /data
 
-ENTRYPOINT ["pct"]
+ENTRYPOINT ["surveil"]
 CMD ["--help"]

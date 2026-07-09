@@ -1,8 +1,8 @@
-# PCT — Pentest Checklist Tool
+# surveil
 
 **Deterministic, OWASP WSTG checklist-driven web application penetration testing.**
 
-PCT is a terminal-native tool that brings together web application enumeration tooling under a single interactive interface. It provides a structured OWASP WSTG checklist, deterministic tool orchestration (no AI in the enumeration loop), finding management with CVSS scoring, and professional report generation — all offline.
+surveil is a terminal-native tool that brings together web application enumeration tooling under a single interactive interface. It provides a structured OWASP WSTG checklist, deterministic tool orchestration (no AI in the enumeration loop), finding management with CVSS scoring, and professional report generation — all offline.
 
 ---
 
@@ -10,7 +10,7 @@ PCT is a terminal-native tool that brings together web application enumeration t
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                     PCT  (pct CLI / TUI)                    │
+│                  surveil  (CLI / TUI)                       │
 ├────────────────┬────────────────────┬───────────────────────┤
 │  Tool          │  Checklist &       │  Reporting            │
 │  Orchestration │  State Engine      │  Engine               │
@@ -33,43 +33,43 @@ PCT is a terminal-native tool that brings together web application enumeration t
 
 ## Run with Docker (recommended — works on any machine)
 
-The Docker image bundles Python, the `pct` CLI/TUI, and the real enumeration
-binaries (`nmap`, `whatweb`, `wafw00f`, `subfinder`, `httpx`, `nuclei`), so
-scans produce real tool output instead of the simulated fallback — no local
-Python setup or tool installation required.
+The Docker image bundles Python, the `surveil` CLI/TUI, and the real
+enumeration binaries (`nmap`, `whatweb`, `wafw00f`, `subfinder`, `httpx`,
+`nuclei`), so scans produce real tool output instead of the simulated
+fallback — no local Python setup or tool installation required.
 
 ### 1. Build the image
 
 ```bash
 docker compose build
 # or, without compose:
-docker build -t pentest-checklist:latest .
+docker build -t surveil:latest .
 ```
 
 ### 2. Run the CLI
 
 ```bash
 # Create a new engagement
-docker compose run --rm pct new --target example.com --name "Example Corp Assessment"
+docker compose run --rm surveil new --target example.com --name "Example Corp Assessment"
 
 # Check status
-docker compose run --rm pct status
+docker compose run --rm surveil status
 
 # Generate a report (written inside the container's /data volume)
-docker compose run --rm pct report --format md --output /data/report.md
+docker compose run --rm surveil report --format md --output /data/report.md
 ```
 
 Without compose, using `docker run` directly (mount a named volume so
 engagement state and reports survive across container runs):
 
 ```bash
-docker volume create pct-data
+docker volume create surveil-data
 
 docker run --rm -it \
-  -v pct-data:/data \
-  pentest-checklist:latest new --target example.com --name "Example Corp Assessment"
+  -v surveil-data:/data \
+  surveil:latest new --target example.com --name "Example Corp Assessment"
 
-docker run --rm -it -v pct-data:/data pentest-checklist:latest status
+docker run --rm -it -v surveil-data:/data surveil:latest status
 ```
 
 ### 3. Open the interactive TUI
@@ -77,9 +77,9 @@ docker run --rm -it -v pct-data:/data pentest-checklist:latest status
 The TUI needs an interactive TTY:
 
 ```bash
-docker compose run --rm pct tui
+docker compose run --rm surveil tui
 # or
-docker run --rm -it -v pct-data:/data pentest-checklist:latest tui
+docker run --rm -it -v surveil-data:/data surveil:latest tui
 ```
 
 ### 4. Copy a generated report out of the container
@@ -88,7 +88,7 @@ Reports are written into the `/data` volume inside the container. To copy
 one to your host:
 
 ```bash
-docker run --rm -v pct-data:/data -v "$(pwd)":/out alpine \
+docker run --rm -v surveil-data:/data -v "$(pwd)":/out alpine \
   cp /data/report_<engagement-id>.md /out/
 ```
 
@@ -97,8 +97,8 @@ docker run --rm -v pct-data:/data -v "$(pwd)":/out alpine \
 
 ### Data persistence
 
-Engagement state (`~/.pentest_checklist/engagements/`) lives under `/data`
-inside the container, which is backed by the `pct-data` Docker volume (or
+Engagement state (`~/.surveil/engagements/`) lives under `/data` inside
+the container, which is backed by the `surveil-data` Docker volume (or
 whatever volume/bind-mount you attach at `/data`). Nothing is sent outside
 the container or over the network except the actual scans you run against
 your target.
@@ -119,16 +119,16 @@ Requires Python ≥ 3.9. Enumeration tools (`nmap`, `httpx`, `whatweb`,
 
 ```bash
 # 1. Create a new engagement
-pct new --target example.com --name "Example Corp Assessment"
+surveil new --target example.com --name "Example Corp Assessment"
 
 # 2. Open the interactive TUI
-pct tui
+surveil tui
 
 # 3. (or) Check status from the command line
-pct status
+surveil status
 
 # 4. Generate a report
-pct report --format md --output report.md
+surveil report --format md --output report.md
 ```
 
 ---
@@ -137,14 +137,14 @@ pct report --format md --output report.md
 
 | Command | Description |
 |---|---|
-| `pct new --target <host>` | Create a new engagement with 20 OWASP WSTG items |
-| `pct list` | List all saved engagements |
-| `pct tui` | Open the interactive Textual TUI |
-| `pct status` | Show checklist progress and severity summary |
-| `pct report -f md` | Generate Markdown report |
-| `pct report -f docx` | Generate Word document report |
-| `pct add-finding --item WSTG-INFO-02 ...` | Add a finding from CLI |
-| `pct delete <id>` | Delete an engagement |
+| `surveil new --target <host>` | Create a new engagement with 20 OWASP WSTG items |
+| `surveil list` | List all saved engagements |
+| `surveil tui` | Open the interactive Textual TUI |
+| `surveil status` | Show checklist progress and severity summary |
+| `surveil report -f md` | Generate Markdown report |
+| `surveil report -f docx` | Generate Word document report |
+| `surveil add-finding --item WSTG-INFO-02 ...` | Add a finding from CLI |
+| `surveil delete <id>` | Delete an engagement |
 
 ---
 
@@ -188,8 +188,8 @@ Each wrapper tries the real binary first. If not installed, it returns realistic
 
 ## Data Storage
 
-Engagements are saved as JSON files in `~/.pentest_checklist/engagements/`
-(or `/data/.pentest_checklist/engagements/` inside the Docker container,
+Engagements are saved as JSON files in `~/.surveil/engagements/`
+(or `/data/.surveil/engagements/` inside the Docker container,
 since `$HOME` is set to `/data` there). No cloud, no external API calls.
 
 ---
