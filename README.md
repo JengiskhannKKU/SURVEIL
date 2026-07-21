@@ -20,23 +20,38 @@ surveil is a terminal-native tool that brings together web application enumerati
 │  httpx         │  Finding mgmt      │  CVSS v3.1 scoring    │
 │  whatweb       │  Textual TUI       │  OWASP / CWE mapping  │
 │  wafw00f       │  JSON persistence  │  Audit trail          │
-│  subfinder     │                    │                       │
-│  nuclei        │                    │                       │
+│  subfinder     │  Auto-extraction   │                       │
+│  nuclei, arjun │  (unverified       │                       │
+│  dnsx, ffuf    │   findings)        │                       │
+│  gobuster      │                    │                       │
+│  gowitness     │                    │                       │
+│  katana, nikto │                    │                       │
+│  testssl       │                    │                       │
+│  wpscan, amass │                    │                       │
 └────────────────┴────────────────────┴───────────────────────┘
 ```
 
-- **Tool Orchestration Layer** — wraps `nmap`, `httpx`, `whatweb`, `wafw00f`, `subfinder`, `nuclei` via subprocess. Falls back to realistic simulated output when a tool is not installed (demo mode).
+- **Tool Orchestration Layer** — wraps 16 tools via subprocess: `nmap`, `httpx`, `whatweb`, `wafw00f`, `subfinder`, `nuclei`, `arjun`, `dnsx`, `gowitness`, `wpscan`, `amass`, `ffuf`, `gobuster`, `katana`, `nikto`, `testssl` (see `TOOL_REGISTRY` in `surveil/tools/__init__.py`). Falls back to realistic simulated output when a tool is not installed (demo mode).
 - **Checklist & State Engine** — OWASP WSTG INFO + CONF items (20 items) with status tracking, Textual TUI, JSON persistence.
+- **Auto-Finding Extraction** (`surveil/findings_extractor.py`) — parses raw output from `nmap`, `httpx`, `whatweb`, `nuclei`, `wafw00f`, `subfinder`, and `nikto` into `Finding` objects (auto CVSS scoring, OWASP/CWE mapping) flagged `verified=False`, so a tester gets a starting point to confirm or dismiss rather than a blank checklist.
 - **Reporting Engine** — CVSS v3.1 base score calculator, OWASP/CWE metadata, Markdown and .docx export.
 
 ---
 
 ## Run with Docker (recommended — works on any machine)
 
-The Docker image bundles Python, the `surveil` CLI/TUI, and the real
+The Docker image bundles Python, the `surveil` CLI/TUI, and all 16
 enumeration binaries (`nmap`, `whatweb`, `wafw00f`, `subfinder`, `httpx`,
-`nuclei`), so scans produce real tool output instead of the simulated
-fallback — no local Python setup or tool installation required.
+`nuclei`, `arjun`, `dnsx`, `gowitness`, `wpscan`, `amass`, `ffuf`,
+`gobuster`, `katana`, `nikto`, `testssl.sh`), so scans produce real tool
+output instead of the simulated fallback — no local Python setup or tool
+installation required.
+
+Note: `gowitness` needs a Chromium/Chrome binary at runtime to actually
+capture screenshots, which the image does not bundle (it adds real
+weight for one tool's use case) — expect `gowitness` to error rather than
+silently fall back to simulated output unless you install a browser in
+a derived image.
 
 ### 1. Build the image
 
@@ -112,8 +127,9 @@ pip install -e .
 ```
 
 Requires Python ≥ 3.9. Enumeration tools (`nmap`, `httpx`, `whatweb`,
-`wafw00f`, `subfinder`, `nuclei`) are optional — any tool not found on
-`PATH` falls back to simulated output automatically.
+`wafw00f`, `subfinder`, `nuclei`, `arjun`, `dnsx`, `gowitness`, `wpscan`,
+`amass`) are optional — any tool not found on `PATH` falls back to
+simulated output automatically.
 
 ### Quick Start
 
@@ -173,7 +189,7 @@ surveil report --format md --output report.md
 
 ## Tool Wrappers
 
-Each wrapper tries the real binary first. If not installed, it returns realistic simulated output so the demo always works.
+Each wrapper tries the real binary first. If not installed, it returns realistic simulated output so the demo always works. All 16 are registered in `TOOL_REGISTRY` (`surveil/tools/__init__.py`) and invokable from both the CLI and TUI.
 
 | Tool | Purpose | Checklist Items |
 |---|---|---|
@@ -183,6 +199,21 @@ Each wrapper tries the real binary first. If not installed, it returns realistic
 | `wafw00f` | WAF detection | INFO-10, CONF-10 |
 | `subfinder` | Subdomain discovery | INFO-01, CONF-09 |
 | `nuclei` | Template-based vulnerability scanning | CONF-02, CONF-05, CONF-08 |
+| `arjun` | Hidden HTTP parameter discovery | INFO-04 |
+| `dnsx` | DNS resolution & enumeration | INFO-01, CONF-09 |
+| `gowitness` | Screenshot capture of web pages | INFO-04 |
+| `wpscan` | WordPress-specific vulnerability scanning | INFO-08 |
+| `amass` | Passive subdomain enumeration | INFO-01 |
+| `ffuf` | Directory/file brute-forcing | INFO-04, CONF-01, CONF-04, CONF-05 |
+| `gobuster` | Directory brute-forcing | CONF-04, CONF-05 |
+| `katana` | Web crawling & endpoint discovery | INFO-04 |
+| `nikto` | Web server vulnerability scanning | CONF-02 |
+| `testssl` | TLS/SSL configuration analysis | CONF-06 |
+
+Auto-finding extraction (`surveil/findings_extractor.py`) currently covers
+`nmap`, `httpx`, `whatweb`, `nuclei`, `wafw00f`, `subfinder`, and `nikto`;
+the other 9 tools' output is stored and viewable but not yet auto-parsed
+into findings.
 
 ---
 
