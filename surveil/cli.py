@@ -98,11 +98,15 @@ def list_engagements() -> None:
 # surveil tui
 # ============================================================
 @main.command()
-@click.option("--id", "eng_id", default="", help="Engagement ID (defaults to latest)")
+@click.option("--id", "eng_id", default="", help="Engagement ID (skips the picker and opens it directly)")
 def tui(eng_id: str) -> None:
-    """Open the interactive TUI for an engagement."""
+    """Open the interactive TUI for an engagement.
+
+    With no --id, shows a picker to choose among saved engagements
+    (skipped automatically if there's only one).
+    """
     from . import state
-    from .tui import run_tui
+    from .tui import run_tui, run_engagement_picker
 
     if eng_id:
         try:
@@ -111,11 +115,18 @@ def tui(eng_id: str) -> None:
             console.print(f"[red]Engagement '{eng_id}' not found.[/red]")
             raise SystemExit(1)
     else:
-        engagement = state.load_latest()
-        if engagement is None:
+        summaries = state.list_all()
+        if not summaries:
             console.print("[yellow]No engagement found. Run [bold]surveil new --target <host>[/bold] first.[/yellow]")
             raise SystemExit(1)
-        console.print(f"[dim]Loading latest engagement: [bold]{engagement.id}[/bold] ({engagement.name})[/dim]")
+        if len(summaries) == 1:
+            engagement = state.load(summaries[0]["id"])
+            console.print(f"[dim]Opening the only saved engagement: [bold]{engagement.id}[/bold] ({engagement.name})[/dim]")
+        else:
+            selected_id = run_engagement_picker(summaries)
+            if not selected_id:
+                raise SystemExit(0)
+            engagement = state.load(selected_id)
 
     run_tui(engagement)
 
@@ -281,12 +292,31 @@ def add_finding(
 # surveil delete
 # ============================================================
 @main.command()
-@click.argument("eng_id")
-@click.confirmation_option(prompt="Delete this engagement?")
-def delete(eng_id: str) -> None:
-    """Delete an engagement by ID."""
+@click.argument("eng_ids", nargs=-1, required=True)
+@click.option("--yes", "-y", is_flag=True, help="Skip the confirmation prompt")
+def delete(eng_ids: tuple[str, ...], yes: bool) -> None:
+    """Delete one or more engagements by ID (e.g. surveil delete abc123 def456)."""
     from . import state
-    if state.delete(eng_id):
-        console.print(f"[green]Engagement {eng_id} deleted.[/green]")
-    else:
-        console.print(f"[red]Engagement {eng_id} not found.[/red]")
+
+    ids = list(dict.fromkeys(eng_ids))  # de-dupe, preserve order
+
+    if not yes:
+        label = f"engagement '{ids[0]}'" if len(ids) == 1 else f"{len(ids)} engagements ({', '.join(ids)})"
+        if not click.confirm(f"Delete {label}?"):
+            console.print("[yellow]Aborted.[/yellow]")
+            raise SystemExit(0)
+
+    deleted: list[str] = []
+    missing: list[str] = []
+    for eng_id in ids:
+        if state.delete(eng_id):
+            deleted.append(eng_id)
+        else:
+            missing.append(eng_id)
+
+    if deleted:
+        console.print(f"[green]Deleted {len(deleted)} engagement(s): {', '.join(deleted)}[/green]")
+    if missing:
+        console.print(f"[red]Not found: {', '.join(missing)}[/red]")
+    if missing and not deleted:
+        raise SystemExit(1)

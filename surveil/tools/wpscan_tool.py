@@ -7,8 +7,18 @@ from .base import BaseTool
 class WpscanTool(BaseTool):
     name   = "wpscan"
     binary = "wpscan"
+    description = "Enumerate WordPress version, plugins/themes, and known vulnerabilities."
+    example = "wpscan --url https://example.com --enumerate vp,vt,u --no-banner --format cli"
 
-    def build_command(self) -> list[str]:
+    def build_command(self, fast: bool = False) -> list[str]:
+        if fast:
+            return [
+                "wpscan",
+                "--url", f"https://{self.target}",
+                "--enumerate", "vp",
+                "--no-banner",
+                "--format", "cli",
+            ]
         return [
             "wpscan",
             "--url", f"https://{self.target}",

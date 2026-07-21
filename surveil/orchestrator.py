@@ -5,6 +5,7 @@ import time
 from datetime import datetime
 from typing import Callable, Optional
 
+from .findings_extractor import extract_findings
 from .models import ChecklistItem, Engagement, Status
 from .tools import TOOL_REGISTRY
 from .tools.base import ToolResult
@@ -21,6 +22,8 @@ class Orchestrator:
         item: ChecklistItem,
         tool_name: str,
         on_line: Callable[[str], None] | None = None,
+        custom_command: list[str] | None = None,
+        fast: bool = False,
     ) -> ToolResult:
         """
         Execute *tool_name* against the engagement target.
@@ -29,6 +32,9 @@ class Orchestrator:
         - Stores raw output in item.tool_outputs[tool_name].
         - Sets item status to DONE on success, FAILED on error.
         - Records elapsed time.
+        - If *custom_command* is given, it replaces the tool's default
+          command line and always executes for real (see BaseTool.run).
+        - Otherwise *fast* selects the tool's fast vs. full command variant.
         """
         tool_cls = TOOL_REGISTRY.get(tool_name)
         if tool_cls is None:
@@ -38,12 +44,20 @@ class Orchestrator:
         item.started_at = item.started_at or datetime.now()
 
         tool = tool_cls(self.engagement.target)
-        result = tool.run(on_line=on_line)
+        result = tool.run(on_line=on_line, override_command=custom_command, fast=fast)
 
         item.tool_outputs[tool_name] = result.output
         item.time_elapsed_seconds = (
             (item.time_elapsed_seconds or 0) + result.elapsed_seconds
         )
+
+        # Re-running a tool replaces its still-unverified auto findings so
+        # results don't pile up on repeat scans; anything the tester has
+        # already verified is left alone.
+        item.findings = [
+            f for f in item.findings if not (f.tool == tool_name and not f.verified)
+        ]
+        item.findings.extend(extract_findings(tool_name, item.id, result.output))
 
         if result.success:
             item.status = Status.DONE

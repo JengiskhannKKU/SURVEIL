@@ -7,8 +7,12 @@ from .base import BaseTool
 class NmapTool(BaseTool):
     name   = "nmap"
     binary = "nmap"
+    description = "Port-scan common web ports and fingerprint service versions/scripts."
+    example = "nmap -sV -sC -p 80,443,8080,8443,8000,8888,3000 --open -T4 example.com"
 
-    def build_command(self) -> list[str]:
+    def build_command(self, fast: bool = False) -> list[str]:
+        if fast:
+            return ["nmap", "-sV", "--top-ports", "20", "--open", "-T5", self.target]
         return [
             "nmap", "-sV", "-sC",
             "-p", "80,443,8080,8443,8000,8888,3000",

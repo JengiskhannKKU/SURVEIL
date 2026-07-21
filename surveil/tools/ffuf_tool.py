@@ -7,9 +7,15 @@ from .base import BaseTool
 class FfufTool(BaseTool):
     name   = "ffuf"
     binary = "ffuf"
+    description = "Brute-force directories/files on the target using a wordlist."
+    uses_wordlist = True
+    example = (
+        "ffuf -u https://example.com/FUZZ -w /usr/share/wordlists/dirb/common.txt "
+        "-mc 200,301,302,403 -t 50 -c -s"
+    )
 
-    def build_command(self) -> list[str]:
-        return [
+    def build_command(self, fast: bool = False) -> list[str]:
+        cmd = [
             "ffuf",
             "-u", f"https://{self.target}/FUZZ",
             "-w", "/usr/share/wordlists/dirb/common.txt",
@@ -17,6 +23,9 @@ class FfufTool(BaseTool):
             "-t", "50",
             "-c", "-s",
         ]
+        if fast:
+            cmd += ["-maxtime", "30"]
+        return cmd
 
     def mock_output(self) -> str:
         return f"""\

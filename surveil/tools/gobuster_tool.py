@@ -7,13 +7,16 @@ from .base import BaseTool
 class GobusterTool(BaseTool):
     name   = "gobuster"
     binary = "gobuster"
+    description = "Brute-force directories using a wordlist (similar to ffuf)."
+    uses_wordlist = True
+    example = "gobuster dir -u https://example.com -w /usr/share/wordlists/dirb/common.txt -t 50 -q --no-error"
 
-    def build_command(self) -> list[str]:
+    def build_command(self, fast: bool = False) -> list[str]:
         return [
             "gobuster", "dir",
             "-u", f"https://{self.target}",
             "-w", "/usr/share/wordlists/dirb/common.txt",
-            "-t", "50",
+            "-t", "100" if fast else "50",
             "-q", "--no-error",
         ]
 

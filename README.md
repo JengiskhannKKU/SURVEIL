@@ -31,8 +31,8 @@ surveil is a terminal-native tool that brings together web application enumerati
 └────────────────┴────────────────────┴───────────────────────┘
 ```
 
-- **Tool Orchestration Layer** — wraps 16 tools via subprocess: `nmap`, `httpx`, `whatweb`, `wafw00f`, `subfinder`, `nuclei`, `arjun`, `dnsx`, `gowitness`, `wpscan`, `amass`, `ffuf`, `gobuster`, `katana`, `nikto`, `testssl` (see `TOOL_REGISTRY` in `surveil/tools/__init__.py`). Falls back to realistic simulated output when a tool is not installed (demo mode).
-- **Checklist & State Engine** — OWASP WSTG INFO + CONF items (20 items) with status tracking, Textual TUI, JSON persistence.
+- **Tool Orchestration Layer** — wraps 16 tools via subprocess: `nmap`, `httpx`, `whatweb`, `wafw00f`, `subfinder`, `nuclei`, `arjun`, `dnsx`, `gowitness`, `wpscan`, `amass`, `ffuf`, `gobuster`, `katana`, `nikto`, `testssl` (see `TOOL_REGISTRY` in `surveil/tools/__init__.py`). Falls back to realistic simulated output when a tool is not installed (demo mode). Each tool supports a **Fast** and a **Full** command variant, and its exact command line is editable before running.
+- **Checklist & State Engine** — OWASP WSTG INFO + CONF items (20 items) with status tracking, Textual TUI, JSON persistence, and a saved-engagement picker.
 - **Auto-Finding Extraction** (`surveil/findings_extractor.py`) — parses raw output from `nmap`, `httpx`, `whatweb`, `nuclei`, `wafw00f`, `subfinder`, and `nikto` into `Finding` objects (auto CVSS scoring, OWASP/CWE mapping) flagged `verified=False`, so a tester gets a starting point to confirm or dismiss rather than a blank checklist.
 - **Reporting Engine** — CVSS v3.1 base score calculator, OWASP/CWE metadata, Markdown and .docx export.
 
@@ -149,6 +149,28 @@ surveil report --format md --output report.md
 
 ---
 
+## Keeping the local venv and Docker image in sync
+
+The local venv (`pip install -e .`) and the Docker image (`surveil:latest`)
+are two separate installs of the same source — nothing keeps them in sync
+automatically, so it's easy for one to drift ahead of the other (e.g. after
+pulling changes, or mid-development). A `Makefile` target rebuilds both
+together and confirms they agree:
+
+```bash
+make sync           # pip install -e . locally, docker compose build, then verify
+make check-version  # just check whether they currently agree
+```
+
+`check-version` compares `surveil --version` between the two and fails
+loudly on a mismatch instead of you discovering it as "the TUI in Docker
+doesn't have the feature I just added." Bump `version` in both
+`pyproject.toml` and `surveil/__init__.py` (`__version__`) when you want
+drift like this to be catchable — the two are not auto-derived from each
+other.
+
+---
+
 ## CLI Reference
 
 | Command | Description |
@@ -160,7 +182,7 @@ surveil report --format md --output report.md
 | `surveil report -f md` | Generate Markdown report |
 | `surveil report -f docx` | Generate Word document report |
 | `surveil add-finding --item WSTG-INFO-02 ...` | Add a finding from CLI |
-| `surveil delete <id>` | Delete an engagement |
+| `surveil delete <id> [<id> ...]` | Delete one or more engagements (`-y`/`--yes` skips the confirmation prompt) |
 
 ---
 
@@ -169,12 +191,51 @@ surveil report --format md --output report.md
 | Key | Action |
 |---|---|
 | `↑ / ↓` | Navigate checklist items |
+| `N` | Jump to the next pending item |
 | `R` | Run a tool for the selected item |
 | `A` | Add a finding manually |
 | `D` | Mark item as Done |
 | `S` | Skip item |
+| `U` | Reset item to pending |
 | `G` | Generate report |
+| `?` | Show the in-app help/manual |
 | `Ctrl+Q` | Quit |
+
+On the findings table, `Enter` opens a finding's full detail (description,
+evidence, remediation) with `V` to verify/unverify and `X` to delete a
+false positive — both work by keyboard even if the dialog's buttons have
+scrolled out of view.
+
+---
+
+## Using the TUI
+
+### Choosing an engagement
+
+Running `surveil tui` with no `--id`:
+- 0 saved engagements → prints a message telling you to run `surveil new` first.
+- 1 saved engagement → opens it directly, no extra step.
+- 2+ saved engagements → shows a picker (ID, name, target, progress, findings, Crit/High counts, created date). `↑`/`↓` to navigate, `Enter` to open, `Ctrl+Q` to cancel.
+
+`surveil tui --id <engagement-id>` skips the picker and opens that engagement directly.
+
+The picker can also delete engagements without leaving the TUI: `Space`
+marks/unmarks the row under the cursor, and `X` deletes all marked rows
+(or just the current row if none are marked) after a confirmation dialog.
+Equivalent to `surveil delete <id> [<id> ...]` from the command line — see
+CLI Reference below.
+
+### Running a tool: Fast/Full, wordlist picker, editable command, and a guide
+
+Pressing `R` on a checklist item opens the Run Tool dialog:
+- **Guide** — a one-line description of what the tool does plus an example invocation, shown above the command field and updated as you change the selected tool.
+- **Fast / Full scan switch** — Fast uses a quicker, narrower-scope command (fewer ports/templates/threads, shorter timeouts, or the tool's own `--fast`-style flag); Full (the default) is the thorough variant. Toggling it updates the command preview live.
+- **Wordlist picker** — for directory/file brute-forcing tools (`ffuf`, `gobuster`), an extra dropdown lists wordlists found on the host (scanning common locations like `/usr/share/wordlists`, `/usr/share/seclists`, `~/SecLists`, etc. — see `surveil/wordlists.py`) plus the tool's own hardcoded default. Picking one swaps just the `-w <path>` argument in the command, leaving everything else untouched. Hidden for tools that don't take a wordlist.
+- **Editable command line** — the exact command about to run is shown in an editable field; change flags, timeouts, whatever you need (including hand-typing a wordlist path the picker didn't find). Leave it untouched and the normal simulated-fallback behavior applies if the binary isn't installed. Edit it, and it always executes for real — a missing binary then surfaces as a real error instead of demo output. **Reset Command** restores the tool's default for the current Fast/Full selection.
+
+### Reading tool output
+
+Raw tool output streams into the Tool Output panel live as it runs (and replays the same way when you reselect a completed item), with line-level highlighting: HTTP status codes color-coded by class (2xx green, 3xx yellow, 4xx/5xx red), nuclei-style `[severity]` tags colored to match the findings table, URLs, CVE IDs, and `[+]`/`[-]`/`⚠` markers picked out, and the `SIMULATED` banner bolded so it's obvious when you're looking at demo data rather than a real scan. See `surveil/output_formatter.py`.
 
 ---
 
@@ -189,7 +250,7 @@ surveil report --format md --output report.md
 
 ## Tool Wrappers
 
-Each wrapper tries the real binary first. If not installed, it returns realistic simulated output so the demo always works. All 16 are registered in `TOOL_REGISTRY` (`surveil/tools/__init__.py`) and invokable from both the CLI and TUI.
+Each wrapper tries the real binary first. If not installed, it returns realistic simulated output so the demo always works. All 16 are registered in `TOOL_REGISTRY` (`surveil/tools/__init__.py`) and invokable from both the CLI and TUI. Every wrapper also carries a `description` and `example` (shown as the guide in the TUI's Run Tool dialog) and a Fast/Full `build_command(fast=...)` variant.
 
 | Tool | Purpose | Checklist Items |
 |---|---|---|

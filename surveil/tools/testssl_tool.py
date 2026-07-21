@@ -7,13 +7,15 @@ from .base import BaseTool
 class TestsslTool(BaseTool):
     name   = "testssl"
     binary = "testssl.sh"
+    description = "Analyze TLS/SSL configuration, protocols, ciphers, and known vulnerabilities."
+    example = "testssl.sh --quiet --color 0 https://example.com"
 
-    def build_command(self) -> list[str]:
-        return [
-            "testssl.sh",
-            "--quiet", "--color", "0",
-            f"https://{self.target}",
-        ]
+    def build_command(self, fast: bool = False) -> list[str]:
+        cmd = ["testssl.sh", "--quiet", "--color", "0"]
+        if fast:
+            cmd.append("--fast")
+        cmd.append(f"https://{self.target}")
+        return cmd
 
     def mock_output(self) -> str:
         return f"""\

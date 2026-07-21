@@ -24,7 +24,7 @@ LABEL org.opencontainers.image.title="surveil" \
 # runtime/build deps for the Ruby (wpscan), Perl (nikto), and shell
 # (testssl.sh) tools:
 #   - libjson-perl / libxml-writer-perl: nikto's report/plugin modules
-#   - bsdextrautils: provides `hexdump`, used by testssl.sh's output formatting
+#   - bsdextrautils / procps: `hexdump` and `ps`, both used by testssl.sh
 #   - libcurl4: required at runtime by the `ffi`/`typhoeus` gems wpscan depends on
 RUN apt-get update && apt-get install -y --no-install-recommends \
         nmap \
@@ -34,6 +34,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libjson-perl \
         libxml-writer-perl \
         bsdextrautils \
+        procps \
         ruby-full \
         libcurl4 \
         build-essential \

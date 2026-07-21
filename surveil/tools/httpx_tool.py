@@ -7,8 +7,15 @@ from .base import BaseTool
 class HttpxTool(BaseTool):
     name   = "httpx"
     binary = "httpx"
+    description = "Probe HTTP(S) endpoints for status, title, tech stack, and response headers."
+    example = (
+        "httpx -u example.com -title -tech-detect -status-code -content-length "
+        "-response-header -follow-redirects -silent"
+    )
 
-    def build_command(self) -> list[str]:
+    def build_command(self, fast: bool = False) -> list[str]:
+        if fast:
+            return ["httpx", "-u", self.target, "-status-code", "-silent", "-timeout", "5"]
         return [
             "httpx",
             "-u", self.target,

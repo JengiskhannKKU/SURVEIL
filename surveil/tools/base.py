@@ -58,6 +58,15 @@ class BaseTool(ABC):
     name: str = ""
     binary: str = ""
 
+    # Shown in the TUI's Run Tool dialog as a guide for what this tool does
+    # and what a real invocation looks like.
+    description: str = ""
+    example: str = ""
+
+    # Directory/file brute-forcing tools take a wordlist via -w <path>; the
+    # TUI shows a wordlist picker for these instead of just a free-text edit.
+    uses_wordlist: bool = False
+
     def __init__(self, target: str):
         self.target = target
 
@@ -65,7 +74,13 @@ class BaseTool(ABC):
         return shutil.which(self.binary) is not None
 
     @abstractmethod
-    def build_command(self) -> list[str]:
+    def build_command(self, fast: bool = False) -> list[str]:
+        """Build the command line to run.
+
+        *fast* selects a quicker, narrower-scope variant (fewer ports/
+        templates/threads/timeout) for a fast first pass; the default
+        (``False``) is the full/thorough scan.
+        """
         ...
 
     @abstractmethod
@@ -75,9 +90,19 @@ class BaseTool(ABC):
     def run(
         self,
         on_line: Callable[[str], None] | None = None,
+        override_command: list[str] | None = None,
+        fast: bool = False,
     ) -> ToolResult:
+        """Run the tool.
+
+        If *override_command* is given (e.g. a tester-edited command line),
+        it always executes for real — a missing binary surfaces as a real
+        error rather than silently falling back to simulated output, since
+        the tester explicitly chose that command. Otherwise *fast* selects
+        which built-in command variant (fast vs. full) to run.
+        """
         start = time.monotonic()
-        if not self.is_available():
+        if override_command is None and not self.is_available():
             output = self.mock_output()
             elapsed = time.monotonic() - start
             if on_line:
@@ -85,13 +110,13 @@ class BaseTool(ABC):
                     on_line(line)
             return ToolResult(
                 tool=self.name,
-                command=" ".join(self.build_command()),
+                command=" ".join(self.build_command(fast=fast)),
                 output=output,
                 exit_code=0,
                 elapsed_seconds=elapsed,
                 simulated=True,
             )
-        cmd = self.build_command()
+        cmd = override_command if override_command is not None else self.build_command(fast=fast)
         exit_code, output = run_tool(cmd, on_line=on_line)
         elapsed = time.monotonic() - start
         return ToolResult(

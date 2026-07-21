@@ -7,8 +7,21 @@ from .base import BaseTool
 class NucleiTool(BaseTool):
     name   = "nuclei"
     binary = "nuclei"
+    description = "Match the target against community vulnerability/misconfiguration templates."
+    example = (
+        "nuclei -u https://example.com -tags misconfig,exposure,headers,tech "
+        "-severity low,medium,high,critical -silent"
+    )
 
-    def build_command(self) -> list[str]:
+    def build_command(self, fast: bool = False) -> list[str]:
+        if fast:
+            return [
+                "nuclei",
+                "-u", f"https://{self.target}",
+                "-tags", "misconfig,exposure",
+                "-severity", "high,critical",
+                "-silent",
+            ]
         return [
             "nuclei",
             "-u", f"https://{self.target}",
