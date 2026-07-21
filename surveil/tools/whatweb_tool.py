@@ -7,8 +7,12 @@ from .base import BaseTool
 class WhatwebTool(BaseTool):
     name   = "whatweb"
     binary = "whatweb"
+    description = "Fingerprint web technologies, CMS, and frameworks in use."
+    example = "whatweb --color=never -v example.com"
 
-    def build_command(self) -> list[str]:
+    def build_command(self, fast: bool = False) -> list[str]:
+        if fast:
+            return ["whatweb", "--color=never", "-a", "1", self.target]
         return ["whatweb", "--color=never", "-v", self.target]
 
     def mock_output(self) -> str:

@@ -7,8 +7,12 @@ from .base import BaseTool
 class GowitnessTool(BaseTool):
     name   = "gowitness"
     binary = "gowitness"
+    description = "Capture a screenshot of the target's web page for visual triage."
+    example = "gowitness single https://example.com --timeout 30"
 
-    def build_command(self) -> list[str]:
+    def build_command(self, fast: bool = False) -> list[str]:
+        if fast:
+            return ["gowitness", "single", f"https://{self.target}", "--timeout", "10"]
         return ["gowitness", "single", f"https://{self.target}", "--timeout", "30"]
 
     def mock_output(self) -> str:

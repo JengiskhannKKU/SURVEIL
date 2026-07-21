@@ -7,9 +7,13 @@ from .base import BaseTool
 class AmassTool(BaseTool):
     name   = "amass"
     binary = "amass"
+    description = "Passive OWASP Amass subdomain enumeration across many data sources."
+    example = "amass enum -passive -d example.com -timeout 10"
 
-    def build_command(self) -> list[str]:
-        return ["amass", "enum", "-passive", "-d", self.target, "-timeout", "3"]
+    def build_command(self, fast: bool = False) -> list[str]:
+        if fast:
+            return ["amass", "enum", "-passive", "-d", self.target, "-timeout", "1"]
+        return ["amass", "enum", "-passive", "-d", self.target, "-timeout", "10"]
 
     def mock_output(self) -> str:
         return f"""\

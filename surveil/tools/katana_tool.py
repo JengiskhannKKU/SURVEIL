@@ -7,12 +7,14 @@ from .base import BaseTool
 class KatanaTool(BaseTool):
     name   = "katana"
     binary = "katana"
+    description = "Crawl the target site to discover reachable endpoints/URLs."
+    example = "katana -u https://example.com -d 3 -jc -silent -nc"
 
-    def build_command(self) -> list[str]:
+    def build_command(self, fast: bool = False) -> list[str]:
         return [
             "katana",
             "-u", f"https://{self.target}",
-            "-d", "3",
+            "-d", "1" if fast else "3",
             "-jc", "-silent", "-nc",
         ]
 

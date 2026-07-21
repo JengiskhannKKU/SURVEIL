@@ -7,9 +7,13 @@ from .base import BaseTool
 class SubfinderTool(BaseTool):
     name   = "subfinder"
     binary = "subfinder"
+    description = "Passively enumerate subdomains from public data sources."
+    example = "subfinder -d example.com -silent -all"
 
-    def build_command(self) -> list[str]:
-        return ["subfinder", "-d", self.target, "-silent"]
+    def build_command(self, fast: bool = False) -> list[str]:
+        if fast:
+            return ["subfinder", "-d", self.target, "-silent", "-timeout", "10"]
+        return ["subfinder", "-d", self.target, "-silent", "-all"]
 
     def mock_output(self) -> str:
         return f"""\

@@ -7,8 +7,12 @@ from .base import BaseTool
 class ArjunTool(BaseTool):
     name   = "arjun"
     binary = "arjun"
+    description = "Discover hidden/undocumented HTTP GET parameters via brute force."
+    example = "arjun -u https://example.com --stable -t 10"
 
-    def build_command(self) -> list[str]:
+    def build_command(self, fast: bool = False) -> list[str]:
+        if fast:
+            return ["arjun", "-u", f"https://{self.target}", "-t", "20"]
         return ["arjun", "-u", f"https://{self.target}", "--stable", "-t", "10"]
 
     def mock_output(self) -> str:

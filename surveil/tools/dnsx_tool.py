@@ -7,8 +7,12 @@ from .base import BaseTool
 class DnsxTool(BaseTool):
     name   = "dnsx"
     binary = "dnsx"
+    description = "Resolve DNS record types (A/AAAA/CNAME/MX/NS/TXT) for the target."
+    example = "echo example.com | dnsx -a -aaaa -cname -mx -ns -txt -resp -silent"
 
-    def build_command(self) -> list[str]:
+    def build_command(self, fast: bool = False) -> list[str]:
+        if fast:
+            return ["sh", "-c", f"echo {self.target} | dnsx -a -cname -resp -silent"]
         return [
             "sh", "-c",
             f"echo {self.target} | dnsx -a -aaaa -cname -mx -ns -txt -resp -silent",

@@ -7,8 +7,12 @@ from .base import BaseTool
 class Wafw00fTool(BaseTool):
     name   = "wafw00f"
     binary = "wafw00f"
+    description = "Detect whether a Web Application Firewall sits in front of the target."
+    example = "wafw00f https://example.com -a"
 
-    def build_command(self) -> list[str]:
+    def build_command(self, fast: bool = False) -> list[str]:
+        if fast:
+            return ["wafw00f", f"https://{self.target}"]
         return ["wafw00f", f"https://{self.target}", "-a"]
 
     def mock_output(self) -> str:

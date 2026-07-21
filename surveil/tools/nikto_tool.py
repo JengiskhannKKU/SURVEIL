@@ -7,15 +7,20 @@ from .base import BaseTool
 class NiktoTool(BaseTool):
     name   = "nikto"
     binary = "nikto"
+    description = "Scan the web server for known vulnerabilities and misconfigurations."
+    example = "nikto -h https://example.com -Tuning 1234567890 -nointeractive -Display 1"
 
-    def build_command(self) -> list[str]:
-        return [
+    def build_command(self, fast: bool = False) -> list[str]:
+        cmd = [
             "nikto",
             "-h", f"https://{self.target}",
             "-Tuning", "1234567890",
             "-nointeractive",
             "-Display", "1",
         ]
+        if fast:
+            cmd += ["-maxtime", "60s"]
+        return cmd
 
     def mock_output(self) -> str:
         return f"""\

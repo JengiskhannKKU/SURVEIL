@@ -1,6 +1,7 @@
 """Textual TUI — Checklist & State Engine with interactive findings management."""
 from __future__ import annotations
 
+import shlex
 import threading
 from datetime import datetime
 from typing import Optional
@@ -21,14 +22,18 @@ from textual.widgets import (
     Rule,
     Select,
     Static,
+    Switch,
     Tree,
 )
 from textual.widgets.tree import TreeNode
 
 from .models import ChecklistItem, Engagement, Finding, Severity, Status
 from .orchestrator import Orchestrator
+from .output_formatter import format_tool_line
 from .scoring import score_from_vector, severity_from_score
 from .report import generate_markdown
+from .tools import TOOL_REGISTRY
+from .wordlists import discover_wordlists
 
 
 # ============================================================
@@ -87,6 +92,12 @@ Footer {
     color: #8b949e;
     padding: 0 1;
     height: 2;
+}
+
+#sidebar-severity {
+    background: #0d1117;
+    padding: 0 1 1 1;
+    height: auto;
 }
 
 #checklist-tree {
@@ -238,6 +249,33 @@ Select {
     margin-top: 1;
 }
 
+#tool-guide {
+    height: auto;
+    margin-top: 1;
+    color: #8b949e;
+}
+
+.scan-mode-row {
+    height: 3;
+    align: left middle;
+    margin-top: 1;
+}
+
+.scan-mode-row Switch {
+    margin: 0 1;
+}
+
+#picker-hint {
+    background: #161b22;
+    color: #8b949e;
+    padding: 1 2;
+    height: 3;
+}
+
+#picker-table {
+    margin: 0 2;
+}
+
 #splash {
     align: center middle;
     background: #0d1117;
@@ -253,6 +291,33 @@ Select {
     height: auto;
     margin-top: 1;
     margin-bottom: 1;
+    color: #c9d1d9;
+}
+
+#run-tool-modal-box {
+    background: #161b22;
+    border: solid #30363d;
+    width: 96;
+    height: auto;
+    max-height: 90%;
+    padding: 2 3;
+}
+
+#finding-modal-box {
+    background: #161b22;
+    border: solid #30363d;
+    width: 76;
+    height: auto;
+    max-height: 90%;
+    padding: 2 3;
+}
+
+#finding-detail-log {
+    height: auto;
+    max-height: 16;
+    background: #010409;
+    border: solid #30363d;
+    margin: 1 0;
     color: #c9d1d9;
 }
 """
@@ -338,18 +403,27 @@ class AddFindingModal(ModalScreen[Optional[Finding]]):
 # ============================================================
 # Modal — Run Tool
 # ============================================================
-class RunToolModal(ModalScreen[Optional[str]]):
-    """Select which tool to run for the current item."""
+class RunToolModal(ModalScreen[Optional[tuple[str, Optional[list[str]], bool]]]):
+    """Select which tool to run for the current item, with a fast/full scan
+    toggle, a per-tool guide, and an editable command line.
+
+    Dismisses with ``(tool_name, custom_command, fast)`` — *custom_command*
+    is ``None`` if the tester left the default command untouched (so the
+    normal simulated-fallback behavior still applies, and *fast* picks
+    which built-in variant to run), or the edited argv list if they
+    changed it (which always executes for real, ignoring *fast*).
+    """
 
     BINDINGS = [Binding("escape", "dismiss", "Cancel")]
 
-    def __init__(self, item: ChecklistItem):
+    def __init__(self, item: ChecklistItem, target: str):
         super().__init__()
         self._item = item
+        self._target = target
 
     def compose(self) -> ComposeResult:
         available = self._item.tools
-        with Vertical(id="modal-box"):
+        with VerticalScroll(id="run-tool-modal-box"):
             yield Label(f"Run Tool — {self._item.id}", id="modal-title")
             yield Label("Select a tool to execute:", classes="modal-label")
             yield Select(
@@ -357,13 +431,124 @@ class RunToolModal(ModalScreen[Optional[str]]):
                 value=available[0] if available else None,
                 id="sel-tool",
             )
+            yield Static("", id="tool-guide")
+            with Horizontal(classes="scan-mode-row"):
+                yield Label("Fast scan", classes="modal-label")
+                yield Switch(value=False, id="switch-fast")
+                yield Label(
+                    "[dim](off = Full/thorough scan, the default; on = a quicker, narrower first pass)[/dim]",
+                    classes="modal-label",
+                )
+            yield Label("Wordlist:", id="wordlist-label", classes="modal-label")
+            yield Select([], id="sel-wordlist", allow_blank=True)
+            yield Label("Command (edit before running, e.g. change flags/wordlist/timeout):", classes="modal-label")
+            yield Input(id="inp-command")
             yield Label(
-                "Warning: If the tool is not installed it will run in [bold yellow]SIMULATED[/bold yellow] mode.",
+                "If the tool isn't installed and the command above is untouched, it "
+                "runs in [bold yellow]SIMULATED[/bold yellow] mode. Editing the command "
+                "always executes for real — a missing binary then shows a real error.",
                 classes="modal-label",
             )
             with Horizontal(classes="modal-buttons"):
                 yield Button("Cancel", variant="default", id="btn-cancel")
+                yield Button("Reset Command", variant="default", id="btn-reset-cmd")
                 yield Button("Run", variant="success", id="btn-run")
+
+    def on_mount(self) -> None:
+        self._refresh_command_preview()
+
+    def _is_fast(self) -> bool:
+        return self.query_one("#switch-fast", Switch).value
+
+    def _default_command_for(self, tool_name: str, fast: bool) -> Optional[list[str]]:
+        tool_cls = TOOL_REGISTRY.get(tool_name)
+        if tool_cls is None:
+            return None
+        return tool_cls(self._target).build_command(fast=fast)
+
+    def _refresh_command_preview(self) -> None:
+        tool_name = self.query_one("#sel-tool", Select).value
+        if not tool_name:
+            return
+        tool_name = str(tool_name)
+        tool_cls = TOOL_REGISTRY.get(tool_name)
+
+        cmd = self._default_command_for(tool_name, self._is_fast())
+        self.query_one("#inp-command", Input).value = shlex.join(cmd) if cmd else ""
+
+        guide = self.query_one("#tool-guide", Static)
+        if tool_cls and (tool_cls.description or tool_cls.example):
+            guide.update(
+                f"[dim]{tool_cls.description}[/dim]\n"
+                f"[dim]e.g.[/dim] [cyan]{tool_cls.example}[/cyan]"
+            )
+        else:
+            guide.update("")
+
+        self._refresh_wordlist_row(tool_cls, cmd)
+
+    def _current_wordlist(self, cmd: Optional[list[str]]) -> Optional[str]:
+        if not cmd or "-w" not in cmd:
+            return None
+        idx = cmd.index("-w")
+        return cmd[idx + 1] if idx + 1 < len(cmd) else None
+
+    def _refresh_wordlist_row(self, tool_cls, cmd: Optional[list[str]]) -> None:
+        uses_wordlist = bool(tool_cls and tool_cls.uses_wordlist)
+        label = self.query_one("#wordlist-label", Label)
+        select = self.query_one("#sel-wordlist", Select)
+        label.display = uses_wordlist
+        select.display = uses_wordlist
+        if not uses_wordlist:
+            return
+
+        current = self._current_wordlist(cmd)
+        options: list[tuple[str, str]] = []
+        if current:
+            options.append((f"{current}  (tool default)", current))
+        for wl_label, wl_path in discover_wordlists():
+            if wl_path != current:
+                options.append((wl_label, wl_path))
+
+        if not options:
+            select.set_options([("(no wordlist path in command — edit manually)", "none")])
+            select.value = "none"
+            return
+
+        select.set_options(options)
+        select.value = current if current else options[0][1]
+
+    @on(Select.Changed, "#sel-wordlist")
+    def wordlist_changed(self) -> None:
+        path = self.query_one("#sel-wordlist", Select).value
+        if not path or path == "none":
+            return
+        cmd_input = self.query_one("#inp-command", Input)
+        try:
+            argv = shlex.split(cmd_input.value) if cmd_input.value.strip() else []
+        except ValueError:
+            return
+        if "-w" in argv:
+            idx = argv.index("-w")
+            if idx + 1 < len(argv):
+                argv[idx + 1] = str(path)
+            else:
+                argv.append(str(path))
+        else:
+            argv += ["-w", str(path)]
+        cmd_input.value = shlex.join(argv)
+
+    @on(Select.Changed, "#sel-tool")
+    def tool_changed(self) -> None:
+        self._refresh_command_preview()
+
+    @on(Switch.Changed, "#switch-fast")
+    def fast_toggled(self) -> None:
+        self._refresh_command_preview()
+
+    @on(Button.Pressed, "#btn-reset-cmd")
+    def reset_command(self) -> None:
+        self._refresh_command_preview()
 
     @on(Button.Pressed, "#btn-cancel")
     def cancel(self) -> None:
@@ -371,8 +556,23 @@ class RunToolModal(ModalScreen[Optional[str]]):
 
     @on(Button.Pressed, "#btn-run")
     def run(self) -> None:
-        tool = self.query_one("#sel-tool", Select).value
-        self.dismiss(str(tool) if tool else None)
+        tool_name = self.query_one("#sel-tool", Select).value
+        if not tool_name:
+            self.dismiss(None)
+            return
+        tool_name = str(tool_name)
+        fast = self._is_fast()
+
+        cmd_str = self.query_one("#inp-command", Input).value.strip()
+        try:
+            edited_cmd = shlex.split(cmd_str) if cmd_str else []
+        except ValueError as exc:
+            self.notify(f"Invalid command: {exc}", severity="error")
+            return
+
+        default_cmd = self._default_command_for(tool_name, fast) or []
+        custom_command = edited_cmd if edited_cmd != default_cmd else None
+        self.dismiss((tool_name, custom_command, fast))
 
 
 # ============================================================
@@ -428,6 +628,8 @@ class HelpModal(ModalScreen[None]):
         help_text = (
             "[bold cyan]Navigation[/bold cyan]\n"
             "  [bold]↑ / ↓[/bold]    : Navigate checklist items\n"
+            "  [bold]n[/bold]      : Jump to the next pending item\n"
+            "  [bold]Enter[/bold]  : (on a finding row) view detail / verify / delete\n"
             "\n"
             "[bold cyan]Actions[/bold cyan]\n"
             "  [bold]r[/bold]      : Run tool for the selected item\n"
@@ -438,6 +640,20 @@ class HelpModal(ModalScreen[None]):
             "  [bold]g[/bold]      : Generate report\n"
             "  [bold]?[/bold]      : Show this help screen\n"
             "  [bold]Ctrl+Q[/bold] : Quit application\n"
+            "\n"
+            "[bold cyan]Findings[/bold cyan]\n"
+            "  Running a tool auto-extracts findings from its output, flagged\n"
+            "  [yellow]Unverified[/yellow] until you confirm them. Select a row and press\n"
+            "  [bold]Enter[/bold] to view full evidence/remediation, mark it Verified,\n"
+            "  or delete it as a false positive.\n"
+            "\n"
+            "[bold cyan]Running Tools[/bold cyan]\n"
+            "  The Run Tool dialog shows what each tool does and an example\n"
+            "  command, plus a [bold]Fast scan[/bold] switch (a quicker, narrower\n"
+            "  first pass — fewer ports/templates/threads — vs. the default Full\n"
+            "  scan). The command line itself is editable before running; leaving\n"
+            "  it untouched keeps the normal simulated-fallback behavior when a\n"
+            "  tool isn't installed, while editing it always executes for real.\n"
             "\n"
             "[bold cyan]Status Indicators[/bold cyan]\n"
             "  ○ [dim]Pending[/dim]   : Not started\n"
@@ -458,6 +674,113 @@ class HelpModal(ModalScreen[None]):
 
 
 # ============================================================
+# Modal — Generic yes/no confirmation
+# ============================================================
+class ConfirmModal(ModalScreen[bool]):
+    """Generic confirm/cancel dialog. Dismisses with True (confirmed) or False."""
+
+    BINDINGS = [Binding("escape", "cancel", "Cancel")]
+
+    def __init__(self, message: str, confirm_label: str = "Delete"):
+        super().__init__()
+        self._message = message
+        self._confirm_label = confirm_label
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="modal-box"):
+            yield Label("Confirm", id="modal-title")
+            yield Static(self._message, classes="modal-label")
+            with Horizontal(classes="modal-buttons"):
+                yield Button("Cancel", variant="default", id="btn-cancel")
+                yield Button(self._confirm_label, variant="error", id="btn-confirm")
+
+    def action_cancel(self) -> None:
+        self.dismiss(False)
+
+    @on(Button.Pressed, "#btn-cancel")
+    def cancel(self) -> None:
+        self.dismiss(False)
+
+    @on(Button.Pressed, "#btn-confirm")
+    def confirm(self) -> None:
+        self.dismiss(True)
+
+
+# ============================================================
+# Modal — Finding detail / verify / delete
+# ============================================================
+class FindingDetailModal(ModalScreen[str]):
+    """Show a finding's full detail with verify/dismiss/delete actions.
+
+    Dismisses with one of: "", "verify", "unverify", "delete".
+    """
+
+    BINDINGS = [
+        Binding("escape", "close",          "Close"),
+        Binding("v",      "toggle_verify",  "Verify/Unverify"),
+        Binding("x",      "delete_finding",  "Delete"),
+    ]
+
+    def __init__(self, finding: Finding):
+        super().__init__()
+        self._finding = finding
+
+    def compose(self) -> ComposeResult:
+        f = self._finding
+        color = f.severity.rich_color
+        verified_str = (
+            "[green]✓ Verified[/green]" if f.verified else "[yellow]⚠ Unverified (tool-detected)[/yellow]"
+        )
+        body = (
+            f"[{color}]{f.severity.badge}[/{color}]  {verified_str}\n\n"
+            f"[bold]Tool:[/bold] {f.tool}    [bold]CVSS:[/bold] {f.cvss_score or '—'} "
+            f"({f.cvss_vector or 'n/a'})    [bold]CWE:[/bold] {f.cwe_id or '—'}\n\n"
+            f"[bold]Description[/bold]\n{f.description}\n\n"
+            f"[bold]Evidence[/bold]\n{f.evidence or '(none)'}\n\n"
+            f"[bold]Remediation[/bold]\n{f.remediation or '(none)'}"
+        )
+        with VerticalScroll(id="finding-modal-box"):
+            yield Label(f.title, id="modal-title")
+            log = RichLog(id="finding-detail-log", markup=True, highlight=True)
+            yield log
+            with Horizontal(classes="modal-buttons"):
+                yield Button("Close [ESC]", variant="default", id="btn-close")
+                yield Button(
+                    "Mark Unverified [V]" if f.verified else "Mark Verified [V]",
+                    variant="warning" if f.verified else "success",
+                    id="btn-toggle-verify",
+                )
+                yield Button("Delete [X]", variant="error", id="btn-delete")
+        self._body_text = body
+
+    def on_mount(self) -> None:
+        log = self.query_one("#finding-detail-log", RichLog)
+        for line in self._body_text.splitlines():
+            log.write(line)
+
+    def action_close(self) -> None:
+        self.dismiss("")
+
+    def action_toggle_verify(self) -> None:
+        self.dismiss("unverify" if self._finding.verified else "verify")
+
+    def action_delete_finding(self) -> None:
+        self.dismiss("delete")
+
+    @on(Button.Pressed, "#btn-close")
+    def close(self) -> None:
+        self.action_close()
+
+    @on(Button.Pressed, "#btn-toggle-verify")
+    def toggle_verify(self) -> None:
+        self.action_toggle_verify()
+
+    @on(Button.Pressed, "#btn-delete")
+    def delete(self) -> None:
+        self.action_delete_finding()
+
+
+# ============================================================
 # Main TUI App
 # ============================================================
 class ChecklistApp(App[None]):
@@ -473,6 +796,7 @@ class ChecklistApp(App[None]):
         Binding("d",       "mark_done",       "Mark Done",   show=True),
         Binding("s",       "mark_skip",       "Skip",        show=True),
         Binding("u",       "mark_reset",      "Reset",       show=True),
+        Binding("n",       "next_pending",    "Next Pending", show=True),
         Binding("g",       "gen_report",      "Report",      show=True),
         Binding("ctrl+q",  "quit",            "Quit",        show=True),
     ]
@@ -482,6 +806,7 @@ class ChecklistApp(App[None]):
         self.engagement    = engagement
         self.orchestrator  = Orchestrator(engagement)
         self._selected_id: Optional[str] = None
+        self._running_ids: set[str] = set()
 
     # --------------------------------------------------------
     # Layout
@@ -494,6 +819,7 @@ class ChecklistApp(App[None]):
                 yield Static(f"{self.engagement.name}", id="sidebar-title")
                 yield Static(f"Target: [bold white]{self.engagement.target}[/bold white]", id="sidebar-target")
                 yield Static("", id="sidebar-progress")
+                yield Static("", id="sidebar-severity")
                 yield Tree("OWASP WSTG", id="checklist-tree")
 
             # Right content
@@ -529,15 +855,20 @@ class ChecklistApp(App[None]):
     # Mount: populate tree and table
     # --------------------------------------------------------
     def on_mount(self) -> None:
-        self._build_tree()
+        self._item_nodes: dict[str, TreeNode] = {}
+        self._build_tree(select_first=True)
         self._init_table()
         self._update_progress()
         self.sub_title = f"Target: {self.engagement.target}  •  ID: {self.engagement.id}"
 
-    def _build_tree(self) -> None:
+    def _build_tree(self, select_first: bool = False) -> None:
         tree = self.query_one("#checklist-tree", Tree)
         tree.root.expand()
         tree.show_root = False
+
+        self._item_nodes = {}
+        first_node = None
+        first_pending_node = None
 
         by_cat = self.engagement.items_by_category()
         for cat, items in by_cat.items():
@@ -551,7 +882,17 @@ class ChecklistApp(App[None]):
                 icon  = item.status.icon
                 color = item.status.rich_color
                 label = f"[{color}]{icon}[/{color}] [dim]{item.id}[/dim] {item.name}"
-                cat_node.add_leaf(label, data=item.id)
+                node = cat_node.add_leaf(label, data=item.id)
+                self._item_nodes[item.id] = node
+                if first_node is None:
+                    first_node = node
+                if first_pending_node is None and item.status == Status.PENDING:
+                    first_pending_node = node
+
+        if select_first:
+            target = first_pending_node or first_node
+            if target is not None:
+                tree.select_node(target)
 
     def _init_table(self) -> None:
         table = self.query_one("#findings-table", DataTable)
@@ -564,6 +905,23 @@ class ChecklistApp(App[None]):
             f" [dim]Progress: {eng.done_items}/{eng.total_items}  "
             f"Findings: {eng.total_findings}[/dim]"
         )
+
+        sev_colors = {
+            "critical": "bold red", "high": "red",
+            "medium": "yellow", "low": "cyan", "info": "dim",
+        }
+        counts = eng.findings_by_severity
+        unverified = sum(
+            1 for item in eng.checklist_items for f in item.findings if not f.verified
+        )
+        parts = [
+            f"[{sev_colors[sev]}]{sev.upper()[:4]} {n}[/{sev_colors[sev]}]"
+            for sev, n in counts.items() if n
+        ]
+        sev_line = "  ".join(parts) if parts else "[dim]No findings yet[/dim]"
+        if unverified:
+            sev_line += f"   [yellow]({unverified} unverified)[/yellow]"
+        self.query_one("#sidebar-severity", Static).update(f" {sev_line}")
 
     def _refresh_tree(self) -> None:
         tree = self.query_one("#checklist-tree", Tree)
@@ -583,6 +941,18 @@ class ChecklistApp(App[None]):
             return
         self._selected_id = item_id
         self._show_item(item)
+
+    def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
+        if event.data_table.id != "findings-table":
+            return
+        item = self._current_item()
+        if item is None:
+            return
+        finding_id = str(event.row_key.value)
+        finding = next((f for f in item.findings if f.id == finding_id), None)
+        if finding is None:
+            return
+        self._open_finding_detail(item, finding)
 
     def _show_item(self, item: ChecklistItem) -> None:
         # Title + status
@@ -612,7 +982,8 @@ class ChecklistApp(App[None]):
         if item.tool_outputs:
             for tool_name, output in item.tool_outputs.items():
                 log.write(f"[bold yellow]── {tool_name} ──────[/bold yellow]")
-                log.write(output)
+                for line in output.splitlines():
+                    log.write(format_tool_line(line))
         else:
             log.write("[dim]No tool output yet. Press [bold]R[/bold] to run a tool.[/dim]")
 
@@ -632,7 +1003,7 @@ class ChecklistApp(App[None]):
         for f in item.findings:
             col = sev_colors.get(f.severity.value, "")
             sev_cell = f"[{col}]{f.severity.badge}[/{col}]"
-            ver_cell  = "Yes" if f.verified else "No"
+            ver_cell = "[green]Yes[/green]" if f.verified else "[yellow]No[/yellow]"
             table.add_row(
                 sev_cell,
                 f.title[:55] + ("…" if len(f.title) > 55 else ""),
@@ -660,34 +1031,57 @@ class ChecklistApp(App[None]):
         if not item.tools:
             self.notify("No tools configured for this item.", severity="warning")
             return
-
-        tool_name = await self.push_screen_wait(RunToolModal(item))
-        if not tool_name:
+        if item.id in self._running_ids:
+            self.notify(f"{item.id} already has a tool running.", severity="warning")
             return
 
-        self.notify(f"Running {tool_name}…", timeout=2)
-        self._run_tool_worker(item, tool_name)
+        result = await self.push_screen_wait(RunToolModal(item, self.engagement.target))
+        if not result:
+            return
+        tool_name, custom_command, fast = result
+
+        self._running_ids.add(item.id)
+        mode = "fast" if fast else "full"
+        self.notify(f"Running {tool_name} ({mode})…", timeout=2)
+        self._run_tool_worker(item, tool_name, custom_command, fast)
 
     @work(thread=True)
-    def _run_tool_worker(self, item: ChecklistItem, tool_name: str) -> None:
+    def _run_tool_worker(
+        self,
+        item: ChecklistItem,
+        tool_name: str,
+        custom_command: Optional[list[str]] = None,
+        fast: bool = False,
+    ) -> None:
         log = self.query_one("#tool-output-log", RichLog)
         self.call_from_thread(log.clear)
+        if custom_command:
+            shown_cmd = shlex.join(custom_command)
+        else:
+            mode_tag = " [fast]" if fast else ""
+            shown_cmd = f"{tool_name}{mode_tag} {self.engagement.target}"
         self.call_from_thread(
             log.write,
-            f"[bold yellow]$ {tool_name} {self.engagement.target}[/bold yellow]",
+            f"[bold yellow]$ {shown_cmd}[/bold yellow]",
         )
 
         def on_line(line: str) -> None:
-            self.call_from_thread(log.write, line)
+            self.call_from_thread(log.write, format_tool_line(line))
 
-        self.orchestrator.run_tool(item, tool_name, on_line=on_line)
+        try:
+            self.orchestrator.run_tool(
+                item, tool_name, on_line=on_line, custom_command=custom_command, fast=fast,
+            )
 
-        from . import state
-        state.save(self.engagement)
+            from . import state
+            state.save(self.engagement)
 
-        self.call_from_thread(self._show_item, item)
-        self.call_from_thread(self._refresh_tree)
-        self.call_from_thread(self.notify, f"{tool_name} finished.", timeout=3)
+            if self._selected_id == item.id:
+                self.call_from_thread(self._show_item, item)
+            self.call_from_thread(self._refresh_tree)
+            self.call_from_thread(self.notify, f"{tool_name} finished.", timeout=3)
+        finally:
+            self._running_ids.discard(item.id)
 
     @work()
     async def action_add_finding(self) -> None:
@@ -747,6 +1141,43 @@ class ChecklistApp(App[None]):
         self._refresh_tree()
         self.notify(f"{item.id} reset to pending.", timeout=2)
 
+    def action_next_pending(self) -> None:
+        items = self.engagement.checklist_items
+        if not items:
+            return
+        start = 0
+        if self._selected_id:
+            for i, it in enumerate(items):
+                if it.id == self._selected_id:
+                    start = i + 1
+                    break
+        for offset in range(len(items)):
+            it = items[(start + offset) % len(items)]
+            if it.status == Status.PENDING:
+                node = self._item_nodes.get(it.id)
+                if node is not None:
+                    self.query_one("#checklist-tree", Tree).select_node(node)
+                return
+        self.notify("No pending items remaining.", timeout=3)
+
+    @work()
+    async def _open_finding_detail(self, item: ChecklistItem, finding: Finding) -> None:
+        action = await self.push_screen_wait(FindingDetailModal(finding))
+        if action == "verify":
+            finding.verified = True
+        elif action == "unverify":
+            finding.verified = False
+        elif action == "delete":
+            item.findings = [f for f in item.findings if f.id != finding.id]
+        else:
+            return
+
+        from . import state
+        state.save(self.engagement)
+        self._show_item(item)
+        self._update_progress()
+        self.notify("Finding updated.", timeout=2)
+
     async def action_gen_report(self) -> None:
         from pathlib import Path
         from . import state
@@ -783,6 +1214,134 @@ class ChecklistApp(App[None]):
     @on(Button.Pressed, "#btn-report")
     async def _btn_report(self) -> None:
         await self.action_gen_report()
+
+
+# ============================================================
+# Engagement Picker — choose a saved engagement to open
+# ============================================================
+class EngagementPickerApp(App[Optional[str]]):
+    """Standalone picker shown by `surveil tui` (no --id) when more than
+    one saved engagement exists. Exits with the chosen engagement ID, or
+    None if the user quit without picking one.
+
+    Also supports deleting engagements right from the picker: Space marks/
+    unmarks the row under the cursor, and X deletes all marked rows (or
+    just the current row if none are marked) after a confirmation.
+    """
+
+    TITLE = "surveil — Select Engagement"
+    CSS   = APP_CSS
+
+    BINDINGS = [
+        Binding("enter",   "select",        "Open",          show=True),
+        Binding("space",   "toggle_mark",   "Mark/Unmark",   show=True),
+        Binding("x",       "delete_marked", "Delete",        show=True),
+        Binding("ctrl+q",  "quit_none",     "Quit",          show=True),
+    ]
+
+    def __init__(self, summaries: list[dict]):
+        super().__init__()
+        self._summaries = summaries
+        self._marked: set[str] = set()
+        self._mark_col = None
+
+    def compose(self) -> ComposeResult:
+        yield Header()
+        yield Static("", id="picker-hint")
+        yield DataTable(id="picker-table", cursor_type="row")
+        yield Footer()
+
+    def on_mount(self) -> None:
+        table = self.query_one("#picker-table", DataTable)
+        columns = table.add_columns(
+            "✓", "ID", "Name", "Target", "Progress", "Findings", "Crit", "High", "Created"
+        )
+        self._mark_col = columns[0]
+        self._populate_table()
+        table.focus()
+        self._update_hint()
+
+    def _populate_table(self) -> None:
+        table = self.query_one("#picker-table", DataTable)
+        table.clear()
+        for s in self._summaries:
+            table.add_row(
+                "", s["id"], s["name"], s["target"], s["progress"],
+                str(s["findings"]), str(s["critical"]), str(s["high"]), s["created_at"],
+                key=s["id"],
+            )
+
+    def _update_hint(self) -> None:
+        hint = self.query_one("#picker-hint", Static)
+        if not self._summaries:
+            hint.update(" No saved engagements remain. Ctrl+Q to quit, then run 'surveil new'.")
+            return
+        marked_note = f"  •  {len(self._marked)} marked for deletion" if self._marked else ""
+        hint.update(
+            f" {len(self._summaries)} saved engagement(s) — Enter: open  •  "
+            f"Space: mark/unmark  •  X: delete marked (or current row){marked_note}"
+        )
+
+    def _current_row_key(self) -> Optional[str]:
+        table = self.query_one("#picker-table", DataTable)
+        if not table.row_count:
+            return None
+        row_key, _ = table.coordinate_to_cell_key(table.cursor_coordinate)
+        return str(row_key.value)
+
+    def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
+        self.exit(str(event.row_key.value))
+
+    def action_select(self) -> None:
+        eng_id = self._current_row_key()
+        if eng_id is not None:
+            self.exit(eng_id)
+
+    def action_toggle_mark(self) -> None:
+        eng_id = self._current_row_key()
+        if eng_id is None:
+            return
+        if eng_id in self._marked:
+            self._marked.discard(eng_id)
+            mark = ""
+        else:
+            self._marked.add(eng_id)
+            mark = "[bold red]●[/bold red]"
+        table = self.query_one("#picker-table", DataTable)
+        table.update_cell(eng_id, self._mark_col, mark)
+        self._update_hint()
+
+    @work()
+    async def action_delete_marked(self) -> None:
+        ids = list(self._marked) if self._marked else [
+            i for i in [self._current_row_key()] if i is not None
+        ]
+        if not ids:
+            return
+
+        label = f"engagement '{ids[0]}'" if len(ids) == 1 else f"{len(ids)} engagements ({', '.join(ids)})"
+        confirmed = await self.push_screen_wait(
+            ConfirmModal(f"Delete {label}? This cannot be undone.")
+        )
+        if not confirmed:
+            return
+
+        from . import state
+        deleted = [eng_id for eng_id in ids if state.delete(eng_id)]
+
+        self._summaries = [s for s in self._summaries if s["id"] not in deleted]
+        self._marked -= set(deleted)
+        self._populate_table()
+        self._update_hint()
+        self.notify(f"Deleted {len(deleted)} engagement(s).", timeout=3)
+
+    def action_quit_none(self) -> None:
+        self.exit(None)
+
+
+def run_engagement_picker(summaries: list[dict]) -> Optional[str]:
+    """Show the picker and return the chosen engagement ID, or None if cancelled."""
+    return EngagementPickerApp(summaries).run()
 
 
 # ============================================================
