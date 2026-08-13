@@ -2,7 +2,10 @@
 
 **Deterministic, OWASP WSTG checklist-driven web application penetration testing.**
 
-surveil is a terminal-native tool that brings together web application enumeration tooling under a single interactive interface. It provides a structured OWASP WSTG checklist, deterministic tool orchestration (no AI in the enumeration loop), finding management with CVSS scoring, and professional report generation — all offline.
+surveil is a terminal-native tool that brings together web application enumeration tooling under a single interactive interface. It provides a structured OWASP WSTG checklist, deterministic tool orchestration (no AI in the enumeration loop), finding management with CVSS scoring, and professional report generation — all offline. A browser-based web app (FastAPI + Next.js) is also available on top of the same engine — see [Web app](#web-app-fastapi--nextjs) below.
+
+> Working on this repo across sessions? See `HISTORY.md` for a running
+> log of what's been done and what the next agent should pick up.
 
 ---
 
@@ -117,6 +120,39 @@ the container, which is backed by the `surveil-data` Docker volume (or
 whatever volume/bind-mount you attach at `/data`). Nothing is sent outside
 the container or over the network except the actual scans you run against
 your target.
+
+---
+
+## Web app (FastAPI + Next.js)
+
+Alongside the CLI/TUI, `surveil` has a browser-based interface: a FastAPI
+backend (`backend/`) that wraps the same orchestrator/state/report engine,
+and a Next.js frontend (`frontend/`) with a checklist UI, a Run Tool dialog
+that streams live tool output over a WebSocket, findings management, and
+report downloads.
+
+### 1. Backend
+
+```bash
+pip install -e ".[web]"
+uvicorn backend.main:app --reload --port 8000
+```
+
+### 2. Frontend
+
+```bash
+cd frontend
+npm install
+cp .env.example .env.local   # points at http://127.0.0.1:8000 by default
+npm run dev
+```
+
+Open http://localhost:3000. The backend reads/writes the same
+`~/.surveil/engagements/` JSON store as the CLI and TUI, so engagements are
+shared across all three interfaces.
+
+No authentication — same single-user/local trust model as the CLI. Don't
+expose port 8000/3000 beyond a trusted network without adding one.
 
 ---
 

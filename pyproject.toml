@@ -20,6 +20,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=7.0", "pytest-asyncio"]
+web = ["fastapi>=0.110", "uvicorn[standard]>=0.29", "websockets>=12.0"]
 
 [project.scripts]
 surveil = "surveil.cli:main"
