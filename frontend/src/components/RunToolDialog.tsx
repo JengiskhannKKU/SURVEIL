@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, WS_BASE } from "@/lib/api";
+import { useToast } from "@/lib/toast";
+import { HighlightedLine } from "@/components/HighlightedOutput";
 import type { ChecklistItem, ToolInfo, WordlistInfo, WsMessage } from "@/lib/types";
 
 export function RunToolDialog({
@@ -19,6 +21,7 @@ export function RunToolDialog({
   onClose: () => void;
   onDone: (updated: ChecklistItem) => void;
 }) {
+  const toast = useToast();
   const availableTools = useMemo(
     () => allTools.filter((t) => item.tools.includes(t.name)),
     [allTools, item.tools]
@@ -33,6 +36,7 @@ export function RunToolDialog({
   const [running, setRunning] = useState(false);
   const [finished, setFinished] = useState(false);
   const [error, setError] = useState("");
+  const [copied, setCopied] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const outputRef = useRef<HTMLDivElement | null>(null);
 
@@ -59,6 +63,14 @@ export function RunToolDialog({
     return () => wsRef.current?.close();
   }, []);
 
+  useEffect(() => {
+    function handler(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [onClose]);
+
   function applyWordlist(path: string) {
     setWordlistPath(path);
     if (!path) return;
@@ -71,6 +83,12 @@ export function RunToolDialog({
   function resetCommand() {
     setCommand(defaultCommand);
     setWordlistPath("");
+  }
+
+  function copyCommand() {
+    navigator.clipboard?.writeText(command);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
   }
 
   function run() {
@@ -103,24 +121,38 @@ export function RunToolDialog({
         setRunning(false);
         setFinished(true);
         onDone(msg.item);
+        toast.success(`${toolName} finished (${msg.result.elapsed_seconds.toFixed(1)}s)`);
       } else if (msg.type === "error") {
         setRunning(false);
         setFinished(true);
         setError(msg.message);
+        toast.error(`${toolName} failed`);
       }
     };
 
     ws.onerror = () => {
       setRunning(false);
       setError("WebSocket connection failed.");
+      toast.error("WebSocket connection failed");
     };
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+    >
       <div className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-lg bg-background shadow-xl border border-neutral-200 dark:border-neutral-800">
         <div className="flex items-center justify-between border-b border-neutral-200 px-5 py-3 dark:border-neutral-800">
-          <h2 className="font-semibold">Run tool — {item.id}</h2>
+          <h2 className="font-semibold">
+            Run tool — {item.id}
+            {running && (
+              <span className="ml-2 inline-flex items-center gap-1 text-xs font-normal text-amber-500">
+                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-500" />
+                running
+              </span>
+            )}
+          </h2>
           <button onClick={onClose} className="text-neutral-500 hover:text-foreground">
             ✕
           </button>
@@ -188,12 +220,18 @@ export function RunToolDialog({
               value={command}
               disabled={running}
               onChange={(e) => setCommand(e.target.value)}
-              className="flex-1 rounded border border-neutral-300 bg-transparent px-2 py-1 font-mono text-sm dark:border-neutral-700"
+              className="flex-1 rounded border border-neutral-300 bg-transparent px-2 py-1 font-mono text-sm outline-none focus:border-neutral-500 dark:border-neutral-700"
             />
+            <button
+              onClick={copyCommand}
+              className="rounded border border-neutral-300 px-2 py-1 text-xs hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-900"
+            >
+              {copied ? "Copied" : "Copy"}
+            </button>
             <button
               onClick={resetCommand}
               disabled={running}
-              className="rounded border border-neutral-300 px-2 py-1 text-xs hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-900"
+              className="rounded border border-neutral-300 px-2 py-1 text-xs hover:bg-neutral-100 disabled:opacity-50 dark:border-neutral-700 dark:hover:bg-neutral-900"
             >
               Reset
             </button>
@@ -203,7 +241,7 @@ export function RunToolDialog({
             <button
               onClick={run}
               disabled={running || !toolName}
-              className="rounded-md bg-foreground px-4 py-1.5 text-sm font-medium text-background hover:opacity-90 disabled:opacity-50"
+              className="rounded-md bg-foreground px-4 py-1.5 text-sm font-medium text-background transition hover:opacity-90 disabled:opacity-50"
             >
               {running ? "Running…" : "Run"}
             </button>
@@ -217,18 +255,18 @@ export function RunToolDialog({
 
           <div
             ref={outputRef}
-            className="h-64 overflow-y-auto rounded bg-black px-3 py-2 font-mono text-xs text-green-400"
+            className="h-64 overflow-y-auto rounded bg-black px-3 py-2 font-mono text-xs leading-relaxed text-neutral-300"
           >
             {lines.length === 0 ? (
               <span className="text-neutral-500">Output will stream here…</span>
             ) : (
-              lines.map((l, i) => <div key={i}>{l}</div>)
+              lines.map((l, i) => <HighlightedLine key={i} line={l} />)
             )}
           </div>
 
           {finished && !error && (
             <p className="mt-3 text-sm text-emerald-600 dark:text-emerald-400">
-              Done — output saved to this item.
+              ✓ Done — output saved to this item.
             </p>
           )}
         </div>
@@ -236,7 +274,7 @@ export function RunToolDialog({
         <div className="border-t border-neutral-200 px-5 py-3 text-right dark:border-neutral-800">
           <button
             onClick={onClose}
-            className="rounded-md border border-neutral-300 px-4 py-1.5 text-sm hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-900"
+            className="rounded-md border border-neutral-300 px-4 py-1.5 text-sm transition hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-900"
           >
             Close
           </button>

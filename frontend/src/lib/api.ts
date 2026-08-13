@@ -66,6 +66,39 @@ export const api = {
       { method: "PATCH", body: JSON.stringify({ notes }) }
     ),
 
+  createItem: (
+    engId: string,
+    body: {
+      name: string;
+      description?: string;
+      category: string;
+      category_code?: string;
+      tools?: string[];
+      references?: string[];
+    }
+  ) =>
+    request<ChecklistItem>(`/api/engagements/${engId}/items`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  updateItem: (
+    engId: string,
+    itemId: string,
+    body: Partial<
+      Pick<ChecklistItem, "name" | "description" | "category" | "category_code" | "tools" | "references">
+    >
+  ) =>
+    request<ChecklistItem>(`/api/engagements/${engId}/items/${itemId}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+
+  deleteItem: (engId: string, itemId: string) =>
+    request<{ deleted: string }>(`/api/engagements/${engId}/items/${itemId}`, {
+      method: "DELETE",
+    }),
+
   listTools: () => request<ToolInfo[]>("/api/tools"),
 
   previewCommand: (tool: string, target: string, fast: boolean) =>
