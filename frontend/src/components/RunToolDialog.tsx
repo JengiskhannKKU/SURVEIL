@@ -73,13 +73,16 @@ export function RunToolDialog({
 
   useEffect(() => {
     if (!toolName) return;
-    api.previewCommand(toolName, target, fast, hasModes ? mode : undefined).then((res) => {
-      const cmd = res.command.join(" ");
-      setCommand(cmd);
-      setDefaultCommand(cmd);
-    });
+    api
+      .previewCommand(toolName, target, fast, hasModes ? mode : undefined)
+      .then((res) => {
+        const cmd = res.command.join(" ");
+        setCommand(cmd);
+        setDefaultCommand(cmd);
+      })
+      .catch(() => toast.error("Could not reach the backend to preview the command."));
     if (tool?.uses_wordlist) {
-      api.listWordlists().then(setWordlists);
+      api.listWordlists().catch(() => []).then(setWordlists);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [toolName, fast, hasModes, mode, target]);

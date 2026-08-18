@@ -1,13 +1,19 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import AppBar from "@mui/material/AppBar";
 import Toolbar from "@mui/material/Toolbar";
 import Typography from "@mui/material/Typography";
 import Button from "@mui/material/Button";
+import IconButton from "@mui/material/IconButton";
 import Box from "@mui/material/Box";
+import SettingsOutlinedIcon from "@mui/icons-material/SettingsOutlined";
+import { SettingsDialog } from "@/components/SettingsDialog";
 
 export function NavBar() {
+  const [showSettings, setShowSettings] = useState(false);
+
   return (
     <AppBar position="static" elevation={0}>
       <Toolbar sx={{ maxWidth: 1200, width: "100%", mx: "auto", px: { xs: 2, sm: 3 } }}>
@@ -35,7 +41,17 @@ export function NavBar() {
         >
           DASHBOARD
         </Button>
+        <IconButton
+          size="small"
+          onClick={() => setShowSettings(true)}
+          title="Settings"
+          sx={{ ml: 1, color: "text.secondary" }}
+        >
+          <SettingsOutlinedIcon fontSize="small" />
+        </IconButton>
       </Toolbar>
+
+      {showSettings && <SettingsDialog onClose={() => setShowSettings(false)} />}
     </AppBar>
   );
 }

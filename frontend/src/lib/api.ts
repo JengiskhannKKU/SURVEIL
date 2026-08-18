@@ -1,4 +1,5 @@
 import type {
+  AppConfig,
   ChecklistItem,
   Engagement,
   EngagementSummary,
@@ -21,7 +22,15 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   });
   if (!res.ok) {
     const body = await res.text().catch(() => "");
-    throw new Error(`${res.status} ${res.statusText}: ${body}`);
+    // FastAPI's HTTPException bodies are {"detail": "..."} — surface that
+    // directly instead of the raw JSON text, callers show this in the UI.
+    let detail: string | undefined;
+    try {
+      detail = JSON.parse(body)?.detail;
+    } catch {
+      // not JSON — fall through to the generic message below
+    }
+    throw new Error(detail ?? `${res.status} ${res.statusText}: ${body}`);
   }
   return res.json() as Promise<T>;
 }
@@ -147,4 +156,12 @@ export const api = {
 
   reportUrl: (engId: string, format: "md" | "docx") =>
     `${API_BASE}/api/engagements/${engId}/report?format=${format}`,
+
+  getConfig: () => request<AppConfig>("/api/config"),
+
+  setWordlistDir: (wordlistDir: string | null) =>
+    request<AppConfig>("/api/config/wordlist-dir", {
+      method: "PUT",
+      body: JSON.stringify({ wordlist_dir: wordlistDir }),
+    }),
 };

@@ -77,6 +77,13 @@ export interface WordlistInfo {
   path: string;
 }
 
+export interface AppConfig {
+  wordlist_dir: string | null;
+  wordlist_dir_env: string | null;
+  default_wordlist: string;
+  wordlists_found: number;
+}
+
 export interface RunResult {
   tool: string;
   command: string;

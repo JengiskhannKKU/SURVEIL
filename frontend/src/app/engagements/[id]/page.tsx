@@ -48,8 +48,11 @@ export default function EngagementPage({
         setSelectedId(eng.checklist_items[0]?.id ?? null);
       })
       .catch(() => setError("Engagement not found."));
-    api.listTools().then(setTools);
-  }, [id]);
+    api
+      .listTools()
+      .then(setTools)
+      .catch(() => toast.error("Could not reach the backend to load the tool list."));
+  }, [id, toast]);
 
   const updateItem = useCallback((updated: ChecklistItem) => {
     setEngagement((prev) =>

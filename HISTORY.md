@@ -6,6 +6,158 @@ was verified, and what the next agent should pick up.
 
 ---
 
+## 2026-08-19 (3) — Settings dialog: configure wordlist dir from the web UI
+
+**Done (user request: "ffuf can select wordlists and user can config
+environment wordlists path" — the previous session's `SURVEIL_WORDLIST_DIR`
+env var required a backend restart to change, not something settable from
+the running app):**
+- New `surveil/config.py` — persisted app-wide settings
+  (`~/.surveil/config.json`, separate from `~/.surveil/engagements/`).
+  Currently just `wordlist_dir`; designed to hold more settings later.
+- `wordlists.py`'s `_configured_root()` now checks the persisted config
+  first, then `SURVEIL_WORDLIST_DIR` — config wins if both are set, since
+  it's the more explicit, most-recently-set value.
+- New `GET /api/config` / `PUT /api/config/wordlist-dir` (backend/routers/
+  config.py) — the PUT validates the path actually exists before
+  persisting (400 with a real message if not) and returns the resulting
+  effective default + wordlist count.
+- New `SettingsDialog.tsx`, opened via a gear icon in `NavBar.tsx` (so
+  it's reachable from every page) — set/clear the wordlist directory, see
+  the effective default and how many wordlists were found, inline error
+  on an invalid path.
+- Improved `lib/api.ts`'s shared `request()` to surface FastAPI's actual
+  `{"detail": "..."}` error message instead of dumping the raw response
+  body — used by the Settings dialog's invalid-path error, but benefits
+  every other API call's error handling too.
+- The existing Run Tool dialog wordlist picker (`RunToolDialog.tsx`)
+  needed no changes — it already calls `/api/tools/wordlists`, which now
+  automatically reflects whatever's configured via Settings.
+
+**Verified:** full browser flow — opened Settings, tried an invalid path
+(rejected with the real "Path does not exist: ..." message, not a generic
+500), saved a valid path (bundled wordlist dir), confirmed the wordlist
+picker in the Run Tool dialog then showed a real, selectable wordlist
+entry beyond just "tool default", confirmed the command preview picked up
+the new default. Confirmed persistence survives independently of any
+single request (backed by a file, not in-memory state) and reset cleanly
+back to null after the test. `tsc`/`eslint`/`next build` clean; all 16
+tools still `build_command()` without error; backend imports clean.
+
+**Next steps for the next agent:**
+1. If more app-wide settings get added later, extend `surveil/config.py`'s
+   get/set functions the same way `wordlist_dir` was done — one JSON file,
+   simple key access, no need for a heavier settings framework yet.
+2. The Settings dialog only covers the wordlist directory right now —
+   natural next candidates if the app grows: default engagement
+   scope-notes template, tool timeout overrides (currently only
+   per-tool-class `timeout_seconds`/`get_timeout()`, not user-configurable
+   without editing code).
+
+---
+
+## 2026-08-19 (2) — Fix: unhandled backend-fetch rejections crashed pages
+
+**Done (user report: Next.js dev error overlay, "Runtime TypeError:
+Failed to fetch" at `api.ts:18` via `listTools` in the engagement detail
+page's `useEffect`):**
+- Backend was actually up and healthy when investigated (`curl` succeeded
+  immediately) — this was transient (page loaded before the backend was
+  ready, or hit uvicorn `--reload`'s brief restart window), not a
+  standing outage.
+- Real bug found and fixed: `api.getEngagement(id)` in that same
+  `useEffect` has a `.catch()` and degrades gracefully ("Engagement not
+  found."); the `api.listTools()` call two lines below it did not — any
+  transient fetch failure there was an unhandled promise rejection, which
+  Next's dev overlay turns into a full-page crash instead of a graceful
+  degrade. Grepped for the same pattern elsewhere and found two more in
+  `RunToolDialog.tsx` (`previewCommand`, `listWordlists`). All three now
+  have `.catch()` — `listTools`/`previewCommand` show a toast error,
+  `listWordlists` fails silently to an empty list (non-critical, it's
+  just the wordlist picker).
+- While adding the `listTools` catch, caught a second real bug before it
+  shipped: `useToast()` returned a brand-new object (new function
+  references) on every render, so adding `toast` to that `useEffect`'s
+  dependency array — needed since the `.catch()` callback calls
+  `toast.error(...)` — would have caused the effect to refire every
+  render (an infinite-ish re-fetch loop). Fixed `useToast()` itself with
+  `useMemo` keyed on the context value (which is already stable via the
+  provider's `useCallback`), so `toast` is now safe to put in any
+  dependency array. No other component currently does this, but it was a
+  latent trap.
+
+**Verified:** stopped the backend, loaded the engagement detail page
+against the live dev server (Playwright, since a second `next dev`
+instance can't run from the same project dir to test in isolation) —
+confirmed zero uncaught page errors, no crash, and the exact intended
+graceful degrade (an "Engagement not found." message plus two toast
+errors, one per fixed call site). Restarted the backend and confirmed
+recovery. `tsc`/`eslint`/`next build` all clean.
+
+**Next steps for the next agent:**
+1. If more `api.*().then(...)` call sites get added without a `.catch()`,
+   the same crash class can recur — this is a "did I forget a catch"
+   pattern to watch for in review, not something structurally prevented
+   (the `request()` helper in `lib/api.ts` still just throws on failure,
+   by design, so every call site is responsible for its own handling).
+2. `useToast()` is now memoized/stable — safe to add to dependency arrays
+   going forward without re-deriving this from scratch.
+
+---
+
+## 2026-08-19 — Configurable wordlist dir + make ffuf/gobuster actually work
+
+**Done (user request: configurable wordlist folder + "implement ffuf for
+real ffuf"):**
+- New `SURVEIL_WORDLIST_DIR` env var (`surveil/wordlists.py`) — point it
+  at a directory (searched recursively for `*.txt`, also folded into the
+  wordlist picker's search) or a specific file, and it's used first.
+- New `default_wordlist()` resolver: `SURVEIL_WORDLIST_DIR` → first
+  discovered wordlist in the existing common-location scan → a wordlist
+  now bundled with surveil itself (`surveil/data/wordlists/common.txt`,
+  ~220 common paths, added to `package-data` in `pyproject.toml` so it
+  survives a non-editable install too).
+- **Root cause of "ffuf not really working" #1**: `ffuf_tool.py` and
+  `gobuster_tool.py` hardcoded `-w /usr/share/wordlists/dirb/common.txt`
+  — a Kali/Debian package path that doesn't exist on macOS or a bare
+  Linux box. Every real run failed immediately with "no such file or
+  directory". Both now call `default_wordlist()` instead.
+- **Root cause #2, found while verifying the above**: both also hardcoded
+  `https://{target}` regardless of what the target actually serves. Against
+  an HTTP-only target (very common for internal/lab IPs — reproduced with
+  this repo's own `192.168.2.11` test target) every single request failed
+  to connect, and ffuf reported "success" with zero results — silently
+  indistinguishable from a real empty scan. Added `base_url()` to
+  `surveil/tools/base.py`: respects an explicit scheme if the tester typed
+  one, defaults bare IPv4 targets to `http://` (internal targets are
+  usually plain HTTP), bare hostnames to `https://` (still the common case
+  for a real domain). Applied to `ffuf`/`gobuster` only, per the request's
+  explicit scope — **9 other tools have the exact same hardcoded-https://
+  pattern** (arjun, gowitness, katana, wafw00f, nikto, nuclei, wpscan,
+  testssl — grep `f"https://{self.target}` across `surveil/tools/*.py`)
+  and would benefit from the same `base_url()` fix; deliberately not
+  touched this session to stay scoped to what was asked.
+
+**Verified:** real `ffuf` and `gobuster` runs (via the wrapper classes
+directly, then again through the actual backend WebSocket path) against
+the same `192.168.2.11` target used in earlier bug reports — both now
+return real results (`.htaccess`, `.htpasswd`, `assets`,
+`server-status`, `vendor`) instead of silently succeeding with nothing.
+Confirmed `SURVEIL_WORDLIST_DIR` resolves correctly for both a directory
+and a direct file path. All 16 tools still `build_command()` without
+error; backend imports clean; CLI still works.
+
+**Next steps for the next agent:**
+1. Apply `base_url()` to the other 9 tools listed above if/when someone
+   hits the same silent-empty-scan symptom with one of them against an
+   HTTP-only target — same fix, just needs applying + verifying per tool.
+2. If a config file (vs. just env vars) is ever wanted for wordlist dir
+   or other settings, `default_wordlist()`/`_search_roots()` in
+   `wordlists.py` is the place to extend — keep the env var as the
+   override-of-first-resort either way, it's cheap and scriptable.
+
+---
+
 ## 2026-08-18 (8) — ⚠ UNRESOLVED: amass v5.1.1 installed is architecturally incompatible
 
 **Found while proactively auditing other tool wrappers' flags after the

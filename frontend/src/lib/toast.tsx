@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
@@ -70,9 +70,15 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
 export function useToast() {
   const ctx = useContext(ToastContext);
   if (!ctx) throw new Error("useToast must be used within ToastProvider");
-  return {
-    success: (message: string) => ctx("success", message),
-    error: (message: string) => ctx("error", message),
-    info: (message: string) => ctx("info", message),
-  };
+  // Stable across re-renders (as long as the provider's push callback is,
+  // which it is — see useCallback above) so callers can safely put `toast`
+  // in a useEffect/useCallback dependency array without an infinite loop.
+  return useMemo(
+    () => ({
+      success: (message: string) => ctx("success", message),
+      error: (message: string) => ctx("error", message),
+      info: (message: string) => ctx("info", message),
+    }),
+    [ctx]
+  );
 }
