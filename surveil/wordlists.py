@@ -29,12 +29,27 @@ _SEARCH_ROOTS = [
     Path.home() / ".local/share/wordlists",
 ]
 
-# Small wordlist shipped with surveil itself, so ffuf/gobuster have a real,
-# working default on any OS out of the box — their own conventional default
-# (/usr/share/wordlists/dirb/common.txt) is a Kali/Debian package path that
-# doesn't exist on macOS or a bare Linux box, and running either tool
-# against it just fails with "no such file or directory".
-BUNDLED_WORDLIST = Path(__file__).parent / "data" / "wordlists" / "common.txt"
+# Small wordlists shipped with surveil itself, so ffuf/gobuster have a
+# real, working default on any OS out of the box — their own conventional
+# default (/usr/share/wordlists/dirb/common.txt) is a Kali/Debian package
+# path that doesn't exist on macOS or a bare Linux box, and running either
+# tool against it just fails with "no such file or directory". One per
+# category recognized by recommend_wordlist() below, plus a general
+# common.txt used when no category applies.
+_BUNDLED_DIR = Path(__file__).parent / "data" / "wordlists"
+BUNDLED_WORDLIST = _BUNDLED_DIR / "common.txt"
+
+# Keywords used to recognize a discovered wordlist as matching a test
+# category (see checklist.WORDLIST_CATEGORY) — covers common SecLists-style
+# naming as well as the category name itself.
+_CATEGORY_KEYWORDS: dict[str, tuple[str, ...]] = {
+    "admin": ("admin",),
+    "api": ("api", "swagger", "endpoint", "graphql"),
+    "backup": ("backup", "old-files", "old_files"),
+    "extensions": ("extension", "raft-small-files", "filenames"),
+    "metafiles": ("metafile", "seo"),
+    "common": ("common", "raft-small-directories", "directory-list", "dirb"),
+}
 
 # A real SecLists checkout (what Kali's `seclists` package installs, and
 # what most manual setups use) has 50+ categories — Passwords, Usernames,
@@ -129,3 +144,28 @@ def default_wordlist() -> str:
         return discovered[0][1]
 
     return str(BUNDLED_WORDLIST)
+
+
+def recommend_wordlist(category: str | None) -> str:
+    """Best wordlist for a specific test category (checklist.WORDLIST_CATEGORY).
+
+    Order: a discovered wordlist whose path matches the category's
+    keywords (_CATEGORY_KEYWORDS) -> a category-specific wordlist bundled
+    with surveil -> the general default_wordlist(). *category* being None
+    or unrecognized (e.g. a custom tester-added checklist item) just falls
+    straight through to default_wordlist().
+    """
+    if not category:
+        return default_wordlist()
+
+    keywords = _CATEGORY_KEYWORDS.get(category, (category,))
+    for _label, path in discover_wordlists():
+        lower = path.lower()
+        if any(kw in lower for kw in keywords):
+            return path
+
+    bundled = _BUNDLED_DIR / f"{category}.txt"
+    if bundled.is_file():
+        return str(bundled)
+
+    return default_wordlist()

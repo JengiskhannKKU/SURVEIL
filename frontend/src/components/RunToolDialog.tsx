@@ -54,6 +54,7 @@ export function RunToolDialog({
   const [defaultCommand, setDefaultCommand] = useState("");
   const [wordlists, setWordlists] = useState<WordlistInfo[]>([]);
   const [wordlistPath, setWordlistPath] = useState("");
+  const [recommendedCategoryLabel, setRecommendedCategoryLabel] = useState<string | null>(null);
   const [lines, setLines] = useState<string[]>([]);
   const [running, setRunning] = useState(false);
   const [finished, setFinished] = useState(false);
@@ -79,11 +80,12 @@ export function RunToolDialog({
   useEffect(() => {
     if (!toolName) return;
     api
-      .previewCommand(toolName, target, fast, hasModes ? mode : undefined)
+      .previewCommand(toolName, target, fast, hasModes ? mode : undefined, item.id)
       .then((res) => {
         const cmd = res.command.join(" ");
         setCommand(cmd);
         setDefaultCommand(cmd);
+        setRecommendedCategoryLabel(res.recommended_category_label);
       })
       .catch(() => toast.error("Could not reach the backend to preview the command."));
     if (tool?.uses_wordlist) {
@@ -272,6 +274,13 @@ export function RunToolDialog({
             </Alert>
             {!tool.available && (
               <InstallHints toolName={tool.name} hints={tool.install_hints} />
+            )}
+            {tool.uses_wordlist && recommendedCategoryLabel && wordlistPath === "" && (
+              <Alert severity="success" variant="outlined">
+                Using a wordlist recommended for this test —{" "}
+                <strong>{recommendedCategoryLabel}</strong>. Pick a different one from the
+                Wordlist dropdown above to override.
+              </Alert>
             )}
             {tool.domain_only && isIpAddress(target) && (
               <Alert severity="warning" variant="outlined">

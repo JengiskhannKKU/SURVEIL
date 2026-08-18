@@ -8,6 +8,34 @@ from __future__ import annotations
 
 from .models import ChecklistItem
 
+# Maps a checklist item ID to a wordlist category (see
+# surveil/wordlists.py's recommend_wordlist() and CATEGORY_LABELS below)
+# for the items whose tools include a wordlist-based tool (ffuf/gobuster).
+# Lets the Run Tool dialog suggest a wordlist actually suited to what that
+# specific test is looking for — an admin-panel list for "Enumerate Admin
+# Interfaces", an API list for "Identify Application Entry Points" —
+# instead of one generic directory list for every test. Items not listed
+# here (including custom tester-added items) just get the plain default.
+WORDLIST_CATEGORY: dict[str, str] = {
+    "WSTG-INFO-03": "metafiles",   # Review Webserver Metafiles
+    "WSTG-INFO-04": "common",      # Enumerate Applications on Web Server
+    "WSTG-INFO-06": "api",         # Identify Application Entry Points
+    "WSTG-CONF-03": "extensions",  # Test File Extension Handling
+    "WSTG-CONF-04": "backup",      # Review Old Backup and Unreferenced Files
+    "WSTG-CONF-05": "admin",       # Enumerate Admin Interfaces
+}
+
+# Human-readable label per category, shown in the Run Tool dialog's
+# "recommended for this test" hint.
+CATEGORY_LABELS: dict[str, str] = {
+    "metafiles": "well-known metafiles (robots.txt, sitemap.xml, ...)",
+    "common": "common directories",
+    "api": "API endpoints",
+    "extensions": "file extension handling",
+    "backup": "backup & old files",
+    "admin": "admin interfaces",
+}
+
 
 def build_checklist() -> list[ChecklistItem]:
     """Return a fresh, ordered list of OWASP WSTG checklist items."""
