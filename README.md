@@ -283,7 +283,23 @@ CLI Reference below.
 Pressing `R` on a checklist item opens the Run Tool dialog:
 - **Guide** — a one-line description of what the tool does plus an example invocation, shown above the command field and updated as you change the selected tool.
 - **Fast / Full scan switch** — Fast uses a quicker, narrower-scope command (fewer ports/templates/threads, shorter timeouts, or the tool's own `--fast`-style flag); Full (the default) is the thorough variant. Toggling it updates the command preview live.
-- **Wordlist picker** — for directory/file brute-forcing tools (`ffuf`, `gobuster`), an extra dropdown lists wordlists found on the host (scanning common locations like `/usr/share/wordlists`, `/usr/share/seclists`, `~/SecLists`, etc. — see `surveil/wordlists.py`) plus the tool's own hardcoded default. Picking one swaps just the `-w <path>` argument in the command, leaving everything else untouched. Hidden for tools that don't take a wordlist.
+- **Wordlist picker** — for directory/file brute-forcing tools (`ffuf`, `gobuster`), an extra dropdown lists wordlists found on the host (scanning common locations like `/usr/share/wordlists`, `/usr/share/seclists`, `~/SecLists`, etc. — see `surveil/wordlists.py`) plus a "tool default" option. Picking one swaps just the `-w <path>` argument in the command, leaving everything else untouched. Hidden for tools that don't take a wordlist.
+
+  The default wordlist (used by "tool default" and by `ffuf`/`gobuster`'s
+  Fast/Full commands) resolves in this order: the **Settings** dialog's
+  wordlist directory (gear icon in the nav bar — persisted to
+  `~/.surveil/config.json`, no restart needed) → the `SURVEIL_WORDLIST_DIR`
+  env var (point it at a directory to search, or a specific wordlist
+  file, e.g. a SecLists checkout) → the first wordlist found in the common
+  install locations above → a small wordlist bundled with surveil itself
+  (`surveil/data/wordlists/common.txt`), so `ffuf`/`gobuster` have a real,
+  working default out of the box on any OS — their own conventional
+  default (`/usr/share/wordlists/dirb/common.txt`) is a Kali/Debian
+  package path that doesn't exist on macOS or a bare Linux box.
+
+  ```bash
+  export SURVEIL_WORDLIST_DIR=~/SecLists/Discovery/Web-Content
+  ```
 - **Editable command line** — the exact command about to run is shown in an editable field; change flags, timeouts, whatever you need (including hand-typing a wordlist path the picker didn't find). Leave it untouched and the normal simulated-fallback behavior applies if the binary isn't installed. Edit it, and it always executes for real — a missing binary then surfaces as a real error instead of demo output. **Reset Command** restores the tool's default for the current Fast/Full selection.
 
 ### Reading tool output
