@@ -13,6 +13,11 @@ class FfufTool(BaseTool):
         "ffuf -u https://example.com/FUZZ -w /usr/share/wordlists/dirb/common.txt "
         "-mc 200,301,302,403 -t 50 -c -s"
     )
+    install_hints = {
+        "brew": "brew install ffuf",
+        "apt": "sudo apt install -y ffuf",
+        "go": "go install github.com/ffuf/ffuf/v2@latest",
+    }
 
     def build_command(self, fast: bool = False) -> list[str]:
         cmd = [

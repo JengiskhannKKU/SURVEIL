@@ -9,6 +9,7 @@ class GowitnessTool(BaseTool):
     binary = "gowitness"
     description = "Capture a screenshot of the target's web page for visual triage."
     example = "gowitness single https://example.com --timeout 30"
+    install_hints = {"go": "go install github.com/sensepost/gowitness@latest"}
 
     def build_command(self, fast: bool = False) -> list[str]:
         if fast:

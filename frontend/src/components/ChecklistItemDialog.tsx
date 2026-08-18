@@ -10,6 +10,7 @@ import Autocomplete from "@mui/material/Autocomplete";
 import Stack from "@mui/material/Stack";
 import Button from "@mui/material/Button";
 import Chip from "@mui/material/Chip";
+import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import Box from "@mui/material/Box";
 import type { ChecklistItem, ToolInfo } from "@/lib/types";
@@ -129,15 +130,20 @@ export function ChecklistItemDialog({
                 {allTools.map((t) => {
                   const selected = values.tools.includes(t.name);
                   return (
-                    <Chip
+                    <Tooltip
                       key={t.name}
-                      label={t.name}
-                      clickable
-                      onClick={() => toggleTool(t.name)}
-                      color={selected ? "primary" : "default"}
-                      variant={selected ? "filled" : "outlined"}
-                      size="small"
-                    />
+                      title={t.available ? "Installed on the backend host" : "Not installed — will use simulated output"}
+                    >
+                      <Chip
+                        label={t.name}
+                        clickable
+                        onClick={() => toggleTool(t.name)}
+                        color={selected ? "primary" : "default"}
+                        variant={selected ? "filled" : "outlined"}
+                        size="small"
+                        sx={{ opacity: t.available ? 1 : 0.55 }}
+                      />
+                    </Tooltip>
                   );
                 })}
               </Stack>

@@ -9,6 +9,10 @@ class WpscanTool(BaseTool):
     binary = "wpscan"
     description = "Enumerate WordPress version, plugins/themes, and known vulnerabilities."
     example = "wpscan --url https://example.com --enumerate vp,vt,u --no-banner --format cli"
+    install_hints = {
+        "brew": "brew install wpscan",
+        "gem": "gem install wpscan",
+    }
 
     def build_command(self, fast: bool = False) -> list[str]:
         if fast:

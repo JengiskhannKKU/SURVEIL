@@ -16,6 +16,8 @@ def list_tools() -> list[dict]:
             "description": cls.description,
             "example": cls.example,
             "uses_wordlist": cls.uses_wordlist,
+            "available": cls(target="").is_available(),
+            "install_hints": cls.install_hints,
         }
         for name, cls in sorted(TOOL_REGISTRY.items())
     ]

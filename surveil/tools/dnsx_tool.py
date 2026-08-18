@@ -9,6 +9,10 @@ class DnsxTool(BaseTool):
     binary = "dnsx"
     description = "Resolve DNS record types (A/AAAA/CNAME/MX/NS/TXT) for the target."
     example = "echo example.com | dnsx -a -aaaa -cname -mx -ns -txt -resp -silent"
+    install_hints = {
+        "brew": "brew install projectdiscovery/tap/dnsx",
+        "go": "go install github.com/projectdiscovery/dnsx/cmd/dnsx@latest",
+    }
 
     def build_command(self, fast: bool = False) -> list[str]:
         if fast:

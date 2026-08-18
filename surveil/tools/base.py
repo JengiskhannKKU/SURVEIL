@@ -67,6 +67,12 @@ class BaseTool(ABC):
     # TUI shows a wordlist picker for these instead of just a free-text edit.
     uses_wordlist: bool = False
 
+    # Install commands by package manager, shown to the tester when the
+    # binary isn't on PATH (so they know how to get real output instead of
+    # the simulated fallback). Keys are free-form labels ("brew", "apt",
+    # "go", "pip", "gem", ...); omit any that don't apply to this tool.
+    install_hints: dict[str, str] = {}
+
     def __init__(self, target: str):
         self.target = target
 

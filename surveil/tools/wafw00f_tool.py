@@ -9,6 +9,10 @@ class Wafw00fTool(BaseTool):
     binary = "wafw00f"
     description = "Detect whether a Web Application Firewall sits in front of the target."
     example = "wafw00f https://example.com -a"
+    install_hints = {
+        "pip": "pip install wafw00f",
+        "apt": "sudo apt install -y wafw00f",
+    }
 
     def build_command(self, fast: bool = False) -> list[str]:
         if fast:

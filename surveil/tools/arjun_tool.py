@@ -9,6 +9,7 @@ class ArjunTool(BaseTool):
     binary = "arjun"
     description = "Discover hidden/undocumented HTTP GET parameters via brute force."
     example = "arjun -u https://example.com --stable -t 10"
+    install_hints = {"pip": "pip install arjun"}
 
     def build_command(self, fast: bool = False) -> list[str]:
         if fast:

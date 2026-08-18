@@ -9,6 +9,10 @@ class AmassTool(BaseTool):
     binary = "amass"
     description = "Passive OWASP Amass subdomain enumeration across many data sources."
     example = "amass enum -passive -d example.com -timeout 10"
+    install_hints = {
+        "brew": "brew install amass",
+        "apt": "sudo apt install -y amass",
+    }
 
     def build_command(self, fast: bool = False) -> list[str]:
         if fast:

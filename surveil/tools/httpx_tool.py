@@ -12,6 +12,10 @@ class HttpxTool(BaseTool):
         "httpx -u example.com -title -tech-detect -status-code -content-length "
         "-response-header -follow-redirects -silent"
     )
+    install_hints = {
+        "brew": "brew install projectdiscovery/tap/httpx",
+        "go": "go install github.com/projectdiscovery/httpx/cmd/httpx@latest",
+    }
 
     def build_command(self, fast: bool = False) -> list[str]:
         if fast:
