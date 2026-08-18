@@ -18,6 +18,7 @@ class FfufTool(BaseTool):
         "apt": "sudo apt install -y ffuf",
         "go": "go install github.com/ffuf/ffuf/v2@latest",
     }
+    timeout_seconds = 300
 
     def build_command(self, fast: bool = False) -> list[str]:
         cmd = [

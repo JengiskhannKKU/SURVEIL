@@ -26,6 +26,11 @@ class NiktoTool(BaseTool):
             cmd += ["-maxtime", "60s"]
         return cmd
 
+    def get_timeout(self, fast: bool = False) -> int:
+        # Fast mode self-limits via -maxtime above; full mode has no cap at
+        # all and can legitimately run several minutes against a real site.
+        return 90 if fast else 420
+
     def mock_output(self) -> str:
         return f"""\
 - Nikto v2.5.0

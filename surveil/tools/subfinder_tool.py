@@ -9,10 +9,8 @@ class SubfinderTool(BaseTool):
     binary = "subfinder"
     description = "Passively enumerate subdomains from public data sources."
     example = "subfinder -d example.com -silent -all"
-    install_hints = {
-        "brew": "brew install projectdiscovery/tap/subfinder",
-        "go": "go install github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest",
-    }
+    install_hints = {"go": "go install github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest"}
+    domain_only = True
 
     def build_command(self, fast: bool = False) -> list[str]:
         if fast:

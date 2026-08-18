@@ -12,10 +12,8 @@ class NucleiTool(BaseTool):
         "nuclei -u https://example.com -tags misconfig,exposure,headers,tech "
         "-severity low,medium,high,critical -silent"
     )
-    install_hints = {
-        "brew": "brew install projectdiscovery/tap/nuclei",
-        "go": "go install github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest",
-    }
+    install_hints = {"go": "go install github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest"}
+    timeout_seconds = 300
 
     def build_command(self, fast: bool = False) -> list[str]:
         if fast:

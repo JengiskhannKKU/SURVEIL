@@ -13,6 +13,7 @@ class TestsslTool(BaseTool):
         "brew": "brew install testssl",
         "apt": "sudo apt install -y testssl.sh",
     }
+    timeout_seconds = 300
 
     def build_command(self, fast: bool = False) -> list[str]:
         cmd = ["testssl.sh", "--quiet", "--color", "0"]

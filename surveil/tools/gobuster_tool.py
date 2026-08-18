@@ -15,6 +15,7 @@ class GobusterTool(BaseTool):
         "apt": "sudo apt install -y gobuster",
         "go": "go install github.com/OJ/gobuster/v3@latest",
     }
+    timeout_seconds = 300
 
     def build_command(self, fast: bool = False) -> list[str]:
         return [
