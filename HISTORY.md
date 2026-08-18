@@ -6,6 +6,69 @@ was verified, and what the next agent should pick up.
 
 ---
 
+## 2026-08-19 (9) — Highlight more "this matters" signal in tool output
+
+**Done (user request: "can you highlight output each output for
+necssary such as ports are opened especialy nmap or anything that maybe
+important"):**
+- `HighlightedOutput.tsx` (already highlighted URLs, HTTP status codes,
+  `[severity]` tags, CVEs, `[+]`/`[-]`, and `⚠`) gets 4 new token types:
+  - **nmap port/state lines** (`80/tcp   open  http`): the state word is
+    colored by how interesting it is — `open` bold green, `open|filtered`
+    yellow, `closed`/`filtered` dim gray — leaving the port/protocol and
+    service name in the default color. Matched as one combined token
+    (`\d{1,5}/(?:tcp|udp)\s+(?:open|filtered|...)`) rather than a bare
+    "open"/"closed" word match, specifically to avoid false-positives on
+    those common English words appearing elsewhere in unrelated output.
+  - **`[!]`** (wpscan's own "notable finding" marker) — bold red, same
+    weight as a bracket severity tag.
+  - **`OSVDB-NNNN`** (nikto's per-finding IDs) — bold magenta, same
+    treatment as a CVE ID.
+  - **Risk keywords** — `vulnerable`, `outdated`, `exposed`,
+    `misconfigured`, `risky`, `sensitive`, `weak`, `takeover` (whole-word,
+    case-insensitive) — bold orange. Picked from words that actually
+    appear in this repo's own tool wrappers' real/mock output (nikto's
+    "OSVDB-877: ... vulnerable to XST", "nginx ... appears to be
+    outdated", nikto's "Potentially risky methods") rather than an
+    arbitrary keyword list.
+  - **Bare IPv4 addresses** — cyan, same treatment as a URL (nmap/nikto
+    both print the resolved IP early in their output; useful to have it
+    pop visually next to the hostname).
+
+**Verified:**
+- Unit-style check via a standalone Node script exercising the raw
+  regex against real strings pulled from `nmap_tool.py`'s and
+  `nikto_tool.py`'s own `mock_output()` — confirmed `80/tcp   open`
+  matches as one token, `53/tcp   open|filtered domain` matches
+  `53/tcp   open|filtered`, `25/tcp   closed smtp` matches `25/tcp
+  closed`, `OSVDB-6694` and `outdated` and `93.184.216.34` all matched
+  as their own single tokens with nothing else in each line spuriously
+  matching.
+- `npx tsc --noEmit`, `eslint`, `next build` all clean.
+- Full browser verification: created a throwaway engagement, wrote real
+  `NmapTool`/`NiktoTool` `mock_output()` text directly into two checklist
+  items' `tool_outputs` (bypassing an actual scan — deterministic,
+  known-content output to check rendering against), reloaded each item
+  in a real browser. Confirmed: `open` states render bold green,
+  `open|filtered`/`closed` render dimmer, `93.184.216.34` and other IPs
+  render cyan, `risky`/`outdated` render bold orange, `OSVDB-3092`
+  renders bold magenta — all inside the same "Tool output" panel used by
+  both the live WebSocket stream (`RunToolDialog`) and the persisted
+  past-output view (`ItemDetail`), since both already shared this one
+  highlighting component. Deleted the throwaway engagement after.
+
+**Next steps for the next agent:**
+1. The risk-keyword list is deliberately small and literal (no stemming,
+   e.g. "vulnerability" won't match "vulnerable") — extend it if a real
+   engagement surfaces another tool's own "this is bad" wording that
+   isn't caught.
+2. `gowitness`/screenshot-based tools and `wafw00f` weren't specifically
+   considered here since their `mock_output()` didn't have an obvious
+   "important line" shape to target — worth a look if their real output
+   turns out to need it once used against a real target.
+
+---
+
 ## 2026-08-19 (8) — Search wordlists on Enter, not per keystroke
 
 **Done (user report: "when search implement wait for enter first because
