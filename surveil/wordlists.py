@@ -1,11 +1,24 @@
 """Discover wordlist files on the host for wordlist-based tools (ffuf, gobuster, ...)."""
 from __future__ import annotations
 
+import os
 from pathlib import Path
+
+from . import config as _config
+
+# Point this at your own wordlist directory (a SecLists checkout, a
+# company-internal list, whatever) to have it searched first, ahead of the
+# common install locations below, and used as the default for ffuf/gobuster
+# instead of whatever those tools' hardcoded defaults assume. Accepts a
+# directory (searched recursively for *.txt) or a single file path.
+# The web UI's Settings dialog sets this persistently (~/.surveil/
+# config.json, see surveil/config.py) instead, which takes priority over
+# this env var if both are set.
+WORDLIST_DIR_ENV = "SURVEIL_WORDLIST_DIR"
 
 # Common locations across Kali/Debian (dirb/seclists packages), Homebrew,
 # and manual SecLists checkouts. Most dev machines will have none of
-# these — that's fine, the caller falls back to the tool's own default.
+# these — that's fine, the caller falls back to the bundled wordlist below.
 _SEARCH_ROOTS = [
     Path("/usr/share/wordlists"),
     Path("/usr/share/seclists"),
@@ -16,15 +29,34 @@ _SEARCH_ROOTS = [
     Path.home() / ".local/share/wordlists",
 ]
 
+# Small wordlist shipped with surveil itself, so ffuf/gobuster have a real,
+# working default on any OS out of the box — their own conventional default
+# (/usr/share/wordlists/dirb/common.txt) is a Kali/Debian package path that
+# doesn't exist on macOS or a bare Linux box, and running either tool
+# against it just fails with "no such file or directory".
+BUNDLED_WORDLIST = Path(__file__).parent / "data" / "wordlists" / "common.txt"
+
+
+def _configured_root() -> Path | None:
+    value = _config.get_wordlist_dir() or os.environ.get(WORDLIST_DIR_ENV)
+    return Path(value) if value else None
+
+
+def _search_roots() -> list[Path]:
+    configured = _configured_root()
+    return ([configured] if configured else []) + _SEARCH_ROOTS
+
 
 def discover_wordlists(limit: int = 25) -> list[tuple[str, str]]:
     """Return (label, path) pairs for .txt wordlists found on this host.
 
-    Scans a fixed, shallow set of common install directories (no
-    exhaustive filesystem walk) and returns real files sorted by path.
+    Scans SURVEIL_WORDLIST_DIR (if set) plus a fixed, shallow set of common
+    install directories (no exhaustive filesystem walk) and returns real
+    files sorted by path. Does not include the bundled fallback wordlist —
+    that's only used by default_wordlist() when nothing else is found.
     """
     found: list[tuple[str, str]] = []
-    for root in _SEARCH_ROOTS:
+    for root in _search_roots():
         if not root.is_dir():
             continue
         for path in sorted(root.rglob("*.txt")):
@@ -38,3 +70,29 @@ def discover_wordlists(limit: int = 25) -> list[tuple[str, str]]:
             if len(found) >= limit:
                 return found
     return found
+
+
+def default_wordlist() -> str:
+    """Best available default wordlist path for tools that need one.
+
+    Order: the persisted config (~/.surveil/config.json, set via the web
+    UI's Settings dialog) or SURVEIL_WORDLIST_DIR env var — whichever is
+    set, config wins if both are (used directly if it's a file, or the
+    first .txt found under it if it's a directory) -> first wordlist
+    discovered in the common install locations -> the wordlist bundled
+    with surveil, which always exists regardless of host/OS.
+    """
+    configured = _configured_root()
+    if configured:
+        if configured.is_file():
+            return str(configured)
+        if configured.is_dir():
+            hits = sorted(configured.rglob("*.txt"))
+            if hits:
+                return str(hits[0])
+
+    discovered = discover_wordlists(limit=1)
+    if discovered:
+        return discovered[0][1]
+
+    return str(BUNDLED_WORDLIST)

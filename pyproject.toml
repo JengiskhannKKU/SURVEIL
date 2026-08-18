@@ -27,3 +27,6 @@ surveil = "surveil.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["surveil*"]
+
+[tool.setuptools.package-data]
+surveil = ["data/wordlists/*.txt"]

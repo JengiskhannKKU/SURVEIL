@@ -1,7 +1,8 @@
 """ffuf tool wrapper — directory/file brute-forcing."""
 from __future__ import annotations
 
-from .base import BaseTool
+from ..wordlists import default_wordlist
+from .base import BaseTool, base_url
 
 
 class FfufTool(BaseTool):
@@ -23,8 +24,8 @@ class FfufTool(BaseTool):
     def build_command(self, fast: bool = False) -> list[str]:
         cmd = [
             "ffuf",
-            "-u", f"https://{self.target}/FUZZ",
-            "-w", "/usr/share/wordlists/dirb/common.txt",
+            "-u", f"{base_url(self.target)}/FUZZ",
+            "-w", default_wordlist(),
             "-mc", "200,301,302,403",
             "-t", "50",
             "-c", "-s",
