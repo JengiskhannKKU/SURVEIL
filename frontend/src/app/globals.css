@@ -6,7 +6,16 @@ body {
 }
 
 ::selection {
-  background: rgba(59, 130, 246, 0.35);
+  background: rgba(94, 234, 212, 0.3);
+}
+
+.binary-columns {
+  display: none;
+}
+@media (min-width: 900px) {
+  .binary-columns {
+    display: block;
+  }
 }
 
 /* thin, theme-matched scrollbars */

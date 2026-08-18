@@ -14,8 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "surveil",
-  description: "OWASP WSTG checklist-driven web application penetration testing",
+  title: "SURVEIL"
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

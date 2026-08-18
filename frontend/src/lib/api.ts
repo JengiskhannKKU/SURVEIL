@@ -101,11 +101,10 @@ export const api = {
 
   listTools: () => request<ToolInfo[]>("/api/tools"),
 
-  previewCommand: (tool: string, target: string, fast: boolean) =>
+  previewCommand: (tool: string, target: string, fast: boolean, mode?: string) =>
     request<{ command: string[]; available: boolean }>(
-      `/api/tools/${tool}/command?target=${encodeURIComponent(
-        target
-      )}&fast=${fast}`
+      `/api/tools/${tool}/command?target=${encodeURIComponent(target)}&fast=${fast}` +
+        (mode ? `&mode=${encodeURIComponent(mode)}` : "")
     ),
 
   listWordlists: () => request<WordlistInfo[]>("/api/tools/wordlists"),

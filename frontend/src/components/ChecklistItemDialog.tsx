@@ -87,7 +87,7 @@ export function ChecklistItemDialog({
       <form onSubmit={handleSubmit}>
         <DialogTitle>{mode === "create" ? "Add checklist item" : `Edit ${item?.id}`}</DialogTitle>
         <DialogContent>
-          <Stack spacing={2.25} mt={0.5}>
+          <Stack spacing={2.25} mt={2} >
             <TextField
               required
               autoFocus
