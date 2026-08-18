@@ -6,6 +6,360 @@ was verified, and what the next agent should pick up.
 
 ---
 
+## 2026-08-18 (8) — ⚠ UNRESOLVED: amass v5.1.1 installed is architecturally incompatible
+
+**Found while proactively auditing other tool wrappers' flags after the
+httpx `-response-header` bug** (below) — checked every installed tool's
+real `--help`/`-h` output against what each wrapper's `build_command()`
+actually sends, on the theory that a hallucinated-flag bug might not be
+unique to httpx. `nuclei`, `wpscan`, `subfinder`, `ffuf`, `gobuster`,
+`nmap` all check out clean — every flag `surveil/tools/*_tool.py` uses for
+those exists in the installed binary's real help output.
+
+**`amass` does not check out, and it's bigger than a bad flag:**
+- `amass -h` (top-level) shows this installed version is v5.1.1, with a
+  completely restructured CLI: `amass [assoc|engine|enum|subs|track|viz]`.
+  This is OWASP Amass's new "OAM" (Open Asset Model) architecture — a
+  significant rewrite from the v3/v4-era single-shot CLI our wrapper
+  (`surveil/tools/amass_tool.py`, still sending
+  `amass enum -passive -d <target> -timeout <N>`) assumes.
+- `amass enum -h` (and even `amass enum` with no arguments at all) **hangs
+  indefinitely** — confirmed with `timeout 10s`, exit 124, zero output,
+  even with stdin explicitly redirected from `/dev/null` to rule out a
+  stdin-read block. It's not printing a usage error and exiting the way
+  every other CLI tool here does; something in v5's `enum` subcommand
+  blocks waiting on infrastructure that isn't there — almost certainly the
+  new `engine` subcommand (a separate long-running backend/database
+  process this architecture expects to already be running).
+- **Practical effect:** the `-timeout` fix from entry (4) below is
+  irrelevant here — even with a correct timeout value, a real `amass enum`
+  invocation from this app will very likely just hang until our own
+  subprocess timeout kills it (660s for a full scan), producing a
+  `[TIMEOUT]` result with zero output every time, on top of tying up a
+  backend worker for 11 minutes for nothing.
+
+**Deliberately not fixed in this session** — reworking the amass
+integration for v5's engine architecture needs actual research into how
+`amass engine`/`enum` are meant to be used together now (does the engine
+need to be started as a persistent sidecar service? per-scan? is there a
+simpler one-shot mode this version still supports that I haven't found?),
+which is a real investigation, not a quick patch, and not what was in
+scope for the reported bug (httpx's flag).
+
+**Next steps for the next agent:**
+1. Read OWASP Amass v5's actual docs/changelog (not memory — this project
+   has already been burned twice by hallucinated/stale flag names; verify
+   against the real `amass --help` tree and github.com/owasp-amass/amass
+   docs before writing any fix).
+2. Options once the right invocation is known: (a) rewrite
+   `amass_tool.py`'s `build_command()` for the new CLI if there's still a
+   one-shot mode, (b) special-case amass to manage an `engine` sidecar
+   process if that's required, or (c) if v5 fundamentally doesn't support
+   a simple one-shot passive enum anymore, consider whether amass should
+   stay in `TOOL_REGISTRY` at all vs. being documented as "install an
+   older v3/v4 release for this to work."
+3. Until fixed, expect any real (non-simulated) amass run through this app
+   to hang for the full timeout and return nothing — this is a known
+   issue, not a new bug report waiting to happen.
+
+---
+
+## 2026-08-18 (7) — Fix: httpx's `-response-header` flag doesn't exist
+
+**Done (user report: `httpx ... -response-header ...` → "flag provided but
+not defined: -response-header"):**
+- Confirmed by checking real `httpx -h` output (v1.10.0): `-response-header`
+  has never been a valid flag in any httpx release. It was a made-up name
+  in `surveil/tools/httpx_tool.py`'s full-mode `build_command()` that
+  happened to never get caught because the app's own simulated-fallback
+  path never actually invokes the real binary's flag parser.
+- The real flag for header info is `-include-response-header`/`-irh`, but
+  it only works with `-json` output ("(-json only)" per httpx's own help)
+  — switching to JSON would change the whole output shape and require
+  updating `mock_output()` and `findings_extractor.py`'s `extract_httpx()`
+  to match, which is a bigger change than this fix warrants. Used `-server`
+  instead (real flag, works in the default plain-text mode, still
+  surfaces something header-related — the Server header).
+- Noted in passing, not fixed here: `extract_httpx()` parses patterns
+  ("⚠ Missing headers:", "Set-Cookie: ... (missing Secure...)") that only
+  ever appear in `mock_output()`'s simulated text — real httpx output
+  (plain-text or JSON) never produces that shape, so finding extraction
+  for httpx effectively only fires on simulated runs today, not real ones.
+  Pre-existing, unrelated to this bug; flagging for whoever picks up
+  "make finding extraction work on real tool output" next.
+
+**Verified:** reproduced the exact reported error with the old flag
+(`exit 2`, "flag provided but not defined"); confirmed the corrected
+command runs cleanly against a real target (exit 0, real title/status/
+server/tech-detect output); ran it through the actual app path end-to-end
+(WebSocket `/ws/engagements/.../run`, real target `192.168.2.11`) —
+`success: true`, real output streamed, no simulated fallback triggered.
+
+**Next steps for the next agent:**
+1. If httpx's finding extraction needs to work on real output (see the
+   note above), that's a `findings_extractor.py` rewrite against actual
+   httpx output shape (plain-text or `-json`), not a quick patch.
+2. Worth doing eventually: audit every other tool wrapper's flags against
+   its actually-installed binary's `-h` output the same way this was
+   caught, rather than trusting flag names from memory — this exact class
+   of bug (a flag that looks plausible but was never real) could exist
+   elsewhere and would only surface when someone runs the tool for real.
+
+---
+
+## 2026-08-18 (6) — Warn before running domain-only tools against an IP target
+
+**Done (user report: `subfinder -d 192.168.2.11 -silent -all` "shows no
+response but success"):**
+- Confirmed this is correct, expected behavior of subfinder itself, not a
+  bug — subdomain enumeration is meaningless against a bare IP (especially
+  a private one with no public DNS presence). It queries its sources,
+  finds nothing to enumerate, and exits 0. Reproduced locally to confirm
+  before concluding this.
+- Real gap fixed: nothing told the tester *why* it would return nothing
+  before they ran it. Added `BaseTool.domain_only: bool` (new attribute,
+  `surveil/tools/base.py`), set `True` on `subfinder`, `amass`, `dnsx` —
+  the three tools that structurally require a domain name. Exposed via
+  `/api/tools` (`domain_only` field) and surfaced as a warning `Alert` in
+  `RunToolDialog.tsx` when the selected tool is domain-only and the
+  engagement's target looks like an IP address (new `lib/target.ts` ->
+  `isIpAddress()`, a UI heuristic, not a strict validator — handles IPv4
+  with an optional `:port` and a basic IPv6 check).
+- Deliberately did *not* add this warning to `ChecklistItemDialog.tsx`'s
+  tool picker — that dialog associates tools with a checklist item in the
+  abstract and doesn't receive the engagement's `target` prop, so the
+  warning wouldn't be actionable there. It only belongs in `RunToolDialog`,
+  where an actual run against a specific target happens.
+
+**Verified:** reproduced the exact reported command locally (real
+`subfinder` binary, exit 0, empty output — confirms it's tool behavior,
+not our bug). Backend: `/api/tools` correctly reports
+`domain_only: true` for amass/dnsx/subfinder and `false` for nmap.
+Browser: recreated the user's exact scenario (engagement target
+`192.168.2.11`, WSTG-INFO-01 which offers amass + subfinder) — warning
+renders correctly for both tools, zero console errors, `tsc`/`eslint`/
+`next build` clean.
+
+**Next steps for the next agent:**
+1. If a domain-only tool ever gets added beyond these three, remember to
+   set `domain_only = True` on it — there's no other enforcement.
+2. `isIpAddress()` is intentionally a loose heuristic for a UI hint, not a
+   real IP validator — don't repurpose it for anything that needs to be
+   correct (e.g. backend validation).
+
+---
+
+## 2026-08-18 (5) — Full theme reskin: terminal/hacker-console, green accent
+
+**Done (per explicit user request + a reference screenshot of
+binaryjiujitsu.com — confirmed scope via AskUserQuestion first: whole app,
+not just landing, and switch fully to green rather than keep red/blue):**
+- `lib/theme.ts` — swapped the red/blue duotone for a single mint-green
+  accent (`GREEN`/`GREEN_LIGHT`/`GREEN_DARK`/`GREEN_DIM`), switched the
+  theme's default `fontFamily` to Geist Mono site-wide (was sans, mono only
+  on `h1`), pill-shaped buttons (`borderRadius: 999`) with glow on
+  hover/contained.
+- `GridBackground.tsx` — green ambient glow (was two red/blue blobs) behind
+  the hero; new `BinaryColumns.tsx` renders decorative binary-digit columns
+  down the left/right edges (fixed content, not `Math.random()`-generated,
+  to avoid an SSR/client hydration mismatch — see the comment in that file
+  if tempted to make it "actually random").
+- New `NavBar.tsx` — persistent `[ SURVEIL ]` brand + Dashboard link, added
+  globally via `ThemeRegistry.tsx`, which now wraps every page in a
+  `height: 100dvh` flex column (nav + `flex:1, minHeight:0` content area).
+- Landing page (`app/page.tsx`) rebuilt to match the reference layout:
+  corner brackets, bracketed `[ SURVEIL ]` tagline, huge glowing "SURVEIL"
+  title + "PENTESTING" subtitle, `SCAN · VERIFY · REPORT` strapline, pill
+  CTA with a blinking cursor-block, feature cards restyled to match.
+  Deliberately did NOT add a light/dark toggle despite the reference having
+  one — this app is single-mode dark by prior explicit decision.
+- Swept every hardcoded blue hex (`#3b82f6` etc.) across `Checklist.tsx`
+  (selected-card glow) and `SeverityBar.tsx` (progress gradient) to use the
+  new `GREEN`/`GREEN_DARK` exports instead — grep for `3b82f6`/`60a5fa` if
+  a stray one turns up later.
+- Severity/status colors (finding severity chips, checklist status dots,
+  stat-card critical/high counts) were deliberately left alone — those are
+  semantic (red=critical, amber=running, etc.), not brand color, and
+  shouldn't shift with the theme.
+
+**Non-obvious fix required by the NavBar addition:** the engagement detail
+page previously used a hardcoded `height="100vh"` on its root layout Box
+for its fixed-viewport/internal-scroll design (checklist sidebar + item
+panel each scroll independently). Adding a persistent nav bar on top of
+that would have pushed it past the actual viewport. Fixed by changing it
+to `height="100%"` against the new `ThemeRegistry` flex-column parent
+(`flex:1, minHeight:0` on the content wrapper is what makes the percentage
+height resolve correctly — flex children need `minHeight:0` to not just
+grow to their content's intrinsic size, a classic flexbox gotcha).
+
+**Verified:** `tsc`/`eslint`/`next build` clean; full browser pass across
+landing → engagements → detail → both create/run-tool dialogs, zero
+console errors, screenshots confirmed visual parity with the reference
+(corner brackets, glow, binary columns, pill buttons all render). Cleaned
+up two stray test engagements ("Modes Check" ×2) left over from an earlier
+session's verification that never got deleted.
+
+**Next steps for the next agent:**
+1. If a light mode ever gets requested, `theme.ts`'s green tokens need a
+   light-surface variant — nothing here prepares for that, it's dark-only
+   top to bottom (background.default, GridBackground, etc.).
+2. `BinaryColumns.tsx`'s digit pattern is a fixed hardcoded array, not
+   actually random — fine as pure decoration, but don't mistake it for a
+   dynamic/animated matrix effect if asked to make it "more alive" later;
+   that'd need a client-only `useEffect`-populated version to avoid the
+   hydration mismatch a direct `Math.random()` in render would cause.
+
+---
+
+## 2026-08-18 (4) — Fix: amass timeout, subfinder PATH resolution, and a real timeout-enforcement bug
+
+**Done (user-reported: "Amass engine did not respond" + "subfinder already
+install but can't use it"):**
+- **Subfinder (and every other `go install`-based tool: httpx, nuclei,
+  dnsx, katana, gowitness)** installs to `~/go/bin` by default, which
+  isn't on `PATH` for a lot of setups — `is_available()` couldn't find it,
+  so the app silently used simulated output. Fixed: `resolve_binary()` in
+  `surveil/tools/base.py` now also checks `$GOBIN`/`$GOPATH/bin` and
+  resolves to the full path when found there.
+- **Amass timeout mismatch**: amass's own `-timeout 10` flag means 10
+  *minutes*, but the wrapper's subprocess kill timeout was a blanket 120
+  seconds — amass was being killed 8+ minutes early. Added per-tool
+  `get_timeout()` (amass: 90s fast / 660s full; also bumped `nikto`,
+  `wpscan`, `testssl`, `nuclei`, `ffuf`, `gobuster`, which had the same
+  problem to lesser degrees).
+- **The bigger catch — timeout enforcement itself was broken**: the old
+  `for line in proc.stdout: ...` then `proc.wait(timeout=...)` blocks on
+  the read with no deadline, so `timeout` only ever took effect *after*
+  the process had already exited on its own — i.e. it essentially never
+  worked for any tool that runs long without producing output. Caught via
+  a regression test (`sleep 5` with `timeout=1` ran the full 5s). Rewrote
+  `run_tool()` to read in a background thread with `thread.join(timeout=)`
+  enforcing a real wall-clock deadline, and kill the whole process group
+  (`start_new_session=True` + `os.killpg(..., SIGKILL)`) rather than just
+  the direct child — some tools here (`testssl.sh`) are shell scripts that
+  spawn their own subprocesses, and killing only the parent leaves a
+  grandchild holding the output pipe open, so the reader never sees EOF.
+
+**Verified:** 4-case regression suite (silent hang, normal command,
+output-then-hang, process-group kill) all pass with correct exit codes and
+wall-clock timing; a real `nmap` scan over the WebSocket still completes
+normally (no regression); `subfinder` now resolves to
+`~/go/bin/subfinder` and reports `available: true` via `/api/tools`.
+
+**Next steps for the next agent:**
+1. `apt` install hints (Debian/Kali package names) still aren't verified
+   against a real `apt-get` — this dev box is macOS only.
+2. If a tool wrapper's `get_timeout()` default (180s) is too short for a
+   real full scan against a large target, bump it per-tool the same way
+   amass/nikto/etc. were — don't just raise the global default blindly.
+
+---
+
+## 2026-08-18 (3) — nmap scan-mode presets + checklist cards
+
+**Done (user request: richer per-tool options like nmap UDP/all-ports
+scans, and checklist items as cards instead of list rows):**
+- `BaseTool.modes: dict[str,str]` + `build_command_for_mode()` — generic
+  mechanism for tools to declare named scan-mode presets beyond Fast/Full.
+  Only `nmap` uses it so far: quick, full, all-ports (`-p-`), UDP scan,
+  OS/version detection (`-O`), aggressive (`-A`), ping sweep (`-sn`). Base
+  implementation falls back to fast/full for every other tool, so nothing
+  else changed behaviorally.
+- `RunToolDialog.tsx` shows a "Scan mode" dropdown instead of the Fast
+  switch when the selected tool declares modes; a mode-based run always
+  executes for real (never the simulated fallback) since simulated output
+  wouldn't actually reflect what e.g. a UDP scan looks like — that'd be
+  actively misleading. Added a privilege warning for OS-detect/aggressive
+  since `-O` needs root.
+- `Checklist.tsx` — item rows are now MUI `Card`/`CardActionArea` with a
+  status-colored left border strip and a glow on the selected card,
+  Framer Motion hover/tap scale. Category collapse, filter, and ↑↓
+  keyboard nav unchanged.
+
+**Verified:** real end-to-end `nmap -sn` (ping sweep) executed over the
+WebSocket via the new mode picker; all 7 nmap modes produce correct
+commands via `/api/tools/nmap/command?mode=...`; invalid mode returns a
+clean 400. `tsc`/`eslint`/`next build` clean.
+
+---
+
+## 2026-08-18 (2) — Landing page + interactive tool installer
+
+**Done:**
+- Split the frontend: `/` is now a landing page (hero, feature cards, "Open
+  Dashboard" CTA), the engagement list moved from `/` to `/engagements`.
+  Engagement detail's back-link updated accordingly.
+- Added `surveil install-tools` — a new CLI command (backed by
+  `surveil/tool_installer.py`) that interactively installs a *subset* of
+  the 16 tool binaries rather than forcing all-or-nothing. The 7 tools
+  `findings_extractor.py` auto-parses (`nmap`, `httpx`, `whatweb`,
+  `nuclei`, `wafw00f`, `subfinder`, `nikto`) are pre-selected as the
+  recommended starter set. Picks the best available package manager per
+  tool (brew → apt → go → pip → gem, whichever the host actually has) and
+  reports honestly when none apply, rather than guessing. `./install-tools.sh`
+  wraps it (venv setup, matches the `run-*.sh` script family).
+- Added `install_hints: dict[str, str]` to every tool wrapper
+  (`surveil/tools/*_tool.py`, base attr on `BaseTool`) — single source of
+  truth consumed by both the installer and the web UI (`/api/tools` now
+  returns `available` + `install_hints` per tool; `RunToolDialog` shows a
+  warning with copyable install commands when the selected tool isn't
+  installed; `ChecklistItemDialog`'s tool picker dims uninstalled tools
+  with a tooltip).
+
+**Bugs caught and fixed during verification (source of these is worth
+remembering — don't trust remembered package names without checking):**
+- Guessed `brew install projectdiscovery/tap/httpx` (and the same pattern
+  for `subfinder`/`nuclei`/`dnsx`/`katana`) — **that tap doesn't exist**
+  (`brew tap projectdiscovery/tap` 404s on GitHub). Removed the brew hint
+  for all 5; `go install .../cmd/<tool>@latest` is the only real install
+  path for ProjectDiscovery tools on this host and is what's shipped now.
+- Guessed `brew install whatweb` — **no such formula exists** (`brew
+  search whatweb` only suggests an unrelated cask). WhatWeb has no clean
+  one-line macOS install; only the `apt` hint is real. The installer now
+  correctly reports "no automatic install method on this host" for it on
+  macOS instead of running a command that 404s.
+- Guessed `brew install wpscan` — wrong; the real formula is
+  `wpscanteam/tap/wpscan` (a third-party tap, confirmed via `brew info`).
+  Fixed to the fully-qualified path.
+- Caught by actually running `brew search`/`brew info`/`pip3 index
+  versions` for every hint rather than trusting training-data recall, then
+  running a real end-to-end install (`pip install arjun` via the
+  installer) and confirming `ArjunTool().is_available()` flips to `True`
+  afterward. **Lesson for next time: verify install commands against the
+  real package index before shipping them, every time — recalled package
+  manager formula/tap names are frequently stale or outright wrong.**
+
+**Verified:**
+- `tsc --noEmit`, `eslint`, `next build` clean (new `/engagements` static
+  route confirmed in build output).
+- Browser pass: landing page renders (hero, feature cards, animations),
+  "Open Dashboard" navigates to `/engagements`, "← surveil" navigates
+  back — zero console errors.
+- CLI: `surveil install-tools` tested end-to-end non-interactively (piped
+  stdin) — table renders correctly with real `is_available()` status per
+  tool, selection toggling (`n`/numbers/empty-line-confirm) works, EOF
+  during the prompt aborts gracefully (click's `Aborted!`), and a real
+  install (`arjun` via pip) succeeded and was reflected in a fresh
+  availability check afterward.
+- `install-tools.sh` wrapper tested standalone (creates venv if missing,
+  execs into the CLI command).
+
+**Next steps for the next agent:**
+1. The `apt` hints (Debian/Kali package names) are *not* verified against
+   a real `apt-get` — this dev box is macOS only. They're standard,
+   well-known Kali package names (high confidence) but worth a real check
+   on a Debian/Kali box before fully trusting them.
+2. `gowitness`'s `go install github.com/sensepost/gowitness@latest` and
+   the other bare `go install` paths weren't executed end-to-end (only
+   `pip install arjun` was) — reasonably confident (stable, well-known
+   module paths) but not empirically confirmed like the pip path was.
+3. Landing page has no dark/light toggle or additional content sections
+   by design (matches the single-mode dark theme decision from the
+   previous session) — don't add a "light mode" landing variant without
+   revisiting that decision first.
+
+---
+
 ## 2026-08-18 — Frontend redesign: MUI + Framer Motion, dark red/blue theme
 
 **Done:**
