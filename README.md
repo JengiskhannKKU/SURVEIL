@@ -131,6 +131,21 @@ and a Next.js frontend (`frontend/`) with a checklist UI, a Run Tool dialog
 that streams live tool output over a WebSocket, findings management, and
 report downloads.
 
+**Quickest start** — one script that sets up and runs both:
+
+```bash
+./run.sh                    # backend on :8000, frontend on :3000
+./run.sh 8001 3001           # or custom ports
+```
+
+It creates `venv/` and `frontend/node_modules` on first run if they don't
+exist, waits for the backend to answer `/api/health` before starting the
+frontend, and stops both cleanly on Ctrl+C. `./run-backend.sh [port]` and
+`./run-frontend.sh [port]` run each half on its own, for when you want them
+in separate terminals (e.g. to watch their logs independently).
+
+### Manual setup
+
 ### 1. Backend
 
 ```bash
