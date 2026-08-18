@@ -110,10 +110,16 @@ export const api = {
 
   listTools: () => request<ToolInfo[]>("/api/tools"),
 
-  previewCommand: (tool: string, target: string, fast: boolean, mode?: string) =>
-    request<{ command: string[]; available: boolean }>(
+  previewCommand: (tool: string, target: string, fast: boolean, mode?: string, itemId?: string) =>
+    request<{
+      command: string[];
+      available: boolean;
+      recommended_category: string | null;
+      recommended_category_label: string | null;
+    }>(
       `/api/tools/${tool}/command?target=${encodeURIComponent(target)}&fast=${fast}` +
-        (mode ? `&mode=${encodeURIComponent(mode)}` : "")
+        (mode ? `&mode=${encodeURIComponent(mode)}` : "") +
+        (itemId ? `&item_id=${encodeURIComponent(itemId)}` : "")
     ),
 
   listWordlists: () => request<WordlistInfo[]>("/api/tools/wordlists"),

@@ -6,6 +6,81 @@ was verified, and what the next agent should pick up.
 
 ---
 
+## 2026-08-19 (5) — Per-test wordlist recommendations
+
+**Done (user request: "each testing can you recommend wordlists for that
+test, such as ffuf for search endpoint use that wordlist"):**
+- Added 5 new bundled wordlists under `surveil/data/wordlists/`:
+  `admin.txt` (~55 admin-panel paths), `api.txt` (~60 API/GraphQL/Swagger
+  paths), `backup.txt` (~65 backup/dump file names), `extensions.txt`
+  (~50 file-extension-handling probes like `index.php.bak`, `.git/config`),
+  `metafiles.txt` (~30 well-known metafiles like `robots.txt`,
+  `.well-known/security.txt`). `common.txt` (existing, general-purpose)
+  is reused as the "common" category.
+- `surveil/checklist.py`: new `WORDLIST_CATEGORY` dict mapping specific
+  WSTG checklist item IDs to a category (e.g. `WSTG-CONF-05` "Enumerate
+  Admin Interfaces" → `"admin"`, `WSTG-CONF-04` "Review Old Backup and
+  Unreferenced Files" → `"backup"`, `WSTG-INFO-06` "Identify Application
+  Entry Points" → `"api"`), plus `CATEGORY_LABELS` for the human-readable
+  hint text. Only 6 items are mapped — everything else (including any
+  tester-added custom item) falls through to the plain default wordlist,
+  unchanged from before.
+- `surveil/wordlists.py`: new `recommend_wordlist(category)` — tries a
+  *discovered* wordlist whose path matches the category's keywords first
+  (so a real SecLists install's own admin/API/backup lists win over the
+  bundled ones), then falls back to the bundled `<category>.txt`, then to
+  `default_wordlist()` if neither exists. `category=None` (unmapped item)
+  goes straight to `default_wordlist()` — no behavior change for the
+  other ~40 checklist items.
+- `backend/routers/tools.py` `GET /api/tools/{tool}/command`: takes a new
+  optional `item_id` query param. When the tool `uses_wordlist` and the
+  item has a mapped category, swaps the `-w <path>` flag in the previewed
+  command for the recommended wordlist and returns
+  `recommended_category`/`recommended_category_label` in the response.
+  Deliberately gated on `tool_cls.uses_wordlist` — caught in
+  self-review that an earlier version leaked a `recommended_category` for
+  `nmap` (which doesn't take a wordlist at all) when previewed against an
+  admin-interfaces item; fixed before verifying further.
+- Frontend (`RunToolDialog.tsx`, `lib/api.ts`): passes the current
+  checklist item's ID through `previewCommand`, shows a green "Using a
+  wordlist recommended for this test — **\<label\>**" hint above the
+  command box when a recommendation applies and the tester hasn't
+  manually picked a different wordlist from the picker.
+
+**Verified:**
+- Backend: curled `/api/tools/ffuf/command` for each of the 6 mapped
+  item IDs — confirmed `admin.txt`, `backup.txt`, `api.txt`, etc. each
+  appear in the returned command's `-w` flag, and `recommended_category`
+  is `null` for an unmapped item and for `nmap` (non-wordlist tool)
+  regardless of item.
+- `npx tsc --noEmit`, `eslint`, `next build` all clean.
+- Full browser E2E via a throwaway Playwright script (deleted after use,
+  not committed): created a real engagement, opened "Enumerate Admin
+  Interfaces" → Run Tool → selected `ffuf` → confirmed the green
+  recommendation hint appeared and the previewed command contained
+  `admin.txt`; repeated for "Review Old Backup and Unreferenced Files"
+  (`backup.txt`) and "Enumerate Applications on Web Server" (`common`
+  category, generic hint). Zero console errors across all three.
+  Screenshots visually confirmed correct rendering (green outlined
+  Alert, correct category label, no layout issues) before cleanup.
+
+**Next steps for the next agent:**
+1. Only 6 of ~46 checklist items have a wordlist category mapped —
+   consider extending `WORDLIST_CATEGORY` to more items (e.g. a
+   subdomain-takeover-focused list for `WSTG-CONF-09`) as more bundled
+   wordlists get added.
+2. The recommendation only kicks in for the *default* preview — if a
+   tester has already picked a wordlist from the Autocomplete picker,
+   their choice correctly takes precedence (hint is hidden), but there's
+   no way to say "actually, use the recommended one" again short of
+   clearing the picker manually.
+3. Bundled wordlists are hand-curated and modest in size (30-65 entries
+   each) — fine as a sane default, but a tester with a real SecLists
+   install will usually get a bigger, better-matched discovered list
+   automatically (see `recommend_wordlist`'s discovery-first order).
+
+---
+
 ## 2026-08-19 (4) — Fix: wordlist discovery capped at 25 and alphabetical
 
 **Done (user report on a real Kali box: "found only 25, not found
