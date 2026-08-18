@@ -6,6 +6,30 @@ was verified, and what the next agent should pick up.
 
 ---
 
+## 2026-08-19 (7) — Collapse categories with more than 6 wordlists
+
+**Done (user request: "each category if there are more 6 wordlists
+implement it can show samples and collapses"):**
+- `WordlistPickerDialog.tsx`: each category now renders at most
+  `SAMPLE_SIZE = 6` cards by default, with a "Show all N" / "Show less"
+  toggle button (chevron icon, per-category expand state via a `Set` of
+  expanded category names) when a group has more than 6. A search query
+  bypasses the cap entirely for any group with matches — narrowing to
+  "admin" and getting back 2 results shouldn't then hide one of them
+  behind a second click.
+
+**Verified:**
+- `npx tsc --noEmit`, `eslint`, `next build` all clean.
+- Built a fake wordlist tree with a 9-file category (`/tmp/fake_wl2/
+  seclists/Discovery/Web-Content/list1.txt`...`list9.txt`), rebuilt +
+  restarted the frontend, browser E2E: opened the picker, confirmed
+  "SecLists/Discovery" showed exactly 6 cards + a "Show all 9" button,
+  clicked it, confirmed all 9 rendered + button changed to "Show less",
+  clicked that, confirmed it collapsed back to 6. Zero console errors.
+  Cleaned up the fake tree and reset the wordlist-dir config after.
+
+---
+
 ## 2026-08-19 (6) — Wordlist picker dialog + full Kali/SecLists discovery
 
 **Done (user report: "the wordlists still not all wordlists ... implement
