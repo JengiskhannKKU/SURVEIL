@@ -15,9 +15,13 @@ import Typography from "@mui/material/Typography";
 import CircularProgress from "@mui/material/CircularProgress";
 import SearchIcon from "@mui/icons-material/Search";
 import StarIcon from "@mui/icons-material/Star";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import ExpandLessIcon from "@mui/icons-material/ExpandLess";
 import DescriptionOutlinedIcon from "@mui/icons-material/DescriptionOutlined";
 import { api } from "@/lib/api";
 import type { GroupedWordlists, WordlistGroup, WordlistInfo } from "@/lib/types";
+
+const SAMPLE_SIZE = 6;
 
 export function WordlistPickerDialog({
   itemId,
@@ -34,6 +38,16 @@ export function WordlistPickerDialog({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+
+  function toggleExpanded(category: string) {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(category)) next.delete(category);
+      else next.add(category);
+      return next;
+    });
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -157,7 +171,14 @@ export function WordlistPickerDialog({
         )}
 
         <Stack spacing={2.5}>
-          {filteredGroups.map((group) => (
+          {filteredGroups.map((group) => {
+            // A search query already narrows a group down to matches — capping
+            // those further would hide results the tester just asked to see.
+            const isSearching = query.trim().length > 0;
+            const isExpanded = isSearching || expanded.has(group.category);
+            const overflowing = group.wordlists.length > SAMPLE_SIZE;
+            const visible = isExpanded ? group.wordlists : group.wordlists.slice(0, SAMPLE_SIZE);
+            return (
             <Box key={group.category}>
               <Stack direction="row" spacing={1} alignItems="center" mb={1}>
                 {group.recommended && <StarIcon sx={{ fontSize: 16, color: "#22c55e" }} />}
@@ -179,7 +200,7 @@ export function WordlistPickerDialog({
                   gap: 1,
                 }}
               >
-                {group.wordlists.map((w: WordlistInfo) => {
+                {visible.map((w: WordlistInfo) => {
                   const selected = w.path === currentPath;
                   return (
                     <Box
@@ -232,8 +253,21 @@ export function WordlistPickerDialog({
                   );
                 })}
               </Box>
+              {!isSearching && overflowing && (
+                <Button
+                  size="small"
+                  onClick={() => toggleExpanded(group.category)}
+                  startIcon={expanded.has(group.category) ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+                  sx={{ mt: 1, textTransform: "none", fontFamily: "var(--font-geist-mono)", fontSize: 12 }}
+                >
+                  {expanded.has(group.category)
+                    ? "Show less"
+                    : `Show all ${group.wordlists.length}`}
+                </Button>
+              )}
             </Box>
-          ))}
+            );
+          })}
         </Stack>
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2 }}>
