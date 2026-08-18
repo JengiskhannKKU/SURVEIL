@@ -1,7 +1,9 @@
 // Group indices (no named groups — avoids requiring an ES2018+ compile target):
-// 1 url · 2 bracket-status · 3 "Status: NNN" · 4 severity tag · 5 CVE · 6 [+] · 7 [-] · 8 warn glyph
+// 1 url · 2 bracket-status · 3 "Status: NNN" · 4 severity tag · 5 CVE ·
+// 6 [+] · 7 [-] · 8 warn glyph · 9 [!] · 10 OSVDB-id · 11 nmap "N/tcp open ..."
+// port/state line · 12 risk keyword · 13 bare IPv4
 const TOKEN_RE =
-  /(https?:\/\/\S+)|\[(\d{3})\]|Status:\s*(\d{3})|\[(critical|high|medium|low|info)\]|(CVE-\d{4}-\d{4,7})|(\[\+\])|(\[-\])|(⚠)/gi;
+  /(https?:\/\/\S+)|\[(\d{3})\]|Status:\s*(\d{3})|\[(critical|high|medium|low|info)\]|(CVE-\d{4}-\d{4,7})|(\[\+\])|(\[-\])|(⚠)|(\[!\])|(OSVDB-\d+)|(\d{1,5}\/(?:tcp|udp)\s+(?:open\|filtered|open|filtered|closed)\S*)|\b(vulnerable|outdated|exposed|misconfigured|risky|sensitive|weak|takeover)\b|\b((?:\d{1,3}\.){3}\d{1,3})\b/gi;
 
 const SEVERITY_COLOR: Record<string, string> = {
   critical: "text-red-400 font-bold",
@@ -20,6 +22,30 @@ function statusColor(code: string): string {
   return "";
 }
 
+// "80/tcp   open  http" — color the state word by how interesting an open
+// port is (definitely open > maybe open > closed/filtered), leave the
+// port/protocol and service name in the default terminal color.
+function portLineNode(text: string, key: number): React.ReactNode {
+  const m = /^(\d{1,5}\/(?:tcp|udp))(\s+)(open\|filtered|open|filtered|closed)(\S*)$/i.exec(text);
+  if (!m) return text;
+  const [, port, gap, state, rest] = m;
+  const lower = state.toLowerCase();
+  const stateClass =
+    lower === "open"
+      ? "text-green-400 font-bold"
+      : lower === "open|filtered"
+        ? "text-yellow-300"
+        : "text-neutral-500";
+  return (
+    <span key={key}>
+      {port}
+      {gap}
+      <span className={stateClass}>{state}</span>
+      {rest}
+    </span>
+  );
+}
+
 function renderSegments(line: string): React.ReactNode[] {
   const out: React.ReactNode[] = [];
   let pos = 0;
@@ -28,7 +54,7 @@ function renderSegments(line: string): React.ReactNode[] {
   let m: RegExpExecArray | null;
   while ((m = TOKEN_RE.exec(line))) {
     if (m.index > pos) out.push(line.slice(pos, m.index));
-    const [text, url, bstatus, lstatus, sev, cve, bplus, bminus, warn] = m;
+    const [text, url, bstatus, lstatus, sev, cve, bplus, bminus, warn, bang, osvdb, portLine, risk, ip] = m;
     if (url) {
       out.push(
         <span key={key++} className="text-cyan-300">
@@ -74,6 +100,32 @@ function renderSegments(line: string): React.ReactNode[] {
     } else if (warn) {
       out.push(
         <span key={key++} className="text-yellow-300">
+          {text}
+        </span>
+      );
+    } else if (bang) {
+      out.push(
+        <span key={key++} className="text-red-400 font-bold">
+          {text}
+        </span>
+      );
+    } else if (osvdb) {
+      out.push(
+        <span key={key++} className="font-bold text-fuchsia-300">
+          {text}
+        </span>
+      );
+    } else if (portLine) {
+      out.push(portLineNode(text, key++));
+    } else if (risk) {
+      out.push(
+        <span key={key++} className="text-orange-400 font-semibold">
+          {text}
+        </span>
+      );
+    } else if (ip) {
+      out.push(
+        <span key={key++} className="text-cyan-300">
           {text}
         </span>
       );
