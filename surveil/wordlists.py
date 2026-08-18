@@ -36,6 +36,28 @@ _SEARCH_ROOTS = [
 # against it just fails with "no such file or directory".
 BUNDLED_WORDLIST = Path(__file__).parent / "data" / "wordlists" / "common.txt"
 
+# A real SecLists checkout (what Kali's `seclists` package installs, and
+# what most manual setups use) has 50+ categories — Passwords, Usernames,
+# Fuzzing, Discovery/DNS, Discovery/Web-Content, etc. — with plain
+# alphabetical sorting, "Discovery/DNS" and "Discovery/Infrastructure"
+# sort ahead of "Discovery/Web-Content", the one actually relevant to
+# ffuf/gobuster's directory/file brute-forcing. A small, fixed result cap
+# combined with pure alphabetical order meant the picker filled up with
+# DNS/infrastructure wordlists before ever reaching Web-Content. These
+# keywords bump anything path-matching them to the front instead.
+_DIR_BRUTEFORCE_KEYWORDS = (
+    "web-content", "webcontent", "discovery",
+    "dirb", "dirbuster", "raft", "directory-list", "common.txt",
+)
+
+
+def _priority(path: Path) -> int:
+    lower = str(path).lower()
+    for i, kw in enumerate(_DIR_BRUTEFORCE_KEYWORDS):
+        if kw in lower:
+            return i
+    return len(_DIR_BRUTEFORCE_KEYWORDS)
+
 
 def _configured_root() -> Path | None:
     value = _config.get_wordlist_dir() or os.environ.get(WORDLIST_DIR_ENV)
@@ -47,21 +69,29 @@ def _search_roots() -> list[Path]:
     return ([configured] if configured else []) + _SEARCH_ROOTS
 
 
-def discover_wordlists(limit: int = 25) -> list[tuple[str, str]]:
+def discover_wordlists(limit: int = 150) -> list[tuple[str, str]]:
     """Return (label, path) pairs for .txt wordlists found on this host.
 
-    Scans SURVEIL_WORDLIST_DIR (if set) plus a fixed, shallow set of common
-    install directories (no exhaustive filesystem walk) and returns real
-    files sorted by path. Does not include the bundled fallback wordlist —
-    that's only used by default_wordlist() when nothing else is found.
+    Scans SURVEIL_WORDLIST_DIR/the configured Settings-dialog directory (if
+    set) plus a fixed, shallow set of common install directories (no
+    exhaustive filesystem walk). Within each root, directory/file
+    brute-force-relevant wordlists (see _DIR_BRUTEFORCE_KEYWORDS) are
+    returned first, alphabetically after that — so a bounded limit still
+    surfaces the wordlists actually useful for ffuf/gobuster on a large
+    real install (e.g. Kali's SecLists package) instead of getting cut off
+    partway through an unrelated category. Does not include the bundled
+    fallback wordlist — that's only used by default_wordlist() when
+    nothing else is found.
     """
     found: list[tuple[str, str]] = []
     for root in _search_roots():
         if not root.is_dir():
             continue
-        for path in sorted(root.rglob("*.txt")):
-            if not path.is_file():
-                continue
+        candidates = sorted(
+            (p for p in root.rglob("*.txt") if p.is_file()),
+            key=lambda p: (_priority(p), str(p)),
+        )
+        for path in candidates:
             try:
                 label = str(path.relative_to(root.parent))
             except ValueError:
@@ -87,7 +117,10 @@ def default_wordlist() -> str:
         if configured.is_file():
             return str(configured)
         if configured.is_dir():
-            hits = sorted(configured.rglob("*.txt"))
+            hits = sorted(
+                (p for p in configured.rglob("*.txt") if p.is_file()),
+                key=lambda p: (_priority(p), str(p)),
+            )
             if hits:
                 return str(hits[0])
 

@@ -6,6 +6,60 @@ was verified, and what the next agent should pick up.
 
 ---
 
+## 2026-08-19 (4) — Fix: wordlist discovery capped at 25 and alphabetical
+
+**Done (user report on a real Kali box: "found only 25, not found
+endpoint or directory wordlists"):**
+- Root cause #1: `discover_wordlists(limit: int = 25)` — the number in
+  the report matched the hardcoded default exactly.
+- Root cause #2, the more important one: results were plain alphabetical
+  (`sorted(root.rglob("*.txt"))`), and the function returned as soon as it
+  hit the limit. A real SecLists install (what Kali's `seclists` apt
+  package gives you) has 50+ categories; alphabetically "Discovery/DNS"
+  and "Discovery/Infrastructure" sort ahead of "Discovery/Web-Content" —
+  the one actually relevant to ffuf/gobuster's directory/file
+  brute-forcing. A big DNS wordlist category alone could exhaust the
+  entire limit before Web-Content was ever reached, matching exactly what
+  was reported ("not found endpoint or directory wordlists").
+- Fixed both: raised the default limit to 150, and added a
+  `_DIR_BRUTEFORCE_KEYWORDS`-based priority sort (`web-content`,
+  `discovery`, `dirb`, `dirbuster`, `raft`, `directory-list`, `common.txt`)
+  so directory/file-relevant wordlists surface first regardless of where
+  they fall alphabetically — applied to both `discover_wordlists()` (the
+  picker's list) and `default_wordlist()`'s configured-directory case
+  (previously also just alphabetically-first, could hand ffuf/gobuster a
+  random unrelated wordlist as their "default").
+- Upgraded the Run Tool dialog's wordlist picker from a plain `<Select>`
+  to an `Autocomplete` (`RunToolDialog.tsx`) — with the cap now much
+  higher, a searchable/type-to-filter control is what actually makes a
+  larger result set usable rather than just scrollable.
+
+**Verified:** built a fake SecLists-shaped tree (30 `Discovery/DNS/*.txt`
+files sorted alphabetically ahead of 3 `Discovery/Web-Content/*.txt`
+files) and confirmed: with the *old* `limit=25` explicitly passed, all 3
+Web-Content wordlists now appear in the first 25 results (would have been
+0 before this fix); `default_wordlist()` against that same tree resolves
+to `Web-Content/common.txt`, not a DNS file. Then verified in a live
+browser against the real running app (via the Settings dialog pointed at
+the fake tree): the picker's initial dropdown shows Web-Content entries
+immediately after "tool default" and before any DNS entries; typing
+"raft" correctly filters to the one matching wordlist. `tsc`/`eslint`/
+`next build` clean.
+
+**Next steps for the next agent:**
+1. The priority keyword list is a heuristic, not exhaustive — if another
+   wordlist naming convention turns out to matter (e.g. a different
+   pentesting distro's layout), extend `_DIR_BRUTEFORCE_KEYWORDS` in
+   `surveil/wordlists.py` rather than reworking the sort mechanism.
+2. `limit=150` is still a cap, chosen to keep the Autocomplete responsive
+   — a truly enormous SecLists install could still have Web-Content
+   entries beyond position 150 if there happen to be 150+ higher-priority
+   matches ahead of them. Not expected in practice (real Web-Content
+   directories have well under 150 files), but worth knowing if someone
+   reports "still missing a specific wordlist" again.
+
+---
+
 ## 2026-08-19 (3) — Settings dialog: configure wordlist dir from the web UI
 
 **Done (user request: "ffuf can select wordlists and user can config
