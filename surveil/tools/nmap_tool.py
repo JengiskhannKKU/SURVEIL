@@ -13,6 +13,15 @@ class NmapTool(BaseTool):
         "brew": "brew install nmap",
         "apt": "sudo apt install -y nmap",
     }
+    modes = {
+        "quick": "Quick (top 20 ports)",
+        "full": "Full (common web ports)",
+        "all_ports": "All ports (1-65535)",
+        "udp": "UDP scan (top 20)",
+        "os_detect": "OS & version detection",
+        "aggressive": "Aggressive (-A: OS, version, scripts, traceroute)",
+        "ping_sweep": "Ping sweep (host discovery only, no port scan)",
+    }
 
     def build_command(self, fast: bool = False) -> list[str]:
         if fast:
@@ -23,6 +32,26 @@ class NmapTool(BaseTool):
             "--open", "-T4",
             self.target,
         ]
+
+    def build_command_for_mode(self, mode: str) -> list[str]:
+        if mode == "quick":
+            return self.build_command(fast=True)
+        if mode == "full":
+            return self.build_command(fast=False)
+        if mode == "all_ports":
+            return ["nmap", "-sV", "-sC", "-p-", "--open", "-T4", self.target]
+        if mode == "udp":
+            # A full 65535-port UDP scan is impractically slow for an
+            # interactive tool — top-20 UDP ports is a reasonable default.
+            return ["nmap", "-sU", "--top-ports", "20", "--open", "-T4", self.target]
+        if mode == "os_detect":
+            # -O (OS detection) typically needs root/administrator privileges.
+            return ["nmap", "-O", "-sV", "--osscan-guess", self.target]
+        if mode == "aggressive":
+            return ["nmap", "-A", "-T4", self.target]
+        if mode == "ping_sweep":
+            return ["nmap", "-sn", self.target]
+        return super().build_command_for_mode(mode)
 
     def mock_output(self) -> str:
         return f"""\

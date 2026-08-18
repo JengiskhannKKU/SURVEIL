@@ -320,3 +320,20 @@ def delete(eng_ids: tuple[str, ...], yes: bool) -> None:
         console.print(f"[red]Not found: {', '.join(missing)}[/red]")
     if missing and not deleted:
         raise SystemExit(1)
+
+
+# ============================================================
+# surveil install-tools
+# ============================================================
+@main.command("install-tools")
+def install_tools() -> None:
+    """Interactively install enumeration tool binaries (not all-or-nothing).
+
+    Shows all 16 tools with their install status; recommended ones (the
+    tools auto-finding extraction understands) are pre-selected. Pick a
+    subset, then installs each via the best available package manager
+    (brew/apt/go/pip/gem) for this host.
+    """
+    from .tool_installer import run_interactive
+
+    run_interactive(console)

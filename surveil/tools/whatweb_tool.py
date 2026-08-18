@@ -9,10 +9,10 @@ class WhatwebTool(BaseTool):
     binary = "whatweb"
     description = "Fingerprint web technologies, CMS, and frameworks in use."
     example = "whatweb --color=never -v example.com"
-    install_hints = {
-        "brew": "brew install whatweb",
-        "apt": "sudo apt install -y whatweb",
-    }
+    # No Homebrew formula exists for WhatWeb; apt (Debian/Ubuntu/Kali) is the
+    # only reliable one-liner. macOS: git clone urbanadventurer/WhatWeb and
+    # run ./whatweb directly (needs a Ruby toolchain — no clean single command).
+    install_hints = {"apt": "sudo apt install -y whatweb"}
 
     def build_command(self, fast: bool = False) -> list[str]:
         if fast:

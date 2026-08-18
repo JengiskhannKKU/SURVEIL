@@ -9,10 +9,7 @@ class KatanaTool(BaseTool):
     binary = "katana"
     description = "Crawl the target site to discover reachable endpoints/URLs."
     example = "katana -u https://example.com -d 3 -jc -silent -nc"
-    install_hints = {
-        "brew": "brew install projectdiscovery/tap/katana",
-        "go": "go install github.com/projectdiscovery/katana/cmd/katana@latest",
-    }
+    install_hints = {"go": "go install github.com/projectdiscovery/katana/cmd/katana@latest"}
 
     def build_command(self, fast: bool = False) -> list[str]:
         return [

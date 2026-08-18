@@ -10,12 +10,9 @@ class HttpxTool(BaseTool):
     description = "Probe HTTP(S) endpoints for status, title, tech stack, and response headers."
     example = (
         "httpx -u example.com -title -tech-detect -status-code -content-length "
-        "-response-header -follow-redirects -silent"
+        "-server -follow-redirects -silent"
     )
-    install_hints = {
-        "brew": "brew install projectdiscovery/tap/httpx",
-        "go": "go install github.com/projectdiscovery/httpx/cmd/httpx@latest",
-    }
+    install_hints = {"go": "go install github.com/projectdiscovery/httpx/cmd/httpx@latest"}
 
     def build_command(self, fast: bool = False) -> list[str]:
         if fast:
@@ -25,7 +22,15 @@ class HttpxTool(BaseTool):
             "-u", self.target,
             "-title", "-tech-detect",
             "-status-code", "-content-length",
-            "-response-header",
+            # -response-header (a header dump on every line) isn't a real
+            # httpx flag — it doesn't exist in any released version and
+            # errors out with "flag provided but not defined". -server
+            # (Server header) is the closest real equivalent that still
+            # works in httpx's default plain-text output mode; a full
+            # header dump only exists via -include-response-header, which
+            # requires -json output and would need extractor/mock changes
+            # to match.
+            "-server",
             "-follow-redirects",
             "-silent",
         ]

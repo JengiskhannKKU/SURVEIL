@@ -13,11 +13,20 @@ class AmassTool(BaseTool):
         "brew": "brew install amass",
         "apt": "sudo apt install -y amass",
     }
+    domain_only = True
 
     def build_command(self, fast: bool = False) -> list[str]:
         if fast:
             return ["amass", "enum", "-passive", "-d", self.target, "-timeout", "1"]
         return ["amass", "enum", "-passive", "-d", self.target, "-timeout", "10"]
+
+    def get_timeout(self, fast: bool = False) -> int:
+        # amass's own -timeout flag above is in MINUTES (1 / 10) — the
+        # subprocess kill timeout (seconds) must be at least that long plus
+        # a buffer, or we truncate a scan amass itself is still budgeting
+        # time for. The old blanket 120s default was killing full runs
+        # 8+ minutes before amass's own 10-minute budget was up.
+        return 90 if fast else 660
 
     def mock_output(self) -> str:
         return f"""\
