@@ -5,10 +5,16 @@
 #   backend_port  - defaults to 8000
 #   frontend_port - defaults to 3000
 #
+# Open http://localhost:<frontend_port> in your browser — that's the UI.
+# The backend only serves /api/* and /ws/*; opening its port directly
+# 404s on everything else (expected).
+#
 # Starts the backend, waits for it to answer /api/health, then starts
-# the frontend. Ctrl+C (or any exit) stops both — including uvicorn's
-# reloader subprocess and npm's "next dev" child, which a plain `kill`
-# on the top-level PID would otherwise leave running.
+# the frontend (which gets the backend's port written into its
+# .env.local, so a non-default backend_port doesn't leave it pointed at
+# the wrong place). Ctrl+C (or any exit) stops both — including
+# uvicorn's reloader subprocess and npm's "next dev" child, which a
+# plain `kill` on the top-level PID would otherwise leave running.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -64,7 +70,7 @@ fi
 echo "Backend ready."
 
 echo "Starting frontend on port $FRONTEND_PORT..."
-./run-frontend.sh "$FRONTEND_PORT" &
+./run-frontend.sh "$FRONTEND_PORT" "$BACKEND_PORT" &
 FRONTEND_PID=$!
 
 # `wait -n` would be simpler but isn't supported by the bash 3.2 macOS
