@@ -1,6 +1,18 @@
 "use client";
 
 import { useState } from "react";
+import Box from "@mui/material/Box";
+import Stack from "@mui/material/Stack";
+import Typography from "@mui/material/Typography";
+import Button from "@mui/material/Button";
+import TextField from "@mui/material/TextField";
+import MenuItem from "@mui/material/MenuItem";
+import Accordion from "@mui/material/Accordion";
+import AccordionSummary from "@mui/material/AccordionSummary";
+import AccordionDetails from "@mui/material/AccordionDetails";
+import Paper from "@mui/material/Paper";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import { AnimatePresence, motion } from "framer-motion";
 import { api } from "@/lib/api";
 import { SeverityBadge } from "@/components/Badge";
 import { useToast } from "@/lib/toast";
@@ -18,7 +30,6 @@ export function FindingsPanel({
 }) {
   const toast = useToast();
   const [showForm, setShowForm] = useState(false);
-  const [expanded, setExpanded] = useState<string | null>(null);
   const [title, setTitle] = useState("");
   const [severity, setSeverity] = useState<Severity>("medium");
   const [description, setDescription] = useState("");
@@ -82,143 +93,171 @@ export function FindingsPanel({
   const findings = sortBySeverity(item.findings);
 
   return (
-    <div>
-      <div className="mb-2 flex items-center justify-between">
-        <h3 className="text-sm font-semibold">Findings ({item.findings.length})</h3>
-        <button
-          onClick={() => setShowForm((v) => !v)}
-          className="text-xs text-blue-600 hover:underline dark:text-blue-400"
-        >
+    <Box>
+      <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1.5}>
+        <Typography variant="subtitle2" fontWeight={700}>
+          Findings ({item.findings.length})
+        </Typography>
+        <Button size="small" onClick={() => setShowForm((v) => !v)}>
           {showForm ? "Cancel" : "+ Add finding"}
-        </button>
-      </div>
+        </Button>
+      </Stack>
 
-      {showForm && (
-        <form
-          onSubmit={handleAdd}
-          className="mb-3 rounded border border-neutral-200 p-3 dark:border-neutral-800"
-        >
-          <div className="mb-2 grid gap-2 sm:grid-cols-2">
-            <input
-              required
-              autoFocus
-              placeholder="Title"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              className="rounded border border-neutral-300 bg-transparent px-2 py-1 text-sm outline-none focus:border-neutral-500 dark:border-neutral-700"
-            />
-            <select
-              value={severity}
-              onChange={(e) => setSeverity(e.target.value as Severity)}
-              className="rounded border border-neutral-300 bg-transparent px-2 py-1 text-sm dark:border-neutral-700"
-            >
-              {SEVERITY_ORDER.map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-            </select>
-          </div>
-          <textarea
-            placeholder="Description"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            rows={2}
-            className="mb-2 w-full rounded border border-neutral-300 bg-transparent px-2 py-1 text-sm outline-none focus:border-neutral-500 dark:border-neutral-700"
-          />
-          <div className="mb-2 grid gap-2 sm:grid-cols-2">
-            <input
-              placeholder="CVSS vector (optional)"
-              value={cvssVector}
-              onChange={(e) => setCvssVector(e.target.value)}
-              className="rounded border border-neutral-300 bg-transparent px-2 py-1 text-sm font-mono outline-none focus:border-neutral-500 dark:border-neutral-700"
-            />
-            <input
-              placeholder="Remediation"
-              value={remediation}
-              onChange={(e) => setRemediation(e.target.value)}
-              className="rounded border border-neutral-300 bg-transparent px-2 py-1 text-sm outline-none focus:border-neutral-500 dark:border-neutral-700"
-            />
-          </div>
-          <button
-            type="submit"
-            disabled={saving}
-            className="rounded-md bg-foreground px-3 py-1 text-xs font-medium text-background transition hover:opacity-90 disabled:opacity-50"
+      <AnimatePresence initial={false}>
+        {showForm && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            style={{ overflow: "hidden" }}
           >
-            {saving ? "Saving…" : "Save finding"}
-          </button>
-        </form>
-      )}
+            <Paper component="form" onSubmit={handleAdd} sx={{ p: 2, mb: 2 }}>
+              <Stack spacing={1.5}>
+                <Stack direction="row" spacing={1.5}>
+                  <TextField
+                    required
+                    autoFocus
+                    fullWidth
+                    size="small"
+                    label="Title"
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                  />
+                  <TextField
+                    select
+                    size="small"
+                    label="Severity"
+                    value={severity}
+                    onChange={(e) => setSeverity(e.target.value as Severity)}
+                    sx={{ minWidth: 140 }}
+                  >
+                    {SEVERITY_ORDER.map((s) => (
+                      <MenuItem key={s} value={s}>
+                        {s}
+                      </MenuItem>
+                    ))}
+                  </TextField>
+                </Stack>
+                <TextField
+                  fullWidth
+                  multiline
+                  minRows={2}
+                  size="small"
+                  label="Description"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                />
+                <Stack direction="row" spacing={1.5}>
+                  <TextField
+                    fullWidth
+                    size="small"
+                    label="CVSS vector (optional)"
+                    value={cvssVector}
+                    onChange={(e) => setCvssVector(e.target.value)}
+                    slotProps={{ input: { sx: { fontFamily: "var(--font-geist-mono)", fontSize: 13 } } }}
+                  />
+                  <TextField
+                    fullWidth
+                    size="small"
+                    label="Remediation"
+                    value={remediation}
+                    onChange={(e) => setRemediation(e.target.value)}
+                  />
+                </Stack>
+                <Box>
+                  <Button type="submit" size="small" variant="contained" disabled={saving}>
+                    {saving ? "Saving…" : "Save finding"}
+                  </Button>
+                </Box>
+              </Stack>
+            </Paper>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {findings.length === 0 ? (
-        <p className="text-xs text-neutral-500">No findings on this item yet.</p>
+        <Typography variant="body2" color="text.secondary">
+          No findings on this item yet.
+        </Typography>
       ) : (
-        <ul className="space-y-2">
+        <Stack spacing={1}>
           {findings.map((f) => (
-            <li
+            <Accordion
               key={f.id}
-              className="rounded border border-neutral-200 p-2 text-sm transition-colors hover:border-neutral-300 dark:border-neutral-800 dark:hover:border-neutral-700"
+              disableGutters
+              sx={{
+                bgcolor: "rgba(255,255,255,0.02)",
+                border: "1px solid",
+                borderColor: "divider",
+                "&:before": { display: "none" },
+              }}
             >
-              <button
-                type="button"
-                className="flex w-full cursor-pointer items-center justify-between gap-2 text-left"
-                onClick={() => setExpanded(expanded === f.id ? null : f.id)}
-              >
-                <div className="flex min-w-0 items-center gap-2">
+              <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                <Stack direction="row" spacing={1.25} alignItems="center" sx={{ minWidth: 0 }}>
                   <SeverityBadge severity={f.severity} />
-                  <span className="truncate font-medium">{f.title}</span>
+                  <Typography variant="body2" fontWeight={600} noWrap>
+                    {f.title}
+                  </Typography>
                   {f.verified && (
-                    <span className="shrink-0 text-xs text-emerald-600 dark:text-emerald-400">
+                    <Typography variant="caption" sx={{ color: "#22c55e", flexShrink: 0 }}>
                       ✓ verified
-                    </span>
+                    </Typography>
                   )}
-                  <span className="shrink-0 text-xs text-neutral-500">({f.tool})</span>
-                </div>
-                <span
-                  className={`shrink-0 text-neutral-400 transition-transform ${expanded === f.id ? "rotate-180" : ""}`}
-                >
-                  ▾
-                </span>
-              </button>
-              {expanded === f.id && (
-                <div className="mt-2 space-y-2 text-xs text-neutral-600 dark:text-neutral-400">
-                  {f.description && <p>{f.description}</p>}
+                  <Typography variant="caption" color="text.disabled" flexShrink={0}>
+                    ({f.tool})
+                  </Typography>
+                </Stack>
+              </AccordionSummary>
+              <AccordionDetails>
+                <Stack spacing={1.25}>
+                  {f.description && (
+                    <Typography variant="body2" color="text.secondary">
+                      {f.description}
+                    </Typography>
+                  )}
                   {f.evidence && (
-                    <pre className="overflow-x-auto rounded bg-neutral-100 p-2 dark:bg-neutral-900">
+                    <Box
+                      component="pre"
+                      sx={{
+                        m: 0,
+                        p: 1.25,
+                        borderRadius: 1,
+                        bgcolor: "rgba(0,0,0,0.4)",
+                        fontSize: 12,
+                        overflowX: "auto",
+                      }}
+                    >
                       {f.evidence}
-                    </pre>
+                    </Box>
                   )}
                   {f.remediation && (
-                    <p>
-                      <span className="font-medium">Remediation: </span>
+                    <Typography variant="body2" color="text.secondary">
+                      <Box component="span" fontWeight={600} color="text.primary">
+                        Remediation:{" "}
+                      </Box>
                       {f.remediation}
-                    </p>
+                    </Typography>
                   )}
                   {f.cvss_vector && (
-                    <p className="font-mono">
+                    <Typography variant="caption" sx={{ fontFamily: "var(--font-geist-mono)" }}>
                       {f.cvss_vector} ({f.cvss_score})
-                    </p>
+                    </Typography>
                   )}
-                  <div className="flex gap-3">
-                    <button
-                      onClick={() => toggleVerified(f)}
-                      className="text-blue-600 hover:underline dark:text-blue-400"
-                    >
+                  <Stack direction="row" spacing={2}>
+                    <Button size="small" onClick={() => toggleVerified(f)}>
                       {f.verified ? "Unverify" : "Verify"}
-                    </button>
-                    <button
-                      onClick={() => handleDelete(f)}
-                      className="text-red-600 hover:underline dark:text-red-400"
-                    >
+                    </Button>
+                    <Button size="small" color="error" onClick={() => handleDelete(f)}>
                       Delete
-                    </button>
-                  </div>
-                </div>
-              )}
-            </li>
+                    </Button>
+                  </Stack>
+                </Stack>
+              </AccordionDetails>
+            </Accordion>
           ))}
-        </ul>
+        </Stack>
       )}
-    </div>
+    </Box>
   );
 }

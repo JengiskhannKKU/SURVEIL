@@ -1,46 +1,44 @@
+import Chip from "@mui/material/Chip";
 import type { Severity, Status } from "@/lib/types";
+import { SEVERITY_COLOR } from "@/lib/severity";
 
-const STATUS_STYLES: Record<Status, string> = {
-  pending: "bg-neutral-200 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400",
-  running: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
-  done: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300",
-  skipped: "bg-neutral-200 text-neutral-500 dark:bg-neutral-800 dark:text-neutral-500",
-  failed: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300",
-};
-
-const STATUS_ICON: Record<Status, string> = {
-  pending: "○",
-  running: "◎",
-  done: "✓",
-  skipped: "—",
-  failed: "✗",
+const STATUS_META: Record<Status, { icon: string; color: string; bg: string }> = {
+  pending: { icon: "○", color: "rgba(255,255,255,0.5)", bg: "rgba(255,255,255,0.08)" },
+  running: { icon: "◎", color: "#f59e0b", bg: "rgba(245,158,11,0.14)" },
+  done: { icon: "✓", color: "#22c55e", bg: "rgba(34,197,94,0.14)" },
+  skipped: { icon: "—", color: "rgba(255,255,255,0.5)", bg: "rgba(255,255,255,0.08)" },
+  failed: { icon: "✗", color: "#ef4444", bg: "rgba(239,68,68,0.14)" },
 };
 
 export function StatusBadge({ status }: { status: Status }) {
+  const m = STATUS_META[status];
   return (
-    <span
-      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_STYLES[status]}`}
-    >
-      <span>{STATUS_ICON[status]}</span>
-      {status}
-    </span>
+    <Chip
+      size="small"
+      label={`${m.icon} ${status}`}
+      sx={{
+        color: m.color,
+        backgroundColor: m.bg,
+        border: `1px solid ${m.color}33`,
+        fontWeight: 600,
+        textTransform: "capitalize",
+      }}
+    />
   );
 }
 
-const SEVERITY_STYLES: Record<Severity, string> = {
-  critical: "bg-red-600 text-white",
-  high: "bg-orange-500 text-white",
-  medium: "bg-yellow-400 text-black",
-  low: "bg-sky-500 text-white",
-  info: "bg-neutral-400 text-black",
-};
-
 export function SeverityBadge({ severity }: { severity: Severity }) {
+  const color = SEVERITY_COLOR[severity];
   return (
-    <span
-      className={`inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${SEVERITY_STYLES[severity]}`}
-    >
-      {severity}
-    </span>
+    <Chip
+      size="small"
+      label={severity.toUpperCase()}
+      sx={{
+        color: severity === "medium" ? "#111" : "#fff",
+        backgroundColor: color,
+        fontWeight: 700,
+        letterSpacing: 0.3,
+      }}
+    />
   );
 }

@@ -1,6 +1,17 @@
 "use client";
 
 import { useState } from "react";
+import Dialog from "@mui/material/Dialog";
+import DialogTitle from "@mui/material/DialogTitle";
+import DialogContent from "@mui/material/DialogContent";
+import DialogActions from "@mui/material/DialogActions";
+import TextField from "@mui/material/TextField";
+import Autocomplete from "@mui/material/Autocomplete";
+import Stack from "@mui/material/Stack";
+import Button from "@mui/material/Button";
+import Chip from "@mui/material/Chip";
+import Typography from "@mui/material/Typography";
+import Box from "@mui/material/Box";
 import type { ChecklistItem, ToolInfo } from "@/lib/types";
 
 export interface ChecklistItemFormValues {
@@ -71,125 +82,85 @@ export function ChecklistItemDialog({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-      onClick={(e) => e.target === e.currentTarget && onClose()}
-    >
-      <form
-        onSubmit={handleSubmit}
-        className="flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-lg border border-neutral-200 bg-background shadow-xl dark:border-neutral-800"
-      >
-        <div className="flex items-center justify-between border-b border-neutral-200 px-5 py-3 dark:border-neutral-800">
-          <h2 className="font-semibold">
-            {mode === "create" ? "Add checklist item" : `Edit ${item?.id}`}
-          </h2>
-          <button type="button" onClick={onClose} className="text-neutral-500 hover:text-foreground">
-            ✕
-          </button>
-        </div>
-
-        <div className="flex-1 space-y-3 overflow-y-auto px-5 py-4">
-          <label className="flex flex-col gap-1 text-sm">
-            Name *
-            <input
+    <Dialog open onClose={onClose} fullWidth maxWidth="sm">
+      <form onSubmit={handleSubmit}>
+        <DialogTitle>{mode === "create" ? "Add checklist item" : `Edit ${item?.id}`}</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2.25} mt={0.5}>
+            <TextField
               required
               autoFocus
+              fullWidth
+              label="Name"
               value={values.name}
               onChange={(e) => setValues((v) => ({ ...v, name: e.target.value }))}
-              className="rounded border border-neutral-300 bg-transparent px-2 py-1.5 outline-none focus:border-neutral-500 dark:border-neutral-700"
             />
-          </label>
-
-          <label className="flex flex-col gap-1 text-sm">
-            Description
-            <textarea
+            <TextField
+              fullWidth
+              multiline
+              minRows={2}
+              label="Description"
               value={values.description}
               onChange={(e) => setValues((v) => ({ ...v, description: e.target.value }))}
-              rows={3}
-              className="rounded border border-neutral-300 bg-transparent px-2 py-1.5 outline-none focus:border-neutral-500 dark:border-neutral-700"
             />
-          </label>
-
-          <div className="grid gap-3 sm:grid-cols-2">
-            <label className="flex flex-col gap-1 text-sm">
-              Category *
-              <input
-                required
-                list="checklist-categories"
-                value={values.category}
-                onChange={(e) => setValues((v) => ({ ...v, category: e.target.value }))}
-                className="rounded border border-neutral-300 bg-transparent px-2 py-1.5 outline-none focus:border-neutral-500 dark:border-neutral-700"
+            <Stack direction="row" spacing={2}>
+              <Autocomplete
+                freeSolo
+                fullWidth
+                options={categories}
+                inputValue={values.category}
+                onInputChange={(_, v) => setValues((prev) => ({ ...prev, category: v }))}
+                renderInput={(params) => <TextField {...params} required label="Category" />}
               />
-              <datalist id="checklist-categories">
-                {categories.map((c) => (
-                  <option key={c} value={c} />
-                ))}
-              </datalist>
-            </label>
-
-            <label className="flex flex-col gap-1 text-sm">
-              Category code
-              <input
-                value={values.category_code}
+              <TextField
+                fullWidth
+                label="Category code"
                 placeholder="auto"
+                value={values.category_code}
                 onChange={(e) => setValues((v) => ({ ...v, category_code: e.target.value }))}
-                className="rounded border border-neutral-300 bg-transparent px-2 py-1.5 outline-none focus:border-neutral-500 dark:border-neutral-700"
               />
-            </label>
-          </div>
+            </Stack>
 
-          <div className="text-sm">
-            <span className="mb-1 block">Tools</span>
-            <div className="flex flex-wrap gap-2">
-              {allTools.map((t) => (
-                <label
-                  key={t.name}
-                  className={`cursor-pointer rounded-full border px-2.5 py-1 text-xs transition-colors ${
-                    values.tools.includes(t.name)
-                      ? "border-neutral-800 bg-neutral-800 text-white dark:border-neutral-200 dark:bg-neutral-200 dark:text-neutral-900"
-                      : "border-neutral-300 hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-900"
-                  }`}
-                >
-                  <input
-                    type="checkbox"
-                    checked={values.tools.includes(t.name)}
-                    onChange={() => toggleTool(t.name)}
-                    className="hidden"
-                  />
-                  {t.name}
-                </label>
-              ))}
-            </div>
-          </div>
+            <Box>
+              <Typography variant="body2" mb={1} color="text.secondary">
+                Tools
+              </Typography>
+              <Stack direction="row" flexWrap="wrap" useFlexGap gap={1}>
+                {allTools.map((t) => {
+                  const selected = values.tools.includes(t.name);
+                  return (
+                    <Chip
+                      key={t.name}
+                      label={t.name}
+                      clickable
+                      onClick={() => toggleTool(t.name)}
+                      color={selected ? "primary" : "default"}
+                      variant={selected ? "filled" : "outlined"}
+                      size="small"
+                    />
+                  );
+                })}
+              </Stack>
+            </Box>
 
-          <label className="flex flex-col gap-1 text-sm">
-            References (one URL per line)
-            <textarea
+            <TextField
+              fullWidth
+              multiline
+              minRows={2}
+              label="References (one URL per line)"
               value={referencesText}
               onChange={(e) => setReferencesText(e.target.value)}
-              rows={2}
-              className="rounded border border-neutral-300 bg-transparent px-2 py-1.5 font-mono text-xs outline-none focus:border-neutral-500 dark:border-neutral-700"
+              slotProps={{ input: { sx: { fontFamily: "var(--font-geist-mono)", fontSize: 13 } } }}
             />
-          </label>
-        </div>
-
-        <div className="flex justify-end gap-2 border-t border-neutral-200 px-5 py-3 dark:border-neutral-800">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-md border border-neutral-300 px-4 py-1.5 text-sm transition hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-900"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={saving}
-            className="rounded-md bg-foreground px-4 py-1.5 text-sm font-medium text-background transition hover:opacity-90 disabled:opacity-50"
-          >
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2.5 }}>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button type="submit" variant="contained" disabled={saving}>
             {saving ? "Saving…" : mode === "create" ? "Add item" : "Save changes"}
-          </button>
-        </div>
+          </Button>
+        </DialogActions>
       </form>
-    </div>
+    </Dialog>
   );
 }

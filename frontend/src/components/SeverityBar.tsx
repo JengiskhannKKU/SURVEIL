@@ -1,3 +1,6 @@
+import Box from "@mui/material/Box";
+import Typography from "@mui/material/Typography";
+import { motion } from "framer-motion";
 import { SEVERITY_COLOR, SEVERITY_ORDER } from "@/lib/severity";
 import type { Severity } from "@/lib/types";
 
@@ -6,52 +9,93 @@ export function SeverityBar({ counts }: { counts: Record<Severity, number> }) {
 
   if (total === 0) {
     return (
-      <div className="flex items-center gap-2 text-xs text-neutral-500">
-        <div className="h-2 w-40 rounded-full bg-neutral-200 dark:bg-neutral-800" />
-        No findings yet
-      </div>
+      <Box display="flex" alignItems="center" gap={1.5}>
+        <Box
+          sx={{
+            height: 8,
+            width: 160,
+            borderRadius: 4,
+            backgroundColor: "rgba(255,255,255,0.08)",
+          }}
+        />
+        <Typography variant="caption" color="text.secondary">
+          No findings yet
+        </Typography>
+      </Box>
     );
   }
 
   return (
-    <div className="flex items-center gap-3">
-      <div className="flex h-2 w-40 overflow-hidden rounded-full bg-neutral-200 dark:bg-neutral-800">
+    <Box display="flex" alignItems="center" gap={1.5} flexWrap="wrap">
+      <Box
+        sx={{
+          display: "flex",
+          height: 8,
+          width: 160,
+          borderRadius: 4,
+          overflow: "hidden",
+          backgroundColor: "rgba(255,255,255,0.08)",
+        }}
+      >
         {SEVERITY_ORDER.filter((s) => counts[s] > 0).map((s) => (
-          <div
+          <motion.div
             key={s}
-            style={{ width: `${(counts[s] / total) * 100}%`, backgroundColor: SEVERITY_COLOR[s] }}
             title={`${s}: ${counts[s]}`}
+            initial={{ width: 0 }}
+            animate={{ width: `${(counts[s] / total) * 100}%` }}
+            transition={{ duration: 0.5, ease: "easeOut" }}
+            style={{ backgroundColor: SEVERITY_COLOR[s] }}
           />
         ))}
-      </div>
-      <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs">
+      </Box>
+      <Box display="flex" flexWrap="wrap" gap={1.5}>
         {SEVERITY_ORDER.filter((s) => counts[s] > 0).map((s) => (
-          <span key={s} className="flex items-center gap-1 text-neutral-600 dark:text-neutral-400">
-            <span
-              className="inline-block h-2 w-2 rounded-full"
-              style={{ backgroundColor: SEVERITY_COLOR[s] }}
+          <Box key={s} display="flex" alignItems="center" gap={0.5}>
+            <Box
+              sx={{
+                width: 8,
+                height: 8,
+                borderRadius: "50%",
+                backgroundColor: SEVERITY_COLOR[s],
+              }}
             />
-            {counts[s]} {s}
-          </span>
+            <Typography variant="caption" color="text.secondary">
+              {counts[s]} {s}
+            </Typography>
+          </Box>
         ))}
-      </div>
-    </div>
+      </Box>
+    </Box>
   );
 }
 
 export function ProgressBar({ done, total }: { done: number; total: number }) {
   const pct = total === 0 ? 0 : Math.round((done / total) * 100);
   return (
-    <div className="flex items-center gap-2">
-      <div className="h-2 w-40 overflow-hidden rounded-full bg-neutral-200 dark:bg-neutral-800">
-        <div
-          className="h-full rounded-full bg-emerald-500 transition-[width] duration-300"
-          style={{ width: `${pct}%` }}
+    <Box display="flex" alignItems="center" gap={1.5}>
+      <Box
+        sx={{
+          height: 8,
+          width: 160,
+          borderRadius: 4,
+          overflow: "hidden",
+          backgroundColor: "rgba(255,255,255,0.08)",
+        }}
+      >
+        <motion.div
+          initial={{ width: 0 }}
+          animate={{ width: `${pct}%` }}
+          transition={{ duration: 0.5, ease: "easeOut" }}
+          style={{
+            height: "100%",
+            borderRadius: 4,
+            background: "linear-gradient(90deg, #3b82f6, #22c55e)",
+          }}
         />
-      </div>
-      <span className="text-xs text-neutral-500">
+      </Box>
+      <Typography variant="caption" color="text.secondary" whiteSpace="nowrap">
         {done}/{total} ({pct}%)
-      </span>
-    </div>
+      </Typography>
+    </Box>
   );
 }

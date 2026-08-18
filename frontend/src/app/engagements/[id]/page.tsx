@@ -2,6 +2,14 @@
 
 import { use, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import Box from "@mui/material/Box";
+import Stack from "@mui/material/Stack";
+import Typography from "@mui/material/Typography";
+import Button from "@mui/material/Button";
+import Skeleton from "@mui/material/Skeleton";
+import DescriptionOutlinedIcon from "@mui/icons-material/DescriptionOutlined";
+import ArticleOutlinedIcon from "@mui/icons-material/ArticleOutlined";
+import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import { api } from "@/lib/api";
 import { Checklist } from "@/components/Checklist";
 import { ItemDetail } from "@/components/ItemDetail";
@@ -12,11 +20,11 @@ import type { ChecklistItem, Engagement, ToolInfo } from "@/lib/types";
 
 function HeaderSkeleton() {
   return (
-    <header className="border-b border-neutral-200 px-6 py-3 dark:border-neutral-800">
-      <div className="skeleton mb-2 h-3 w-24 rounded bg-neutral-200 dark:bg-neutral-800" />
-      <div className="skeleton mb-2 h-5 w-56 rounded bg-neutral-200 dark:bg-neutral-800" />
-      <div className="skeleton h-3 w-72 rounded bg-neutral-200 dark:bg-neutral-800" />
-    </header>
+    <Box sx={{ borderBottom: "1px solid", borderColor: "divider", px: 3, py: 2 }}>
+      <Skeleton variant="text" width={100} height={16} sx={{ mb: 1 }} />
+      <Skeleton variant="text" width={220} height={28} sx={{ mb: 1 }} />
+      <Skeleton variant="text" width={280} height={16} />
+    </Box>
   );
 }
 
@@ -63,19 +71,14 @@ export default function EngagementPage({
     setSelectedId(created.id);
   }, []);
 
-  const removeItem = useCallback(
-    (itemId: string) => {
-      setEngagement((prev) => {
-        if (!prev) return prev;
-        const remaining = prev.checklist_items.filter((i) => i.id !== itemId);
-        setSelectedId((current) =>
-          current === itemId ? (remaining[0]?.id ?? null) : current
-        );
-        return { ...prev, checklist_items: remaining };
-      });
-    },
-    []
-  );
+  const removeItem = useCallback((itemId: string) => {
+    setEngagement((prev) => {
+      if (!prev) return prev;
+      const remaining = prev.checklist_items.filter((i) => i.id !== itemId);
+      setSelectedId((current) => (current === itemId ? (remaining[0]?.id ?? null) : current));
+      return { ...prev, checklist_items: remaining };
+    });
+  }, []);
 
   const jumpToNextPending = useCallback(() => {
     setEngagement((prev) => {
@@ -113,58 +116,86 @@ export default function EngagementPage({
 
   if (error) {
     return (
-      <div className="p-8">
-        <p className="mb-2 text-sm text-red-600">{error}</p>
-        <Link href="/" className="text-sm text-blue-600 hover:underline dark:text-blue-400">
-          ← Back to engagements
-        </Link>
-      </div>
+      <Box p={4}>
+        <Typography color="error" mb={1}>
+          {error}
+        </Typography>
+        <Button component={Link} href="/" startIcon={<ArrowBackIcon />} size="small">
+          Back to engagements
+        </Button>
+      </Box>
     );
   }
 
   if (!engagement) {
     return (
-      <div className="flex flex-1 flex-col">
+      <Box display="flex" flexDirection="column" flex={1}>
         <HeaderSkeleton />
-        <div className="flex flex-1 items-center justify-center text-sm text-neutral-500">
-          Loading engagement…
-        </div>
-      </div>
+        <Box flex={1} display="flex" alignItems="center" justifyContent="center">
+          <Typography color="text.secondary">Loading engagement…</Typography>
+        </Box>
+      </Box>
     );
   }
 
   return (
-    <div className="flex flex-1 flex-col">
-      <header className="flex flex-wrap items-start justify-between gap-3 border-b border-neutral-200 px-6 py-3 dark:border-neutral-800">
-        <div>
-          <Link href="/" className="text-xs text-neutral-500 hover:underline">
-            ← All engagements
-          </Link>
-          <h1 className="text-lg font-semibold">{engagement.name}</h1>
-          <p className="mb-2 text-xs text-neutral-500">{engagement.target}</p>
-          <div className="flex flex-wrap items-center gap-4">
-            <ProgressBar done={done} total={engagement.checklist_items.length} />
-            <SeverityBar counts={sev} />
-          </div>
-        </div>
-        <div className="flex gap-2">
-          <a
-            href={api.reportUrl(engagement.id, "md")}
-            className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm transition hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-900"
-          >
-            Markdown report
-          </a>
-          <a
-            href={api.reportUrl(engagement.id, "docx")}
-            className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm transition hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-900"
-          >
-            Word report
-          </a>
-        </div>
-      </header>
+    <Box display="flex" flexDirection="column" flex={1} height="100vh">
+      <Box sx={{ borderBottom: "1px solid", borderColor: "divider", px: 3, py: 2 }}>
+        <Stack direction="row" justifyContent="space-between" alignItems="flex-start" flexWrap="wrap" gap={2}>
+          <Box>
+            <Typography
+              component={Link}
+              href="/"
+              variant="caption"
+              sx={{ color: "text.secondary", textDecoration: "none", "&:hover": { color: "text.primary" } }}
+            >
+              ← All engagements
+            </Typography>
+            <Typography variant="h6" fontWeight={700}>
+              {engagement.name}
+            </Typography>
+            <Typography variant="caption" color="text.secondary" display="block" mb={1}>
+              {engagement.target}
+            </Typography>
+            <Stack direction="row" spacing={3} flexWrap="wrap" useFlexGap>
+              <ProgressBar done={done} total={engagement.checklist_items.length} />
+              <SeverityBar counts={sev} />
+            </Stack>
+          </Box>
+          <Stack direction="row" spacing={1}>
+            <Button
+              variant="outlined"
+              size="small"
+              startIcon={<ArticleOutlinedIcon />}
+              href={api.reportUrl(engagement.id, "md")}
+            >
+              Markdown
+            </Button>
+            <Button
+              variant="outlined"
+              size="small"
+              startIcon={<DescriptionOutlinedIcon />}
+              href={api.reportUrl(engagement.id, "docx")}
+            >
+              Word
+            </Button>
+          </Stack>
+        </Stack>
+      </Box>
 
-      <div className="flex flex-1 overflow-hidden">
-        <aside className="flex w-72 shrink-0 flex-col border-r border-neutral-200 px-3 py-4 dark:border-neutral-800">
+      <Box display="flex" flex={1} sx={{ overflow: "hidden" }}>
+        <Box
+          sx={{
+            width: 288,
+            flexShrink: 0,
+            display: "flex",
+            flexDirection: "column",
+            borderRight: "1px solid",
+            borderColor: "divider",
+            px: 1.5,
+            py: 2,
+          }}
+        >
           <Checklist
             engagementId={engagement.id}
             items={engagement.checklist_items}
@@ -174,7 +205,7 @@ export default function EngagementPage({
             allTools={tools}
             onCreate={addItem}
           />
-        </aside>
+        </Box>
 
         {selected ? (
           <ItemDetail
@@ -191,13 +222,15 @@ export default function EngagementPage({
             }}
           />
         ) : (
-          <div className="flex-1 p-6 text-sm text-neutral-500">
-            {engagement.checklist_items.length === 0
-              ? "No checklist items yet — add one from the sidebar."
-              : "Select a checklist item."}
-          </div>
+          <Box flex={1} p={4}>
+            <Typography color="text.secondary">
+              {engagement.checklist_items.length === 0
+                ? "No checklist items yet — add one from the sidebar."
+                : "Select a checklist item."}
+            </Typography>
+          </Box>
         )}
-      </div>
-    </div>
+      </Box>
+    </Box>
   );
 }

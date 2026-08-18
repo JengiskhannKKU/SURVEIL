@@ -1,6 +1,9 @@
 "use client";
 
 import { createContext, useCallback, useContext, useRef, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
+import Alert from "@mui/material/Alert";
+import Box from "@mui/material/Box";
 
 type ToastKind = "success" | "error" | "info";
 interface Toast {
@@ -26,22 +29,40 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   return (
     <ToastContext.Provider value={push}>
       {children}
-      <div className="pointer-events-none fixed bottom-4 right-4 z-[100] flex flex-col gap-2">
-        {toasts.map((t) => (
-          <div
-            key={t.id}
-            className={`pointer-events-auto animate-[toast-in_0.15s_ease-out] rounded-md px-3 py-2 text-sm shadow-lg ${
-              t.kind === "success"
-                ? "bg-emerald-600 text-white"
-                : t.kind === "error"
-                  ? "bg-red-600 text-white"
-                  : "bg-neutral-800 text-white dark:bg-neutral-200 dark:text-neutral-900"
-            }`}
-          >
-            {t.message}
-          </div>
-        ))}
-      </div>
+      <Box
+        sx={{
+          position: "fixed",
+          bottom: 16,
+          right: 16,
+          zIndex: (t) => t.zIndex.snackbar,
+          display: "flex",
+          flexDirection: "column",
+          gap: 1,
+          pointerEvents: "none",
+        }}
+      >
+        <AnimatePresence>
+          {toasts.map((t) => (
+            <motion.div
+              key={t.id}
+              layout
+              initial={{ opacity: 0, y: 12, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, x: 40, scale: 0.95 }}
+              transition={{ duration: 0.18, ease: "easeOut" }}
+              style={{ pointerEvents: "auto" }}
+            >
+              <Alert
+                severity={t.kind}
+                variant="filled"
+                sx={{ boxShadow: 4, minWidth: 220 }}
+              >
+                {t.message}
+              </Alert>
+            </motion.div>
+          ))}
+        </AnimatePresence>
+      </Box>
     </ToastContext.Provider>
   );
 }
