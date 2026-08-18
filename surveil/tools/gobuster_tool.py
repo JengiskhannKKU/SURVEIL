@@ -1,7 +1,8 @@
 """gobuster tool wrapper — directory brute-forcing."""
 from __future__ import annotations
 
-from .base import BaseTool
+from ..wordlists import default_wordlist
+from .base import BaseTool, base_url
 
 
 class GobusterTool(BaseTool):
@@ -20,8 +21,8 @@ class GobusterTool(BaseTool):
     def build_command(self, fast: bool = False) -> list[str]:
         return [
             "gobuster", "dir",
-            "-u", f"https://{self.target}",
-            "-w", "/usr/share/wordlists/dirb/common.txt",
+            "-u", base_url(self.target),
+            "-w", default_wordlist(),
             "-t", "100" if fast else "50",
             "-q", "--no-error",
         ]

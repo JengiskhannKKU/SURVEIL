@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -12,6 +13,28 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
+
+_IPV4_RE = re.compile(r"^\d{1,3}(\.\d{1,3}){3}$")
+
+
+def base_url(target: str) -> str:
+    """Turn a bare target into a URL, respecting an explicit scheme.
+
+    - If *target* already has a scheme (e.g. the tester typed
+      "http://192.168.2.11"), it's used as-is.
+    - A bare IPv4 target defaults to http:// — internal/lab targets are
+      commonly plain HTTP with no TLS configured, and hardcoding https://
+      here (the previous behavior in several wrappers) meant every request
+      failed to connect and the tool "succeeded" with silently zero
+      results, indistinguishable from a real empty scan.
+    - A bare hostname defaults to https://, still the more common case for
+      a real domain.
+    """
+    if "://" in target:
+        return target
+    host = target.split(":")[0]
+    scheme = "http" if _IPV4_RE.match(host) else "https"
+    return f"{scheme}://{target}"
 
 
 @dataclass

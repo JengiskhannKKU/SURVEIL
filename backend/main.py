@@ -4,7 +4,7 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .routers import engagements, findings, items, reports, tools
+from .routers import config, engagements, findings, items, reports, tools
 from .ws import router as ws_router
 
 app = FastAPI(title="surveil web", version="0.1.0")
@@ -17,6 +17,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(config.router)
 app.include_router(engagements.router)
 app.include_router(items.router)
 app.include_router(findings.router)
