@@ -9,6 +9,10 @@ class NmapTool(BaseTool):
     binary = "nmap"
     description = "Port-scan common web ports and fingerprint service versions/scripts."
     example = "nmap -sV -sC -p 80,443,8080,8443,8000,8888,3000 --open -T4 example.com"
+    install_hints = {
+        "brew": "brew install nmap",
+        "apt": "sudo apt install -y nmap",
+    }
 
     def build_command(self, fast: bool = False) -> list[str]:
         if fast:

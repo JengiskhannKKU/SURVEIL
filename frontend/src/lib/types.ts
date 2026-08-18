@@ -66,6 +66,8 @@ export interface ToolInfo {
   description: string;
   example: string;
   uses_wordlist: boolean;
+  available: boolean;
+  install_hints: Record<string, string>;
 }
 
 export interface WordlistInfo {

@@ -9,6 +9,10 @@ class NiktoTool(BaseTool):
     binary = "nikto"
     description = "Scan the web server for known vulnerabilities and misconfigurations."
     example = "nikto -h https://example.com -Tuning 1234567890 -nointeractive -Display 1"
+    install_hints = {
+        "brew": "brew install nikto",
+        "apt": "sudo apt install -y nikto",
+    }
 
     def build_command(self, fast: bool = False) -> list[str]:
         cmd = [

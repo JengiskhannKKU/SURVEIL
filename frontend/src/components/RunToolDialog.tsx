@@ -22,6 +22,7 @@ import { motion } from "framer-motion";
 import { api, WS_BASE } from "@/lib/api";
 import { useToast } from "@/lib/toast";
 import { HighlightedLine } from "@/components/HighlightedOutput";
+import { InstallHints } from "@/components/InstallHints";
 import type { ChecklistItem, ToolInfo, WordlistInfo, WsMessage } from "@/lib/types";
 
 export function RunToolDialog({
@@ -178,6 +179,11 @@ export function RunToolDialog({
             {availableTools.map((t) => (
               <MenuItem key={t.name} value={t.name}>
                 {t.name}
+                {!t.available && (
+                  <Typography component="span" variant="caption" color="text.disabled" ml={0.75}>
+                    (not installed)
+                  </Typography>
+                )}
               </MenuItem>
             ))}
           </TextField>
@@ -214,13 +220,18 @@ export function RunToolDialog({
         </Stack>
 
         {tool && (
-          <Alert severity="info" variant="outlined" sx={{ mb: 2 }}>
-            {tool.description}
-            <br />
-            <Typography component="span" sx={{ fontFamily: "var(--font-geist-mono)", fontSize: 12 }}>
-              {tool.example}
-            </Typography>
-          </Alert>
+          <Stack spacing={1.5} mb={2}>
+            <Alert severity="info" variant="outlined">
+              {tool.description}
+              <br />
+              <Typography component="span" sx={{ fontFamily: "var(--font-geist-mono)", fontSize: 12 }}>
+                {tool.example}
+              </Typography>
+            </Alert>
+            {!tool.available && (
+              <InstallHints toolName={tool.name} hints={tool.install_hints} />
+            )}
+          </Stack>
         )}
 
         <Typography variant="body2" mb={0.5}>

@@ -10,6 +10,11 @@ class GobusterTool(BaseTool):
     description = "Brute-force directories using a wordlist (similar to ffuf)."
     uses_wordlist = True
     example = "gobuster dir -u https://example.com -w /usr/share/wordlists/dirb/common.txt -t 50 -q --no-error"
+    install_hints = {
+        "brew": "brew install gobuster",
+        "apt": "sudo apt install -y gobuster",
+        "go": "go install github.com/OJ/gobuster/v3@latest",
+    }
 
     def build_command(self, fast: bool = False) -> list[str]:
         return [
