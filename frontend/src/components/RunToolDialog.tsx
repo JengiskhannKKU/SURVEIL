@@ -10,7 +10,6 @@ import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import TextField from "@mui/material/TextField";
 import MenuItem from "@mui/material/MenuItem";
-import Autocomplete from "@mui/material/Autocomplete";
 import FormControlLabel from "@mui/material/FormControlLabel";
 import Switch from "@mui/material/Switch";
 import Typography from "@mui/material/Typography";
@@ -18,14 +17,16 @@ import Alert from "@mui/material/Alert";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import CheckIcon from "@mui/icons-material/Check";
 import RestartAltIcon from "@mui/icons-material/RestartAlt";
+import ListAltIcon from "@mui/icons-material/ListAlt";
 import IconButton from "@mui/material/IconButton";
 import { motion } from "framer-motion";
 import { api, WS_BASE } from "@/lib/api";
 import { useToast } from "@/lib/toast";
 import { HighlightedLine } from "@/components/HighlightedOutput";
 import { InstallHints } from "@/components/InstallHints";
+import { WordlistPickerDialog } from "@/components/WordlistPickerDialog";
 import { isIpAddress } from "@/lib/target";
-import type { ChecklistItem, ToolInfo, WordlistInfo, WsMessage } from "@/lib/types";
+import type { ChecklistItem, ToolInfo, WsMessage } from "@/lib/types";
 
 export function RunToolDialog({
   engagementId,
@@ -52,8 +53,8 @@ export function RunToolDialog({
   const [mode, setMode] = useState("full");
   const [command, setCommand] = useState("");
   const [defaultCommand, setDefaultCommand] = useState("");
-  const [wordlists, setWordlists] = useState<WordlistInfo[]>([]);
   const [wordlistPath, setWordlistPath] = useState("");
+  const [wordlistPickerOpen, setWordlistPickerOpen] = useState(false);
   const [recommendedCategoryLabel, setRecommendedCategoryLabel] = useState<string | null>(null);
   const [lines, setLines] = useState<string[]>([]);
   const [running, setRunning] = useState(false);
@@ -65,10 +66,7 @@ export function RunToolDialog({
 
   const tool = availableTools.find((t) => t.name === toolName);
   const hasModes = Object.keys(tool?.modes ?? {}).length > 0;
-  const wordlistOptions = useMemo(
-    () => [{ label: "tool default", path: "" }, ...wordlists],
-    [wordlists]
-  );
+  const wordlistName = wordlistPath ? wordlistPath.split("/").pop() : "tool default";
 
   // Switching tools resets the mode to "full" so a stale mode key from a
   // previous tool (e.g. nmap's "udp") never leaks into one without it.
@@ -88,9 +86,6 @@ export function RunToolDialog({
         setRecommendedCategoryLabel(res.recommended_category_label);
       })
       .catch(() => toast.error("Could not reach the backend to preview the command."));
-    if (tool?.uses_wordlist) {
-      api.listWordlists().catch(() => []).then(setWordlists);
-    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [toolName, fast, hasModes, mode, target]);
 
@@ -104,10 +99,14 @@ export function RunToolDialog({
 
   function applyWordlist(path: string) {
     setWordlistPath(path);
-    if (!path) return;
+    // Empty path ("use tool default") reverts to whatever wordlist the
+    // recommendation/backend preview already put in defaultCommand, rather
+    // than leaving the previously-picked -w value in place.
+    const target = path || defaultCommand.match(/-w\s+(\S+)/)?.[1];
+    if (!target) return;
     setCommand((prev) => {
-      if (/-w\s+\S+/.test(prev)) return prev.replace(/-w\s+\S+/, `-w ${path}`);
-      return `${prev} -w ${path}`;
+      if (/-w\s+\S+/.test(prev)) return prev.replace(/-w\s+\S+/, `-w ${target}`);
+      return `${prev} -w ${target}`;
     });
   }
 
@@ -244,22 +243,23 @@ export function RunToolDialog({
           )}
 
           {tool?.uses_wordlist && (
-            <Autocomplete
+            <Button
+              variant="outlined"
               size="small"
               disabled={running}
-              options={wordlistOptions}
-              getOptionLabel={(o) => o.label}
-              isOptionEqualToValue={(a, b) => a.path === b.path}
-              value={wordlistOptions.find((o) => o.path === wordlistPath) ?? wordlistOptions[0]}
-              onChange={(_, val) => applyWordlist(val?.path ?? "")}
-              sx={{ minWidth: 260 }}
-              renderInput={(params) => <TextField {...params} label="Wordlist" />}
-              renderOption={(props, option) => (
-                <MenuItem {...props} key={option.path} sx={{ fontFamily: option.path ? "var(--font-geist-mono)" : undefined, fontSize: 13 }}>
-                  {option.label}
-                </MenuItem>
-              )}
-            />
+              startIcon={<ListAltIcon fontSize="small" />}
+              onClick={() => setWordlistPickerOpen(true)}
+              sx={{
+                textTransform: "none",
+                fontFamily: "var(--font-geist-mono)",
+                fontSize: 13,
+                maxWidth: 280,
+              }}
+            >
+              <Box component="span" sx={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                Wordlist: {wordlistName}
+              </Box>
+            </Button>
           )}
         </Stack>
 
@@ -370,6 +370,18 @@ export function RunToolDialog({
       <DialogActions sx={{ px: 3, pb: 2.5 }}>
         <Button onClick={onClose}>Close</Button>
       </DialogActions>
+
+      {wordlistPickerOpen && (
+        <WordlistPickerDialog
+          itemId={item.id}
+          currentPath={wordlistPath}
+          onClose={() => setWordlistPickerOpen(false)}
+          onSelect={(path) => {
+            applyWordlist(path);
+            setWordlistPickerOpen(false);
+          }}
+        />
+      )}
     </Dialog>
   );
 }

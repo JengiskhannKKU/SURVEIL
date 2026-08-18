@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException
 
 from surveil.checklist import CATEGORY_LABELS, WORDLIST_CATEGORY
 from surveil.tools import TOOL_REGISTRY
-from surveil.wordlists import discover_wordlists, recommend_wordlist
+from surveil.wordlists import discover_wordlists, discover_wordlists_grouped, recommend_wordlist
 
 router = APIRouter(prefix="/api/tools", tags=["tools"])
 
@@ -79,3 +79,20 @@ def preview_command(
 @router.get("/wordlists")
 def list_wordlists() -> list[dict]:
     return [{"label": label, "path": path} for label, path in discover_wordlists()]
+
+
+@router.get("/wordlists/grouped")
+def list_wordlists_grouped(item_id: Optional[str] = None) -> dict:
+    """Every wordlist found on this host, grouped by category (SecLists'
+    own Discovery/Fuzzing/Passwords/... folders, Kali's sibling dirb/
+    dirbuster/wfuzz/... dirs, etc.) — powers the "Select wordlist" dialog's
+    card layout. If *item_id* has a recommended category (see
+    checklist.WORDLIST_CATEGORY), the matching group(s) sort first and are
+    flagged `recommended: true`.
+    """
+    category = WORDLIST_CATEGORY.get(item_id or "")
+    return {
+        "recommended_category": category,
+        "recommended_category_label": CATEGORY_LABELS.get(category) if category else None,
+        "groups": discover_wordlists_grouped(category),
+    }

@@ -6,6 +6,111 @@ was verified, and what the next agent should pick up.
 
 ---
 
+## 2026-08-19 (6) — Wordlist picker dialog + full Kali/SecLists discovery
+
+**Done (user report: "the wordlists still not all wordlists ... implement
+the select wordlists button that show dialog popup can select card
+wordlists, each category and recommendation by follow path default by
+Kali linux wordlists and seclist" — pasted their real Kali
+`/usr/share/wordlists` and `seclists/` layout):**
+- `surveil/wordlists.py` discovery rewrite:
+  - `_all_candidates()` walks every search root once (was 3x — one rglob
+    per extension) matching both `*.txt` and `*.lst` (Kali's own
+    `nmap.lst`/`john.lst` use `.lst`, previously invisible entirely).
+  - `discover_wordlists()`'s old cap was 150 with a single flat priority
+    sort — good for the "which wordlist should ffuf use by default"
+    question, bad for "show me everything" since anything outside the
+    directory-brute-force keywords could be squeezed out. Left this
+    function for `default_wordlist()`'s use (raised limit to 500) but
+    added a separate `discover_wordlists_grouped()` for browsing that
+    is **not** capped or keyword-filtered — every password list, username
+    list, fuzzing payload, etc. is reachable.
+  - `_category_for()` groups the way the user's own `ls` output reads: a
+    SecLists checkout (`.../seclists/<Discovery|Fuzzing|Passwords|
+    Pattern-Matching|Payloads|Usernames|Web-Shells|Miscellaneous>`) is
+    broken out by its own top-level folder; sibling Kali packages (dirb,
+    dirbuster, wfuzz, legion, fern-wifi, metasploit, ...) group by their
+    own directory name; the bundled bare files (rockyou.txt,
+    fasttrack.txt, ...) land in "Other". surveil's own bundled wordlists
+    (added last session) always appear too, under "Bundled (built-in)"
+    — so the dialog is never empty on a machine with no system wordlists.
+  - A group is flagged `recommended` if its category name matches the
+    current test's category keywords, OR — since a category name alone
+    like "SecLists/Discovery" is too broad to contain "admin" — if any
+    wordlist *inside* it does (e.g. `.../Discovery/Web-Content/
+    admin-panels.txt` correctly flags `SecLists/Discovery` as
+    recommended for the admin-interfaces test).
+- `backend/routers/tools.py`: new `GET /api/tools/wordlists/grouped
+  ?item_id=...` returning `{recommended_category, recommended_category_
+  label, groups: [{category, recommended, wordlists}]}`.
+- New `frontend/src/components/WordlistPickerDialog.tsx`: a dialog with a
+  search box and each category rendered as a labeled section of clickable
+  cards (filename, full path, a ★ + green label on the recommended
+  group(s)), plus a "Use tool default" card. Replaces the old
+  `Autocomplete` dropdown in `RunToolDialog.tsx`, which is now a "Select
+  wordlist" button (`Wordlist: <filename>`) that opens it.
+- `applyWordlist()` in `RunToolDialog.tsx`: picking "Use tool default"
+  now correctly reverts the command's `-w` flag to whatever path was in
+  the original backend-recommended preview (`defaultCommand`), instead of
+  leaving a previously-picked path stuck in the command with no way back
+  short of the full "reset command" button.
+
+**Verified:**
+- Built a fake Kali-shaped tree at `/tmp/fake_wordlists`
+  (`dirb/`, `dirbuster/`, `wfuzz/`, `seclists/Discovery/Web-Content/`,
+  `seclists/Passwords/`, `seclists/Fuzzing/`, `seclists/Usernames/`,
+  plus root-level `rockyou.txt`/`nmap.lst`) matching exactly the
+  structure the user pasted, pointed `SURVEIL_WORDLIST_DIR` at it via the
+  config endpoint, and curled `/api/tools/wordlists/grouped` — confirmed
+  9 groups exactly matching that layout (`SecLists/Discovery`,
+  `SecLists/Fuzzing`, `SecLists/Passwords`, `SecLists/Usernames`, `dirb`,
+  `dirbuster`, `wfuzz`, `Other`, `Bundled (built-in)`), with
+  `SecLists/Discovery` and `Bundled (built-in)` both correctly flagged
+  `recommended: true` for an admin-interfaces item (matching the nested
+  `admin-panels.txt` file). Removed the fake tree and reset config after.
+- `npx tsc --noEmit`, `eslint`, `next build` all clean.
+- Full browser E2E via a throwaway Playwright script (deleted after use):
+  rebuilt and restarted the production frontend (it was serving a stale
+  build from before this session's changes), opened "Enumerate Admin
+  Interfaces" → Run Tool → ffuf → clicked the new "Select wordlist"
+  button → dialog showed "Bundled (built-in)" with 6 cards, `admin.txt`
+  starred/green as recommended → typed "admin" in the search box →
+  confirmed it filtered to just the one matching card → clicked it →
+  confirmed the button now reads "Wordlist: admin.txt" and the command
+  field's `-w` flag updated to the real `admin.txt` path. Zero console
+  errors. Screenshots confirmed clean rendering (one screenshot taken
+  mid dialog-open fade transition briefly showed overlapping text from
+  both stacked dialogs — a screenshot-timing artifact, not a real bug;
+  a second screenshot 300ms later, and every other checkpoint, rendered
+  cleanly with no overlap).
+
+**Next steps for the next agent:**
+1. This was verified against a *simulated* Kali tree on macOS, not a
+   real Kali box — the user should confirm the picker looks right
+   against their actual `/usr/share/wordlists/seclists` once they pull
+   this, since a real install's file count is much larger than the
+   ~10-file fake tree used here (performance of `discover_wordlists_
+   grouped()`'s full unbounded scan on a real multi-thousand-file
+   SecLists install hasn't been measured — if it's noticeably slow,
+   consider caching the scan result for the process lifetime, or lazily
+   loading each category's file list only when a card section is
+   expanded, rather than eagerly scanning everything up front).
+2. Only `ffuf`/`gobuster` (`uses_wordlist = True`) surface this picker —
+   confirmed no other tool wrapper (`wpscan`, `hydra`, etc. — hydra isn't
+   wrapped at all yet) currently takes a `-w`/wordlist flag, so there's
+   nothing else silently stuck on a bundled default; if a
+   password-brute-force tool gets wrapped later, wire it through the same
+   `uses_wordlist`/`recommend_wordlist()` path rather than inventing a
+   separate mechanism.
+3. `discover_wordlists()` (the older, capped/keyword-sorted function used
+   by `default_wordlist()` for ffuf/gobuster's *default* preview command)
+   and `discover_wordlists_grouped()` (used by the picker, uncapped) now
+   both walk the filesystem independently on every call with no caching —
+   fine for a single-user local tool but worth revisiting if this ever
+   needs to serve concurrent requests against a huge wordlist directory.
+
+---
+
 ## 2026-08-19 (5) — Per-test wordlist recommendations
 
 **Done (user request: "each testing can you recommend wordlists for that

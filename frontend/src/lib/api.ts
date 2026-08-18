@@ -4,6 +4,7 @@ import type {
   Engagement,
   EngagementSummary,
   Finding,
+  GroupedWordlists,
   Severity,
   ToolInfo,
   WordlistInfo,
@@ -123,6 +124,11 @@ export const api = {
     ),
 
   listWordlists: () => request<WordlistInfo[]>("/api/tools/wordlists"),
+
+  listWordlistsGrouped: (itemId?: string) =>
+    request<GroupedWordlists>(
+      `/api/tools/wordlists/grouped${itemId ? `?item_id=${encodeURIComponent(itemId)}` : ""}`
+    ),
 
   addFinding: (
     engId: string,

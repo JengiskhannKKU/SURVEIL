@@ -84,37 +84,138 @@ def _search_roots() -> list[Path]:
     return ([configured] if configured else []) + _SEARCH_ROOTS
 
 
-def discover_wordlists(limit: int = 150) -> list[tuple[str, str]]:
-    """Return (label, path) pairs for .txt wordlists found on this host.
+def _all_candidates() -> list[tuple[Path, Path]]:
+    """(path, root) pairs for every *.txt under every search root.
 
-    Scans SURVEIL_WORDLIST_DIR/the configured Settings-dialog directory (if
-    set) plus a fixed, shallow set of common install directories (no
-    exhaustive filesystem walk). Within each root, directory/file
-    brute-force-relevant wordlists (see _DIR_BRUTEFORCE_KEYWORDS) are
-    returned first, alphabetically after that — so a bounded limit still
-    surfaces the wordlists actually useful for ffuf/gobuster on a large
-    real install (e.g. Kali's SecLists package) instead of getting cut off
-    partway through an unrelated category. Does not include the bundled
-    fallback wordlist — that's only used by default_wordlist() when
-    nothing else is found.
+    Kali's `seclists` apt package puts a full SecLists checkout at
+    /usr/share/wordlists/seclists, alongside sibling tool-specific lists
+    (dirb, dirbuster, wfuzz, rockyou.txt, fasttrack.txt, metasploit,
+    legion, fern-wifi, dnsmap.txt, nmap.lst, sqlmap.txt, wifite.txt,
+    john.lst — see `ls /usr/share/wordlists` on a real Kali box) — all
+    picked up here since /usr/share/wordlists itself is a search root and
+    this recurses. `*.lst` is included too since several of Kali's own
+    wordlists (nmap.lst, john.lst) use that extension instead of .txt.
     """
-    found: list[tuple[str, str]] = []
+    _extensions = (".txt", ".lst")
+    seen: set[Path] = set()
+    out: list[tuple[Path, Path]] = []
     for root in _search_roots():
         if not root.is_dir():
             continue
-        candidates = sorted(
-            (p for p in root.rglob("*.txt") if p.is_file()),
-            key=lambda p: (_priority(p), str(p)),
-        )
-        for path in candidates:
-            try:
-                label = str(path.relative_to(root.parent))
-            except ValueError:
-                label = str(path)
-            found.append((label, str(path)))
-            if len(found) >= limit:
-                return found
+        for path in root.rglob("*"):
+            if path.suffix.lower() not in _extensions or not path.is_file() or path in seen:
+                continue
+            seen.add(path)
+            out.append((path, root))
+    return out
+
+
+def _category_for(path: Path, root: Path) -> str:
+    """Group a discovered wordlist the way it'd read on a real Kali box.
+
+    A SecLists checkout (root/seclists/<Discovery|Fuzzing|Passwords|...>)
+    is broken out by its own top-level folder (matches the categories seen
+    running `ls /usr/share/wordlists/seclists` on Kali: Discovery, Fuzzing,
+    Miscellaneous, Passwords, Pattern-Matching, Payloads, Usernames,
+    Web-Shells). Everything else groups by the first path segment under its
+    search root (dirb, dirbuster, wfuzz, ...), or "Other" for a file sitting
+    directly in the root (rockyou.txt, fasttrack.txt, ...).
+    """
+    try:
+        parts = path.relative_to(root).parts
+    except ValueError:
+        return "Other"
+    if not parts:
+        return "Other"
+    if parts[0].lower() == "seclists" and len(parts) > 2:
+        return f"SecLists/{parts[1]}"
+    if parts[0].lower() == "seclists":
+        return "SecLists"
+    if len(parts) > 1:
+        return parts[0]
+    return "Other"
+
+
+def discover_wordlists(limit: int = 500) -> list[tuple[str, str]]:
+    """Return (label, path) pairs for wordlists found on this host.
+
+    Scans SURVEIL_WORDLIST_DIR/the configured Settings-dialog directory (if
+    set) plus a fixed, shallow set of common install directories (no
+    exhaustive filesystem walk) — see `_SEARCH_ROOTS`. Directory/file
+    brute-force-relevant wordlists (see `_DIR_BRUTEFORCE_KEYWORDS`) sort
+    first, alphabetically after that, so a bounded limit still surfaces the
+    wordlists actually useful for ffuf/gobuster first. Does not include the
+    bundled fallback wordlist — that's only used by `default_wordlist()`
+    when nothing else is found.
+    """
+    candidates = sorted(_all_candidates(), key=lambda pr: (_priority(pr[0]), str(pr[0])))
+    found: list[tuple[str, str]] = []
+    for path, root in candidates[:limit]:
+        try:
+            label = str(path.relative_to(root.parent))
+        except ValueError:
+            label = str(path)
+        found.append((label, str(path)))
     return found
+
+
+def discover_wordlists_grouped(recommended_category: str | None = None) -> list[dict]:
+    """Every wordlist found on this host, grouped the way a tester browsing
+    /usr/share/wordlists by hand would see it (see `_category_for`).
+
+    Each group is `{"category": str, "recommended": bool, "wordlists":
+    [{"label": str, "path": str}]}`, sorted with the group matching
+    *recommended_category* (if any) first, then alphabetically. Wordlists
+    within a group are alphabetical by label. Used by the frontend's
+    "Select wordlist" card dialog — unlike `discover_wordlists()`, nothing
+    here is capped by _DIR_BRUTEFORCE_KEYWORDS priority, so password lists,
+    username lists, etc. are just as reachable as directory-brute-force ones.
+    """
+    groups: dict[str, list[tuple[str, str]]] = {}
+    for path, root in _all_candidates():
+        category = _category_for(path, root)
+        try:
+            label = str(path.relative_to(root.parent))
+        except ValueError:
+            label = str(path)
+        groups.setdefault(category, []).append((label, str(path)))
+
+    # Always offer surveil's own bundled wordlists too (see WORDLIST_CATEGORY
+    # in checklist.py) — the only wordlists guaranteed to exist on a machine
+    # with no Kali/SecLists install (e.g. this dev laptop), so the dialog is
+    # never empty.
+    bundled = sorted(p for p in _BUNDLED_DIR.glob("*.txt") if p.is_file())
+    if bundled:
+        groups["Bundled (built-in)"] = [(p.name, str(p)) for p in bundled]
+
+    keywords = _CATEGORY_KEYWORDS.get(recommended_category or "", (recommended_category or "",))
+    bundled_match = recommended_category and (_BUNDLED_DIR / f"{recommended_category}.txt").is_file()
+
+    def group_is_recommended(category: str, wordlists: list[tuple[str, str]]) -> bool:
+        if recommended_category is None:
+            return False
+        if category.lower() in {kw.lower() for kw in keywords}:
+            return True
+        if category == "Bundled (built-in)" and bundled_match:
+            return True
+        # a category name alone (e.g. "SecLists/Discovery") is too broad to
+        # match keywords like "admin" — also check whether any wordlist
+        # *within* the group does (e.g. .../Discovery/Web-Content/admin-panels.txt)
+        return any(any(kw in path.lower() for kw in keywords) for _label, path in wordlists)
+
+    def sort_key(category: str) -> tuple[int, str]:
+        is_recommended = group_is_recommended(category, groups.get(category, []))
+        return (0 if is_recommended else 1, category)
+
+    result = []
+    for category in sorted(groups, key=sort_key):
+        wordlists = sorted(groups[category], key=lambda lp: lp[0])
+        result.append({
+            "category": category,
+            "recommended": sort_key(category)[0] == 0,
+            "wordlists": [{"label": label, "path": path} for label, path in wordlists],
+        })
+    return result
 
 
 def default_wordlist() -> str:
