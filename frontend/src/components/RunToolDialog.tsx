@@ -10,6 +10,7 @@ import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import TextField from "@mui/material/TextField";
 import MenuItem from "@mui/material/MenuItem";
+import Autocomplete from "@mui/material/Autocomplete";
 import FormControlLabel from "@mui/material/FormControlLabel";
 import Switch from "@mui/material/Switch";
 import Typography from "@mui/material/Typography";
@@ -63,6 +64,10 @@ export function RunToolDialog({
 
   const tool = availableTools.find((t) => t.name === toolName);
   const hasModes = Object.keys(tool?.modes ?? {}).length > 0;
+  const wordlistOptions = useMemo(
+    () => [{ label: "tool default", path: "" }, ...wordlists],
+    [wordlists]
+  );
 
   // Switching tools resets the mode to "full" so a stale mode key from a
   // previous tool (e.g. nmap's "udp") never leaks into one without it.
@@ -237,22 +242,22 @@ export function RunToolDialog({
           )}
 
           {tool?.uses_wordlist && (
-            <TextField
-              select
+            <Autocomplete
               size="small"
-              label="Wordlist"
-              value={wordlistPath}
               disabled={running}
-              onChange={(e) => applyWordlist(e.target.value)}
-              sx={{ minWidth: 160 }}
-            >
-              <MenuItem value="">tool default</MenuItem>
-              {wordlists.map((w) => (
-                <MenuItem key={w.path} value={w.path}>
-                  {w.label}
+              options={wordlistOptions}
+              getOptionLabel={(o) => o.label}
+              isOptionEqualToValue={(a, b) => a.path === b.path}
+              value={wordlistOptions.find((o) => o.path === wordlistPath) ?? wordlistOptions[0]}
+              onChange={(_, val) => applyWordlist(val?.path ?? "")}
+              sx={{ minWidth: 260 }}
+              renderInput={(params) => <TextField {...params} label="Wordlist" />}
+              renderOption={(props, option) => (
+                <MenuItem {...props} key={option.path} sx={{ fontFamily: option.path ? "var(--font-geist-mono)" : undefined, fontSize: 13 }}>
+                  {option.label}
                 </MenuItem>
-              ))}
-            </TextField>
+              )}
+            />
           )}
         </Stack>
 
