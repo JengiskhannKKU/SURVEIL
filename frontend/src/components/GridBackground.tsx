@@ -1,7 +1,8 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { RED, BLUE } from "@/lib/theme";
+import { GREEN } from "@/lib/theme";
+import { BinaryColumns } from "@/components/BinaryColumns";
 
 export function GridBackground() {
   return (
@@ -21,8 +22,8 @@ export function GridBackground() {
           position: "absolute",
           inset: 0,
           backgroundImage:
-            "linear-gradient(rgba(255,255,255,0.055) 1px, transparent 1px)," +
-            "linear-gradient(90deg, rgba(255,255,255,0.055) 1px, transparent 1px)",
+            "linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px)," +
+            "linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px)",
           backgroundSize: "42px 42px",
           maskImage:
             "radial-gradient(ellipse 80% 60% at 50% 0%, black 40%, transparent 100%)",
@@ -31,44 +32,39 @@ export function GridBackground() {
         }}
       />
 
-      {/* red glow, top-left */}
+      <BinaryColumns />
+
+      {/* green glow, upper-center — behind hero titles */}
       <motion.div
         style={{
           position: "absolute",
-          top: "-15%",
-          left: "-10%",
-          width: "50vw",
-          height: "50vw",
+          top: "-10%",
+          left: "50%",
+          x: "-50%",
+          width: "70vw",
+          height: "40vw",
           borderRadius: "50%",
-          background: `radial-gradient(circle, ${RED}33 0%, transparent 70%)`,
-          filter: "blur(40px)",
+          background: `radial-gradient(ellipse, ${GREEN}26 0%, transparent 70%)`,
+          filter: "blur(50px)",
         }}
-        animate={{
-          x: [0, 40, 0],
-          y: [0, 25, 0],
-          opacity: [0.55, 0.85, 0.55],
-        }}
-        transition={{ duration: 18, repeat: Infinity, ease: "easeInOut" }}
+        animate={{ opacity: [0.55, 0.85, 0.55] }}
+        transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
       />
 
-      {/* blue glow, bottom-right */}
+      {/* faint secondary glow, bottom-right, for depth */}
       <motion.div
         style={{
           position: "absolute",
           bottom: "-20%",
           right: "-10%",
-          width: "55vw",
-          height: "55vw",
+          width: "45vw",
+          height: "45vw",
           borderRadius: "50%",
-          background: `radial-gradient(circle, ${BLUE}33 0%, transparent 70%)`,
-          filter: "blur(40px)",
+          background: `radial-gradient(circle, ${GREEN}14 0%, transparent 70%)`,
+          filter: "blur(50px)",
         }}
-        animate={{
-          x: [0, -30, 0],
-          y: [0, -20, 0],
-          opacity: [0.5, 0.8, 0.5],
-        }}
-        transition={{ duration: 22, repeat: Infinity, ease: "easeInOut" }}
+        animate={{ opacity: [0.4, 0.6, 0.4] }}
+        transition={{ duration: 20, repeat: Infinity, ease: "easeInOut" }}
       />
 
       {/* vignette so text stays readable at the edges */}

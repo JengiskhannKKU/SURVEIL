@@ -23,6 +23,7 @@ import { api, WS_BASE } from "@/lib/api";
 import { useToast } from "@/lib/toast";
 import { HighlightedLine } from "@/components/HighlightedOutput";
 import { InstallHints } from "@/components/InstallHints";
+import { isIpAddress } from "@/lib/target";
 import type { ChecklistItem, ToolInfo, WordlistInfo, WsMessage } from "@/lib/types";
 
 export function RunToolDialog({
@@ -47,6 +48,7 @@ export function RunToolDialog({
   );
   const [toolName, setToolName] = useState(availableTools[0]?.name ?? "");
   const [fast, setFast] = useState(false);
+  const [mode, setMode] = useState("full");
   const [command, setCommand] = useState("");
   const [defaultCommand, setDefaultCommand] = useState("");
   const [wordlists, setWordlists] = useState<WordlistInfo[]>([]);
@@ -60,10 +62,18 @@ export function RunToolDialog({
   const outputRef = useRef<HTMLDivElement | null>(null);
 
   const tool = availableTools.find((t) => t.name === toolName);
+  const hasModes = Object.keys(tool?.modes ?? {}).length > 0;
+
+  // Switching tools resets the mode to "full" so a stale mode key from a
+  // previous tool (e.g. nmap's "udp") never leaks into one without it.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- resetting local UI state when the selected tool changes
+    setMode("full");
+  }, [toolName]);
 
   useEffect(() => {
     if (!toolName) return;
-    api.previewCommand(toolName, target, fast).then((res) => {
+    api.previewCommand(toolName, target, fast, hasModes ? mode : undefined).then((res) => {
       const cmd = res.command.join(" ");
       setCommand(cmd);
       setDefaultCommand(cmd);
@@ -72,7 +82,7 @@ export function RunToolDialog({
       api.listWordlists().then(setWordlists);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [toolName, fast, target]);
+  }, [toolName, fast, hasModes, mode, target]);
 
   useEffect(() => {
     outputRef.current?.scrollTo({ top: outputRef.current.scrollHeight });
@@ -114,12 +124,18 @@ export function RunToolDialog({
     wsRef.current = ws;
 
     ws.onopen = () => {
+      // A named scan mode (e.g. nmap's "UDP scan") has no simulated-output
+      // equivalent that would actually reflect it, so always run it for
+      // real rather than falling back to the generic simulated demo data
+      // for tools without the binary installed. Plain Fast/Full keeps the
+      // existing behavior: unedited default command -> `fast` flag (so a
+      // missing binary still falls back to simulated output).
       const isDefault = command.trim() === defaultCommand.trim();
       ws.send(
         JSON.stringify({
           tool: toolName,
           fast,
-          custom_command: isDefault ? null : command,
+          custom_command: hasModes || !isDefault ? command : null,
         })
       );
     };
@@ -166,7 +182,7 @@ export function RunToolDialog({
         )}
       </DialogTitle>
       <DialogContent>
-        <Stack direction="row" spacing={2} flexWrap="wrap" useFlexGap alignItems="center" mb={2}>
+        <Stack direction="row" spacing={2} flexWrap="wrap" useFlexGap alignItems="center" mb={2} mt={2}>
           <TextField
             select
             size="small"
@@ -188,16 +204,34 @@ export function RunToolDialog({
             ))}
           </TextField>
 
-          <FormControlLabel
-            control={
-              <Switch
-                checked={fast}
-                disabled={running}
-                onChange={(e) => setFast(e.target.checked)}
-              />
-            }
-            label="Fast scan"
-          />
+          {hasModes ? (
+            <TextField
+              select
+              size="small"
+              label="Scan mode"
+              value={mode}
+              disabled={running}
+              onChange={(e) => setMode(e.target.value)}
+              sx={{ minWidth: 240 }}
+            >
+              {Object.entries(tool!.modes).map(([key, label]) => (
+                <MenuItem key={key} value={key}>
+                  {label}
+                </MenuItem>
+              ))}
+            </TextField>
+          ) : (
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={fast}
+                  disabled={running}
+                  onChange={(e) => setFast(e.target.checked)}
+                />
+              }
+              label="Fast scan"
+            />
+          )}
 
           {tool?.uses_wordlist && (
             <TextField
@@ -230,6 +264,20 @@ export function RunToolDialog({
             </Alert>
             {!tool.available && (
               <InstallHints toolName={tool.name} hints={tool.install_hints} />
+            )}
+            {tool.domain_only && isIpAddress(target) && (
+              <Alert severity="warning" variant="outlined">
+                <strong>{tool.name}</strong> does subdomain/DNS enumeration against a{" "}
+                <em>domain name</em> — it can&apos;t enumerate subdomains of an IP address like{" "}
+                <code>{target}</code>. It will run successfully but return nothing. Use it against
+                a hostname instead, or pick a different tool for this target.
+              </Alert>
+            )}
+            {hasModes && (mode === "os_detect" || mode === "aggressive") && (
+              <Alert severity="warning" variant="outlined">
+                OS detection (<code>-O</code>) typically needs root/administrator privileges —
+                run the backend with elevated permissions, or this scan may fail/skip that part.
+              </Alert>
             )}
           </Stack>
         )}

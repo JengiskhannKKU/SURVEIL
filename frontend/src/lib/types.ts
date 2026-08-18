@@ -68,6 +68,8 @@ export interface ToolInfo {
   uses_wordlist: boolean;
   available: boolean;
   install_hints: Record<string, string>;
+  modes: Record<string, string>;
+  domain_only: boolean;
 }
 
 export interface WordlistInfo {

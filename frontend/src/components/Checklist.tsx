@@ -1,12 +1,15 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { motion } from "framer-motion";
 import Box from "@mui/material/Box";
 import TextField from "@mui/material/TextField";
 import IconButton from "@mui/material/IconButton";
-import List from "@mui/material/List";
 import ListItemButton from "@mui/material/ListItemButton";
 import Collapse from "@mui/material/Collapse";
+import Card from "@mui/material/Card";
+import CardActionArea from "@mui/material/CardActionArea";
+import CardContent from "@mui/material/CardContent";
 import Typography from "@mui/material/Typography";
 import Chip from "@mui/material/Chip";
 import Stack from "@mui/material/Stack";
@@ -17,6 +20,7 @@ import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import { api } from "@/lib/api";
 import { useToast } from "@/lib/toast";
 import { ChecklistItemDialog } from "@/components/ChecklistItemDialog";
+import { GREEN } from "@/lib/theme";
 import type { ChecklistItem, ToolInfo } from "@/lib/types";
 
 const STATUS_COLOR: Record<string, string> = {
@@ -165,48 +169,70 @@ export function Checklist({
                 </Typography>
               </ListItemButton>
               <Collapse in={!isCollapsed}>
-                <List dense disablePadding>
-                  {catItems.map((item) => (
-                    <ListItemButton
-                      key={item.id}
-                      selected={selectedId === item.id}
-                      onClick={() => onSelect(item.id)}
-                      sx={{
-                        borderRadius: 1,
-                        py: 0.6,
-                        "&.Mui-selected": {
-                          backgroundColor: "rgba(59,130,246,0.14)",
-                          "&:hover": { backgroundColor: "rgba(59,130,246,0.2)" },
-                        },
-                      }}
-                    >
-                      <Box sx={{ flex: 1, minWidth: 0 }}>
-                        <Typography
-                          variant="body2"
-                          noWrap
-                          sx={{ color: selectedId === item.id ? "text.primary" : "text.secondary" }}
+                <Stack spacing={0.75} pb={0.5}>
+                  {catItems.map((item) => {
+                    const isSelected = selectedId === item.id;
+                    return (
+                      <motion.div
+                        key={item.id}
+                        whileHover={{ scale: 1.015 }}
+                        whileTap={{ scale: 0.985 }}
+                        transition={{ duration: 0.12 }}
+                      >
+                        <Card
+                          variant="outlined"
+                          sx={{
+                            borderLeft: "3px solid",
+                            borderLeftColor: STATUS_COLOR[item.status],
+                            borderColor: isSelected ? "primary.main" : "divider",
+                            backgroundColor: isSelected ? `${GREEN}1a` : "background.paper",
+                            boxShadow: isSelected
+                              ? `0 0 0 1px ${GREEN}59, 0 0 14px ${GREEN}2e`
+                              : "none",
+                            transition: "border-color 0.15s, box-shadow 0.15s, background-color 0.15s",
+                          }}
                         >
-                          <Box component="span" sx={{ color: "text.disabled", mr: 0.5 }}>
-                            {item.id}
-                          </Box>
-                          {item.name}
-                        </Typography>
-                      </Box>
-                      <Stack direction="row" spacing={0.5} alignItems="center" flexShrink={0} ml={1}>
-                        {item.findings.length > 0 && (
-                          <Chip
-                            size="small"
-                            label={item.findings.length}
-                            sx={{ height: 18, fontSize: 10, bgcolor: "rgba(255,255,255,0.12)" }}
-                          />
-                        )}
-                        <Typography sx={{ color: STATUS_COLOR[item.status], fontSize: 13 }}>
-                          {STATUS_ICON[item.status]}
-                        </Typography>
-                      </Stack>
-                    </ListItemButton>
-                  ))}
-                </List>
+                          <CardActionArea onClick={() => onSelect(item.id)}>
+                            <CardContent sx={{ py: 1, px: 1.25, "&:last-child": { pb: 1 } }}>
+                              <Stack direction="row" alignItems="center" spacing={1}>
+                                <Box sx={{ flex: 1, minWidth: 0 }}>
+                                  <Typography
+                                    variant="caption"
+                                    display="block"
+                                    color="text.disabled"
+                                    sx={{ fontFamily: "var(--font-geist-mono)", fontSize: 10.5, lineHeight: 1.4 }}
+                                  >
+                                    {item.id}
+                                  </Typography>
+                                  <Typography
+                                    variant="body2"
+                                    noWrap
+                                    fontWeight={isSelected ? 600 : 400}
+                                    sx={{ color: isSelected ? "text.primary" : "text.secondary" }}
+                                  >
+                                    {item.name}
+                                  </Typography>
+                                </Box>
+                                <Stack alignItems="flex-end" spacing={0.5} flexShrink={0}>
+                                  <Typography sx={{ color: STATUS_COLOR[item.status], fontSize: 14, lineHeight: 1 }}>
+                                    {STATUS_ICON[item.status]}
+                                  </Typography>
+                                  {item.findings.length > 0 && (
+                                    <Chip
+                                      size="small"
+                                      label={item.findings.length}
+                                      sx={{ height: 16, fontSize: 10, bgcolor: "rgba(255,255,255,0.12)" }}
+                                    />
+                                  )}
+                                </Stack>
+                              </Stack>
+                            </CardContent>
+                          </CardActionArea>
+                        </Card>
+                      </motion.div>
+                    );
+                  })}
+                </Stack>
               </Collapse>
             </Box>
           );

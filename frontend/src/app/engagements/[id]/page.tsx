@@ -120,7 +120,7 @@ export default function EngagementPage({
         <Typography color="error" mb={1}>
           {error}
         </Typography>
-        <Button component={Link} href="/" startIcon={<ArrowBackIcon />} size="small">
+        <Button component={Link} href="/engagements" startIcon={<ArrowBackIcon />} size="small">
           Back to engagements
         </Button>
       </Box>
@@ -139,13 +139,13 @@ export default function EngagementPage({
   }
 
   return (
-    <Box display="flex" flexDirection="column" flex={1} height="100vh">
+    <Box display="flex" flexDirection="column" flex={1} height="100%">
       <Box sx={{ borderBottom: "1px solid", borderColor: "divider", px: 3, py: 2 }}>
         <Stack direction="row" justifyContent="space-between" alignItems="flex-start" flexWrap="wrap" gap={2}>
           <Box>
             <Typography
               component={Link}
-              href="/"
+              href="/engagements"
               variant="caption"
               sx={{ color: "text.secondary", textDecoration: "none", "&:hover": { color: "text.primary" } }}
             >

@@ -2,6 +2,7 @@ import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
 import { motion } from "framer-motion";
 import { SEVERITY_COLOR, SEVERITY_ORDER } from "@/lib/severity";
+import { GREEN, GREEN_DARK } from "@/lib/theme";
 import type { Severity } from "@/lib/types";
 
 export function SeverityBar({ counts }: { counts: Record<Severity, number> }) {
@@ -89,7 +90,7 @@ export function ProgressBar({ done, total }: { done: number; total: number }) {
           style={{
             height: "100%",
             borderRadius: 4,
-            background: "linear-gradient(90deg, #3b82f6, #22c55e)",
+            background: `linear-gradient(90deg, ${GREEN_DARK}, ${GREEN})`,
           }}
         />
       </Box>
