@@ -1,51 +1,31 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
 body {
-  background: var(--background);
-  color: var(--foreground);
+  background: transparent;
   font-family: Arial, Helvetica, sans-serif;
 }
 
-@keyframes toast-in {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+::selection {
+  background: rgba(59, 130, 246, 0.35);
 }
 
-@keyframes skeleton-pulse {
-  0%,
-  100% {
-    opacity: 0.5;
-  }
-  50% {
-    opacity: 1;
-  }
+/* thin, theme-matched scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 8px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
 }
 
-.skeleton {
-  animation: skeleton-pulse 1.4s ease-in-out infinite;
+.row-hover:hover {
+  background-color: rgba(255, 255, 255, 0.035);
 }

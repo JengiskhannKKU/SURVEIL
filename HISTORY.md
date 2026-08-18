@@ -6,6 +6,71 @@ was verified, and what the next agent should pick up.
 
 ---
 
+## 2026-08-18 — Frontend redesign: MUI + Framer Motion, dark red/blue theme
+
+**Done:**
+- Rebuilt the entire frontend UI layer on MUI v7 (`@mui/material`,
+  `@mui/icons-material`, `@mui/material-nextjs` for App Router SSR/Emotion
+  cache) and Framer Motion, per explicit user direction. Every page/component
+  from the previous Tailwind-hand-rolled UI was rewritten: home page,
+  engagement detail, `Checklist`, `ItemDetail`, `RunToolDialog`,
+  `FindingsPanel`, `ChecklistItemDialog`, `Badge` (now MUI `Chip`),
+  `SeverityBar`/`ProgressBar`, `toast.tsx` (MUI `Alert` + Framer Motion
+  stack, same `useToast()` API as before).
+- New visual identity, per user's explicit spec: black background, a faint
+  grid pattern, and a slow-drifting red/blue ambient glow
+  (`components/GridBackground.tsx`, animated via Framer Motion), plus a
+  matching MUI dark theme (`lib/theme.ts` — primary blue, secondary red,
+  glassy blurred `Paper`/`AppBar`/`Dialog` surfaces).
+- Tailwind is still installed/imported (`globals.css`) but no longer the
+  primary styling system — kept only for `HighlightedOutput.tsx`'s terminal
+  color spans and a couple of small CSS bits (scrollbar, row hover) that
+  don't need MUI's `sx`.
+
+**Important pin — do not casually bump MUI:**
+- Installing `@mui/material@latest` pulls **v9**, which removed the
+  shorthand style props (`mb`, `p`, `display`, `flex`, `alignItems`,
+  `justifyContent`, `fontWeight`, `color`, etc.) from `Box`/`Stack`/
+  `Typography` — those components now type-check with `children`/`sx` only.
+  Every component in this rewrite uses the classic shorthand-prop style
+  extensively, so `package.json` pins `@mui/material`/`@mui/icons-material`/
+  `@mui/material-nextjs` to `^7.3.11` deliberately (there is no v8; v7 is
+  the last major with the classic API, v9 is next). Bumping past v7 means
+  rewriting every shorthand prop usage to `sx={{...}}` across ~10 files —
+  found this the hard way (full typecheck failure after `npm install
+  @mui/material` with no version pin defaulted to v9).
+
+**Verified:**
+- `tsc --noEmit`, `eslint`, and `next build` all clean.
+- Full browser pass via a throwaway Playwright script (not committed):
+  home page stat cards/search/table, new-engagement dialog, engagement
+  detail header (progress + severity bars), checklist sidebar (filter,
+  collapse, add-item), item detail (edit/delete, run-tool dialog with
+  colorized live WebSocket output, findings accordion with add form) —
+  zero console errors, screenshots confirmed the grid+glow background and
+  MUI theming render correctly together.
+- Found and cleaned up two stray empty `package-lock.json` files (repo
+  root and `backend/`) left over from earlier sessions running `npm
+  install` from the wrong directory — not related to this change, just
+  swept up during verification.
+
+**Next steps for the next agent:**
+1. If MUI ever needs to go past v7 (security fix, wanted v9 feature), budget
+   time to convert every `mb`/`p`/`display`/etc. prop to `sx` — don't just
+   bump the version and expect it to typecheck.
+2. `HighlightedOutput.tsx` still uses Tailwind utility classes for terminal
+   line coloring — intentionally left as-is since it's visually
+   self-contained (always a black monospace box) and not worth converting;
+   flag if Tailwind ever gets removed from the project entirely.
+3. No dark/light mode toggle — the theme is deliberately single-mode (dark
+   only, per the user's spec), so don't add `prefers-color-scheme` handling
+   expecting a light variant to exist.
+4. Same gaps as before still apply: no test suite for `frontend/` or
+   `backend/`, no in-place finding-edit UI, no docker-compose entry for the
+   web app.
+
+---
+
 ## 2026-08-13 — Web app: FastAPI backend + Next.js frontend
 
 **Done:**

@@ -1,17 +1,30 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Box from "@mui/material/Box";
+import TextField from "@mui/material/TextField";
+import IconButton from "@mui/material/IconButton";
+import List from "@mui/material/List";
+import ListItemButton from "@mui/material/ListItemButton";
+import Collapse from "@mui/material/Collapse";
+import Typography from "@mui/material/Typography";
+import Chip from "@mui/material/Chip";
+import Stack from "@mui/material/Stack";
+import InputAdornment from "@mui/material/InputAdornment";
+import AddIcon from "@mui/icons-material/Add";
+import SearchIcon from "@mui/icons-material/Search";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import { api } from "@/lib/api";
 import { useToast } from "@/lib/toast";
 import { ChecklistItemDialog } from "@/components/ChecklistItemDialog";
 import type { ChecklistItem, ToolInfo } from "@/lib/types";
 
 const STATUS_COLOR: Record<string, string> = {
-  pending: "text-neutral-400",
-  running: "text-amber-500",
-  done: "text-emerald-500",
-  skipped: "text-neutral-400",
-  failed: "text-red-500",
+  pending: "rgba(255,255,255,0.35)",
+  running: "#f59e0b",
+  done: "#22c55e",
+  skipped: "rgba(255,255,255,0.35)",
+  failed: "#ef4444",
 };
 
 const STATUS_ICON: Record<string, string> = {
@@ -65,7 +78,6 @@ export function Checklist({
     return map;
   }, [filtered]);
 
-  // Keyboard nav: up/down moves selection among currently visible items.
   useEffect(() => {
     function handler(e: KeyboardEvent) {
       if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
@@ -94,80 +106,117 @@ export function Checklist({
   }
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="sticky top-0 z-10 bg-background pb-2">
-        <div className="mb-2 flex gap-2">
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Filter checklist… (↑↓ to navigate)"
-            className="w-full rounded border border-neutral-300 bg-transparent px-2 py-1.5 text-sm outline-none focus:border-neutral-500 dark:border-neutral-700"
-          />
-          <button
-            onClick={() => setShowAdd(true)}
-            title="Add checklist item"
-            className="shrink-0 rounded border border-neutral-300 px-2 py-1.5 text-sm transition hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-900"
-          >
-            +
-          </button>
-        </div>
-      </div>
-      <div className="flex-1 space-y-3 overflow-y-auto">
+    <Box display="flex" flexDirection="column" height="100%">
+      <Stack direction="row" spacing={1} mb={1.5}>
+        <TextField
+          size="small"
+          fullWidth
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Filter… (↑↓ to navigate)"
+          slotProps={{
+            input: {
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon fontSize="small" sx={{ color: "text.secondary" }} />
+                </InputAdornment>
+              ),
+            },
+          }}
+        />
+        <IconButton
+          size="small"
+          onClick={() => setShowAdd(true)}
+          title="Add checklist item"
+          sx={{ border: "1px solid", borderColor: "divider", borderRadius: 1 }}
+        >
+          <AddIcon fontSize="small" />
+        </IconButton>
+      </Stack>
+
+      <Box flex={1} sx={{ overflowY: "auto" }}>
         {[...byCategory.entries()].map(([category, catItems]) => {
           const isCollapsed = collapsed.has(category);
           const doneCount = catItems.filter((i) => ["done", "skipped"].includes(i.status)).length;
           return (
-            <div key={category}>
-              <button
+            <Box key={category} mb={1}>
+              <ListItemButton
                 onClick={() => toggleCategory(category)}
-                className="mb-1 flex w-full items-center justify-between px-1 text-xs font-semibold uppercase tracking-wide text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300"
+                dense
+                sx={{ borderRadius: 1, py: 0.25 }}
               >
-                <span className="flex items-center gap-1">
-                  <span className={`inline-block transition-transform ${isCollapsed ? "-rotate-90" : ""}`}>
-                    ▾
-                  </span>
-                  {category}
-                </span>
-                <span className="font-normal normal-case text-neutral-400">
+                <ExpandMoreIcon
+                  fontSize="small"
+                  sx={{
+                    color: "text.secondary",
+                    mr: 0.5,
+                    transform: isCollapsed ? "rotate(-90deg)" : "none",
+                    transition: "transform 0.15s",
+                  }}
+                />
+                <Typography
+                  variant="caption"
+                  sx={{ flex: 1, fontWeight: 700, letterSpacing: 0.5, color: "text.secondary" }}
+                >
+                  {category.toUpperCase()}
+                </Typography>
+                <Typography variant="caption" color="text.disabled">
                   {doneCount}/{catItems.length}
-                </span>
-              </button>
-              {!isCollapsed && (
-                <ul className="space-y-0.5">
+                </Typography>
+              </ListItemButton>
+              <Collapse in={!isCollapsed}>
+                <List dense disablePadding>
                   {catItems.map((item) => (
-                    <li key={item.id}>
-                      <button
-                        onClick={() => onSelect(item.id)}
-                        className={`flex w-full items-center justify-between gap-2 rounded px-2 py-1.5 text-left text-sm transition-colors ${
-                          selectedId === item.id
-                            ? "bg-neutral-200 dark:bg-neutral-800"
-                            : "hover:bg-neutral-100 dark:hover:bg-neutral-900"
-                        }`}
-                      >
-                        <span className="truncate">
-                          <span className="mr-1 text-xs text-neutral-500">{item.id}</span>
+                    <ListItemButton
+                      key={item.id}
+                      selected={selectedId === item.id}
+                      onClick={() => onSelect(item.id)}
+                      sx={{
+                        borderRadius: 1,
+                        py: 0.6,
+                        "&.Mui-selected": {
+                          backgroundColor: "rgba(59,130,246,0.14)",
+                          "&:hover": { backgroundColor: "rgba(59,130,246,0.2)" },
+                        },
+                      }}
+                    >
+                      <Box sx={{ flex: 1, minWidth: 0 }}>
+                        <Typography
+                          variant="body2"
+                          noWrap
+                          sx={{ color: selectedId === item.id ? "text.primary" : "text.secondary" }}
+                        >
+                          <Box component="span" sx={{ color: "text.disabled", mr: 0.5 }}>
+                            {item.id}
+                          </Box>
                           {item.name}
-                        </span>
-                        <span className="flex shrink-0 items-center gap-1">
-                          {item.findings.length > 0 && (
-                            <span className="rounded-full bg-neutral-300 px-1.5 text-[10px] dark:bg-neutral-700">
-                              {item.findings.length}
-                            </span>
-                          )}
-                          <span className={STATUS_COLOR[item.status]}>{STATUS_ICON[item.status]}</span>
-                        </span>
-                      </button>
-                    </li>
+                        </Typography>
+                      </Box>
+                      <Stack direction="row" spacing={0.5} alignItems="center" flexShrink={0} ml={1}>
+                        {item.findings.length > 0 && (
+                          <Chip
+                            size="small"
+                            label={item.findings.length}
+                            sx={{ height: 18, fontSize: 10, bgcolor: "rgba(255,255,255,0.12)" }}
+                          />
+                        )}
+                        <Typography sx={{ color: STATUS_COLOR[item.status], fontSize: 13 }}>
+                          {STATUS_ICON[item.status]}
+                        </Typography>
+                      </Stack>
+                    </ListItemButton>
                   ))}
-                </ul>
-              )}
-            </div>
+                </List>
+              </Collapse>
+            </Box>
           );
         })}
         {filtered.length === 0 && (
-          <p className="px-1 text-sm text-neutral-500">No items match &ldquo;{query}&rdquo;.</p>
+          <Typography variant="body2" color="text.secondary" px={1}>
+            No items match &ldquo;{query}&rdquo;.
+          </Typography>
         )}
-      </div>
+      </Box>
 
       {showAdd && (
         <ChecklistItemDialog
@@ -187,6 +236,6 @@ export function Checklist({
           }}
         />
       )}
-    </div>
+    </Box>
   );
 }
