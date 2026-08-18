@@ -162,7 +162,8 @@ cp .env.example .env.local   # points at http://127.0.0.1:8000 by default
 npm run dev
 ```
 
-Open http://localhost:3000. The backend reads/writes the same
+Open http://localhost:3000 — a landing page with a link into the dashboard
+at `/engagements` (the engagement list). The backend reads/writes the same
 `~/.surveil/engagements/` JSON store as the CLI and TUI, so engagements are
 shared across all three interfaces.
 
@@ -234,6 +235,7 @@ other.
 | `surveil report -f docx` | Generate Word document report |
 | `surveil add-finding --item WSTG-INFO-02 ...` | Add a finding from CLI |
 | `surveil delete <id> [<id> ...]` | Delete one or more engagements (`-y`/`--yes` skips the confirmation prompt) |
+| `surveil install-tools` | Interactively install enumeration tool binaries (pick a subset, recommended ones pre-selected) — also `./install-tools.sh` |
 
 ---
 
@@ -326,6 +328,28 @@ Auto-finding extraction (`surveil/findings_extractor.py`) currently covers
 `nmap`, `httpx`, `whatweb`, `nuclei`, `wafw00f`, `subfinder`, and `nikto`;
 the other 9 tools' output is stored and viewable but not yet auto-parsed
 into findings.
+
+### Installing the tool binaries
+
+None of the 16 tools are required — each falls back to simulated demo
+output when its binary isn't found. To get real output, install what you
+need with:
+
+```bash
+./install-tools.sh
+# or, if you already have the venv set up:
+surveil install-tools
+```
+
+This is interactive and lets you pick a subset rather than all 16 at once —
+the 7 tools auto-finding extraction understands (`nmap`, `httpx`, `whatweb`,
+`nuclei`, `wafw00f`, `subfinder`, `nikto`) are pre-selected as a recommended
+starter set. Each tool installs via the best package manager available on
+your host (`brew`/`apt`/`go`/`pip`/`gem`, in that preference order — see
+`install_hints` on each wrapper in `surveil/tools/*_tool.py`); tools with no
+install method available for your OS are reported, not silently skipped.
+The web UI's Run Tool dialog and tool picker show the same install commands
+inline for whatever isn't installed yet.
 
 ---
 
