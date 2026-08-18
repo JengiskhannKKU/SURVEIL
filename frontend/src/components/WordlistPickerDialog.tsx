@@ -8,6 +8,7 @@ import DialogActions from "@mui/material/DialogActions";
 import Button from "@mui/material/Button";
 import TextField from "@mui/material/TextField";
 import InputAdornment from "@mui/material/InputAdornment";
+import IconButton from "@mui/material/IconButton";
 import Stack from "@mui/material/Stack";
 import Box from "@mui/material/Box";
 import Chip from "@mui/material/Chip";
@@ -37,8 +38,17 @@ export function WordlistPickerDialog({
   const [data, setData] = useState<GroupedWordlists | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  // queryInput tracks every keystroke (for the field's own value); query is
+  // the committed search that actually filters — only updated on Enter (or
+  // immediately when the field is cleared), since filtering per-keystroke
+  // across a large real SecLists install visibly lagged.
+  const [queryInput, setQueryInput] = useState("");
   const [query, setQuery] = useState("");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+
+  function commitSearch() {
+    setQuery(queryInput.trim());
+  }
 
   function toggleExpanded(category: string) {
     setExpanded((prev) => {
@@ -101,14 +111,25 @@ export function WordlistPickerDialog({
           fullWidth
           size="small"
           autoFocus
-          placeholder="Search wordlists…"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search wordlists… (press Enter)"
+          value={queryInput}
+          onChange={(e) => {
+            const val = e.target.value;
+            setQueryInput(val);
+            // Clearing the box is a "show everything again" action, not a
+            // search — that one should be instant, not wait for Enter.
+            if (val === "") setQuery("");
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") commitSearch();
+          }}
           slotProps={{
             input: {
               startAdornment: (
                 <InputAdornment position="start">
-                  <SearchIcon fontSize="small" />
+                  <IconButton size="small" onClick={commitSearch} edge="start">
+                    <SearchIcon fontSize="small" />
+                  </IconButton>
                 </InputAdornment>
               ),
             },

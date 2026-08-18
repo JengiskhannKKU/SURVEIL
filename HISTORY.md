@@ -6,6 +6,32 @@ was verified, and what the next agent should pick up.
 
 ---
 
+## 2026-08-19 (8) — Search wordlists on Enter, not per keystroke
+
+**Done (user report: "when search implement wait for enter first because
+it lag from when input each character then it search"):**
+- `WordlistPickerDialog.tsx`: split the search box's live-typed text
+  (`queryInput`) from the committed value that actually filters
+  (`query`). Filtering (and its re-render across every category's cards)
+  now only runs when the tester presses Enter or clicks the search icon
+  — not on every keystroke. Clearing the box back to empty is the one
+  exception: that's treated as "show everything again" and applies
+  instantly, no Enter needed, since it's cheap (no filtering) and
+  waiting on it would feel like a stuck search box.
+- Placeholder text updated to "Search wordlists… (press Enter)" so the
+  behavior is discoverable without a tooltip.
+
+**Verified:**
+- `npx tsc --noEmit`, `eslint`, `next build` all clean.
+- Browser E2E: typed "backup" character-by-character into the box and
+  confirmed the list stayed unfiltered (all 6 bundled cards, including
+  `admin.txt`, still visible) until Enter was pressed, at which point it
+  correctly narrowed to just `backup.txt`; then cleared the box (no
+  Enter) and confirmed `admin.txt` reappeared immediately. Zero console
+  errors.
+
+---
+
 ## 2026-08-19 (7) — Collapse categories with more than 6 wordlists
 
 **Done (user request: "each category if there are more 6 wordlists
