@@ -77,6 +77,18 @@ export interface WordlistInfo {
   path: string;
 }
 
+export interface WordlistGroup {
+  category: string;
+  recommended: boolean;
+  wordlists: WordlistInfo[];
+}
+
+export interface GroupedWordlists {
+  recommended_category: string | null;
+  recommended_category_label: string | null;
+  groups: WordlistGroup[];
+}
+
 export interface AppConfig {
   wordlist_dir: string | null;
   wordlist_dir_env: string | null;
