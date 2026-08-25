@@ -318,9 +318,18 @@ marks/unmarks the row under the cursor, and `X` deletes all marked rows
 Equivalent to `surveil delete <id> [<id> ...]` from the command line — see
 CLI Reference below.
 
+### Tools catalog (help/reference)
+
+The wrench icon in the nav bar (next to Settings) opens a full reference
+of all 18 tools — logo, description, a copyable example command, install
+status, and (for a not-installed tool) the same install commands the
+Run Tool dialog shows — in one searchable grid, independent of any
+specific checklist item. `frontend/src/components/ToolsCatalog.tsx`.
+
 ### Running a tool: Fast/Full, wordlist picker, editable command, and a guide
 
 Pressing `R` on a checklist item opens the Run Tool dialog:
+- **Tool logo + description in the picker itself** — the Tool dropdown shows a small colored monogram badge per tool (`frontend/src/lib/toolLogos.ts` — a fixed color/2-letter badge per tool, not a real project logo/wordmark, since pulling in 18 external brand image assets isn't worth it for a local tool) plus a one-line description and install status for every option, not just the one currently selected — so you can see what each tool does while picking, not only after.
 - **Guide** — a one-line description of what the tool does plus an example invocation, shown above the command field and updated as you change the selected tool.
 - **Fast / Full scan switch** — Fast uses a quicker, narrower-scope command (fewer ports/templates/threads, shorter timeouts, or the tool's own `--fast`-style flag); Full (the default) is the thorough variant. Toggling it updates the command preview live.
 - **Wordlist picker** — for directory/file brute-forcing tools (`ffuf`, `gobuster`), a "Select wordlist" button opens a card-based picker with two tabs, plus a "tool default" option. Picking a wordlist swaps just the `-w <path>` argument in the command, leaving everything else untouched. Hidden for tools that don't take a wordlist.

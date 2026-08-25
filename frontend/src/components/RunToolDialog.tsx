@@ -25,6 +25,7 @@ import { useToast } from "@/lib/toast";
 import { HighlightedLine } from "@/components/HighlightedOutput";
 import { InstallHints } from "@/components/InstallHints";
 import { WordlistPickerDialog } from "@/components/WordlistPickerDialog";
+import { ToolLogo } from "@/components/ToolLogo";
 import { isIpAddress } from "@/lib/target";
 import type { ChecklistItem, ToolInfo, WsMessage } from "@/lib/types";
 
@@ -212,16 +213,36 @@ export function RunToolDialog({
             value={toolName}
             disabled={running}
             onChange={(e) => setToolName(e.target.value)}
-            sx={{ minWidth: 140 }}
+            slotProps={{ select: { renderValue: (v) => String(v) } }}
+            sx={{ minWidth: 160 }}
           >
             {availableTools.map((t) => (
-              <MenuItem key={t.name} value={t.name}>
-                {t.name}
-                {!t.available && (
-                  <Typography component="span" variant="caption" color="text.disabled" ml={0.75}>
-                    (not installed)
-                  </Typography>
-                )}
+              <MenuItem key={t.name} value={t.name} sx={{ py: 1 }}>
+                <Stack direction="row" spacing={1.25} alignItems="center" sx={{ width: 320, maxWidth: "100%" }}>
+                  <ToolLogo name={t.name} size={26} dim={!t.available} />
+                  <Box minWidth={0} flex={1}>
+                    <Typography
+                      variant="body2"
+                      sx={{ fontFamily: "var(--font-geist-mono)", fontWeight: 600, lineHeight: 1.3 }}
+                    >
+                      {t.name}
+                      {!t.available && (
+                        <Typography component="span" variant="caption" color="text.disabled" ml={0.75}>
+                          (not installed)
+                        </Typography>
+                      )}
+                    </Typography>
+                    <Typography
+                      variant="caption"
+                      color="text.secondary"
+                      noWrap
+                      display="block"
+                      sx={{ lineHeight: 1.3 }}
+                    >
+                      {t.description}
+                    </Typography>
+                  </Box>
+                </Stack>
               </MenuItem>
             ))}
           </TextField>
@@ -278,7 +299,7 @@ export function RunToolDialog({
 
         {tool && (
           <Stack spacing={1.5} mb={2}>
-            <Alert severity="info" variant="outlined">
+            <Alert severity="info" variant="outlined" icon={<ToolLogo name={tool.name} size={22} />}>
               {tool.description}
               <br />
               <Typography component="span" sx={{ fontFamily: "var(--font-geist-mono)", fontSize: 12 }}>

@@ -6,6 +6,59 @@ was verified, and what the next agent should pick up.
 
 ---
 
+## 2026-08-25 (16) — Tool logos, descriptions everywhere, and a Tools catalog
+
+**Done (user request: "can you add each tools's logo and can you
+implement description each option tools and show example to use or
+help"):**
+- `frontend/src/lib/toolLogos.ts`: a fixed 2-letter monogram + color per
+  tool (18 entries), *not* real project logos/wordmarks — pulling in 18
+  external brand image assets (network fetches at runtime, licensing/
+  trademark questions, wildly inconsistent art styles across CLI
+  security tools) wasn't worth it for a local single-user tool. A
+  consistent, instantly-recognizable colored badge per tool, styled to
+  match the app's own terminal theme, gets the same practical benefit
+  (visually distinguishing tools at a glance) without any of that.
+- New `frontend/src/components/ToolLogo.tsx`: renders that badge,
+  dimmed when the tool isn't installed, tooltip shows the full name.
+- New `frontend/src/components/ToolsCatalog.tsx`: a searchable reference
+  dialog listing all 18 tools — logo, description, a copyable example
+  command, install status, and (for a not-installed tool) the same
+  `InstallHints` component the Run Tool dialog already uses. This is
+  the "show example to use or help" part — a standalone reference, not
+  tied to any specific checklist item, for "what does `X` do and how do
+  I invoke it" independent of actually running anything. Opened via a
+  new wrench icon in `NavBar.tsx`, next to Settings.
+- `RunToolDialog.tsx`'s Tool dropdown: every option now shows its logo,
+  description, and install status (previously: bare tool name, only the
+  *selected* one got a description, shown separately below in the guide
+  Alert). The guide Alert itself also gained the tool's logo as its icon
+  for visual consistency with the dropdown and the new catalog.
+
+**Verified:**
+- `npx tsc --noEmit`, `eslint`, `next build` all clean.
+- Full browser E2E: opened the Tools catalog from the nav bar, confirmed
+  all 18 tool cards render with logo/description/example/install-status
+  (including a live "not installed" card showing real install hints for
+  a tool genuinely missing on this dev machine); confirmed the search
+  box narrows correctly (typed "sql injection", got exactly the sqlmap
+  card, no unrelated tools); confirmed the Run Tool dialog's Tool
+  dropdown shows the same logo + description + install status per
+  option. Zero console errors.
+
+**Next steps for the next agent:**
+1. No place currently shows a checklist item's *own* `tools` list as a
+   set of logo badges outside the Run Tool dialog (e.g. on the item
+   detail page itself, before opening Run Tool) — could be a nice
+   at-a-glance addition if testers want to see which tools an item uses
+   without opening the dialog first.
+2. The monogram/color assignments in `toolLogos.ts` are arbitrary
+   (chosen for visual distinctness, not derived from anything) — fine
+   as an internal convention, but worth knowing if a tester ever asks
+   "why is nuclei red" expecting it to mean something.
+
+---
+
 ## 2026-08-25 (15) — Fix: duplicate findings in the report
 
 **Done (user bug report: "some testing process it found the finding the

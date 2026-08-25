@@ -9,10 +9,13 @@ import Button from "@mui/material/Button";
 import IconButton from "@mui/material/IconButton";
 import Box from "@mui/material/Box";
 import SettingsOutlinedIcon from "@mui/icons-material/SettingsOutlined";
+import BuildOutlinedIcon from "@mui/icons-material/BuildOutlined";
 import { SettingsDialog } from "@/components/SettingsDialog";
+import { ToolsCatalog } from "@/components/ToolsCatalog";
 
 export function NavBar() {
   const [showSettings, setShowSettings] = useState(false);
+  const [showTools, setShowTools] = useState(false);
 
   return (
     <AppBar position="static" elevation={0}>
@@ -43,6 +46,14 @@ export function NavBar() {
         </Button>
         <IconButton
           size="small"
+          onClick={() => setShowTools(true)}
+          title="Tools"
+          sx={{ ml: 1, color: "text.secondary" }}
+        >
+          <BuildOutlinedIcon fontSize="small" />
+        </IconButton>
+        <IconButton
+          size="small"
           onClick={() => setShowSettings(true)}
           title="Settings"
           sx={{ ml: 1, color: "text.secondary" }}
@@ -52,6 +63,7 @@ export function NavBar() {
       </Toolbar>
 
       {showSettings && <SettingsDialog onClose={() => setShowSettings(false)} />}
+      {showTools && <ToolsCatalog onClose={() => setShowTools(false)} />}
     </AppBar>
   );
 }
