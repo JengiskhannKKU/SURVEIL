@@ -6,6 +6,52 @@ was verified, and what the next agent should pick up.
 
 ---
 
+## 2026-08-25 (19) — Help button on the item detail page itself, next to Run tool
+
+**Done (user request: "add help button next from run tool button for
+display option each tools"):**
+- Entry 18 (below) put a **Help** button inside the *Run Tool dialog*,
+  scoped to whichever single tool was currently selected in the
+  dropdown. This adds a *second* **Help** button directly on the
+  checklist item page, right next to the **Run tool** button itself —
+  so a tester can see what every tool mapped to this test does, and
+  each one's full real `--help` output, *before* opening Run Tool and
+  picking one.
+- New `frontend/src/components/ItemToolsHelpDialog.tsx`: lists this
+  item's tools (`item.tools`, filtered from `allTools` the same way
+  `RunToolDialog` already does) as cards — logo, install status,
+  description — each with an **Options** button. Clicking one opens
+  the existing `ToolHelpDialog` (entry 18) stacked on top, showing that
+  tool's real `--help` output. No new backend endpoint needed — reuses
+  `GET /api/tools/{tool_name}/help` entirely.
+- `ItemDetail.tsx`: added the **Help** button next to **Run tool**,
+  shown under the same `hasRunnableTools` condition (hidden for items
+  with no tools mapped, same as Run tool itself).
+
+**Verified:**
+- `npx tsc --noEmit`, `eslint`, `next build` all clean.
+- Full browser E2E against a real engagement (Snoopbee Lab3): opened
+  WSTG-INFO-02, confirmed Help renders next to Run tool, clicked it,
+  confirmed the dialog lists all three mapped tools (`httpx` installed,
+  `nmap` installed, `whatweb` not installed) with correct badges;
+  clicked httpx's Options, confirmed the nested dialog shows real
+  `httpx -h` output stacked correctly over the tools list. Zero
+  console errors. Screenshots visually confirmed.
+- Rebuilt (`npm run build`) and restarted the `next start` process
+  afterward — same stale-chunk gotcha as entry 18, now a known pattern:
+  always restart `next start` after `npm run build` if it was already
+  running.
+
+**Next steps for the next agent:**
+1. Same two tools now separately show help — the Run Tool dialog's
+   internal Help button (entry 18, scoped to the currently-selected
+   tool) and this page-level one (entry 19, scoped to all of the
+   item's tools). Consider whether the internal one is still pulling
+   its weight now that this exists, or whether it's redundant enough
+   to drop in favor of just this one launched from inside Run Tool too.
+
+---
+
 ## 2026-08-25 (18) — Real per-tool `--help` output, shown from the Run Tool dialog
 
 **Done (user request: "add helping function near running button for

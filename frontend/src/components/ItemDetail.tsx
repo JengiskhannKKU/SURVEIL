@@ -10,6 +10,7 @@ import Tab from "@mui/material/Tab";
 import Link from "@mui/material/Link";
 import ToggleButton from "@mui/material/ToggleButton";
 import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
+import HelpOutlineIcon from "@mui/icons-material/HelpOutline";
 import { motion } from "framer-motion";
 import { api } from "@/lib/api";
 import { StatusBadge } from "@/components/Badge";
@@ -18,6 +19,7 @@ import { RunToolDialog } from "@/components/RunToolDialog";
 import { ChecklistItemDialog } from "@/components/ChecklistItemDialog";
 import { HighlightedOutput } from "@/components/HighlightedOutput";
 import { DirectoryTree } from "@/components/DirectoryTree";
+import { ItemToolsHelpDialog } from "@/components/ItemToolsHelpDialog";
 import { parseDiscoveredPaths, buildPathTree } from "@/lib/pathTree";
 import { useToast } from "@/lib/toast";
 import type { ChecklistItem, ToolInfo } from "@/lib/types";
@@ -41,6 +43,7 @@ export function ItemDetail({
 }) {
   const toast = useToast();
   const [showRun, setShowRun] = useState(false);
+  const [showToolsHelp, setShowToolsHelp] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
   const [notes, setNotes] = useState(item.notes);
   const [savingNotes, setSavingNotes] = useState(false);
@@ -106,6 +109,10 @@ export function ItemDetail({
   }
 
   const hasRunnableTools = item.tools.length > 0;
+  const itemTools = useMemo(
+    () => allTools.filter((t) => item.tools.includes(t.name)),
+    [allTools, item.tools]
+  );
 
   // "R" opens the Run Tool dialog for whichever item is currently
   // selected — documented in the README for a while before this was
@@ -204,6 +211,16 @@ export function ItemDetail({
                 }
               >
                 Run tool
+              </Button>
+            )}
+            {hasRunnableTools && (
+              <Button
+                variant="outlined"
+                startIcon={<HelpOutlineIcon fontSize="small" />}
+                onClick={() => setShowToolsHelp(true)}
+                title="What each tool for this test does, and its full command-line options"
+              >
+                Help
               </Button>
             )}
             <Button
@@ -340,6 +357,10 @@ export function ItemDetail({
             setActiveOutput(Object.keys(updated.tool_outputs).slice(-1)[0] ?? null);
           }}
         />
+      )}
+
+      {showToolsHelp && (
+        <ItemToolsHelpDialog tools={itemTools} onClose={() => setShowToolsHelp(false)} />
       )}
 
       {showEdit && (
