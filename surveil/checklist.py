@@ -47,9 +47,13 @@ def build_checklist() -> list[ChecklistItem]:
             id="WSTG-INFO-01",
             name="Search Engine Discovery & Recon",
             description=(
-                "Use search engines (Google, Bing, Shodan) to surface publicly indexed "
-                "information about the target: cached pages, exposed documents, "
-                "credentials in pastes, and misconfigured cloud storage."
+                "Passively enumerate subdomains and associated infrastructure via "
+                "subfinder/amass's own aggregated sources (certificate transparency, "
+                "DNS datasets, some passive search indexes) to surface exposed assets "
+                "the target doesn't advertise directly. This covers the passive-discovery "
+                "half of the test automatically; manually supplement with targeted Google/"
+                "Bing dorking and Shodan/Censys lookups for cached pages, pastes, and "
+                "misconfigured cloud storage — no wrapped tool here does that part."
             ),
             category="Information Gathering",
             category_code="INFO",
@@ -153,7 +157,7 @@ def build_checklist() -> list[ChecklistItem]:
             ),
             category="Information Gathering",
             category_code="INFO",
-            tools=["whatweb", "wappalyzer-cli", "wpscan"],
+            tools=["whatweb", "nuclei", "wpscan"],
             owasp_ref="WSTG-INFO-08",
             cwe_ids=["CWE-200"],
         ),
@@ -298,7 +302,7 @@ def build_checklist() -> list[ChecklistItem]:
             category="Configuration Management",
             category_code="CONF",
             tools=["httpx", "nuclei"],
-            owasp_ref="WSTG-CONF-07",
+            owasp_ref="WSTG-CONF-08",
             cwe_ids=["CWE-693", "CWE-116"],
         ),
         ChecklistItem(
@@ -312,7 +316,7 @@ def build_checklist() -> list[ChecklistItem]:
             category="Configuration Management",
             category_code="CONF",
             tools=["subfinder", "dnsx", "nuclei"],
-            owasp_ref="WSTG-CONF-10",
+            owasp_ref="WSTG-CONF-09",
             cwe_ids=["CWE-350"],
         ),
         ChecklistItem(
@@ -326,7 +330,28 @@ def build_checklist() -> list[ChecklistItem]:
             category="Configuration Management",
             category_code="CONF",
             tools=["wafw00f", "nuclei"],
-            owasp_ref="WSTG-CONF-01",
+            owasp_ref="WSTG-CONF-10",
             cwe_ids=["CWE-693"],
         ),
     ]
+
+
+def _validate_tool_references() -> None:
+    """Catch a checklist item pointing at a tool name that doesn't actually
+    exist (e.g. "wappalyzer-cli" sat here unregistered/unrunnable for a
+    while) as soon as this module loads, instead of only noticing when a
+    tester's Run Tool dropdown for that item is quietly missing an entry.
+    """
+    from .tools import TOOL_REGISTRY  # local import: tools/ has no reason to import checklist.py, but avoid any load-order assumption
+
+    known = set(TOOL_REGISTRY.keys())
+    for item in build_checklist():
+        unknown = [t for t in item.tools if t not in known]
+        if unknown:
+            raise AssertionError(
+                f"{item.id} ({item.name}) lists unregistered tool(s) {unknown} — "
+                f"check TOOL_REGISTRY in surveil/tools/__init__.py"
+            )
+
+
+_validate_tool_references()

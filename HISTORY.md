@@ -6,6 +6,91 @@ was verified, and what the next agent should pick up.
 
 ---
 
+## 2026-08-25 (2) — Audit: does each checklist item's tool list match its purpose?
+
+**Done (user question: "each script tools it related with purpose each
+engagements? if not can you adjust it" — asking whether the tools
+assigned to each WSTG checklist item actually serve that item's stated
+testing purpose):**
+- Read every one of the 20 checklist items in `checklist.py` against its
+  own `description` and cross-checked `tools` against `TOOL_REGISTRY`.
+  Found and fixed:
+  - **`WSTG-INFO-08` (Fingerprint Web Application Framework) listed
+    `"wappalyzer-cli"`** — not a real tool anywhere in this project
+    (`surveil/tools/__init__.py`'s `TOOL_REGISTRY` has no such entry).
+    It's been a dead reference since this checklist item was written —
+    the Run Tool dropdown for this item was silently missing that third
+    option the whole time, no error, just fewer choices than intended.
+    Replaced it with `nuclei`, which already has tech-detect templates
+    (`-tags ...,tech`, used elsewhere in `nuclei_tool.py`) and genuinely
+    fits "fingerprint the framework/CMS, match against known CVEs."
+  - **`WSTG-INFO-01` (Search Engine Discovery & Recon)'s description
+    promised Google/Bing/Shodan dorking**, but its actual tools
+    (`subfinder`, `amass`) are subdomain enumeration, not search-engine
+    dorking — no wrapped tool in this project does dorking at all.
+    Reworded the description to honestly describe what the tools
+    actually contribute (passive subdomain/asset discovery via
+    aggregated sources) and explicitly call out that dorking/Shodan
+    lookups are a manual supplement, rather than implying automated
+    coverage that doesn't exist.
+  - **3 items had a copy-pasted wrong `owasp_ref`**: `WSTG-CONF-08`
+    (Security Response Headers) was stamped `WSTG-CONF-07` (duplicating
+    the HSTS item's own ref), `WSTG-CONF-09` (Subdomain Takeover) was
+    stamped `WSTG-CONF-10`, and `WSTG-CONF-10` (WAF Detection) was
+    stamped `WSTG-CONF-01` (duplicating the network-config item's ref).
+    All 3 now self-reference correctly.
+  - Every other item's tools were already a good match for its stated
+    purpose (e.g. `WSTG-CONF-01`'s open-port scan → `nmap` alone;
+    `WSTG-CONF-03`/04/05's wordlist-brute-force tests →
+    `ffuf`/`gobuster`, matching last session's per-test wordlist
+    recommendations) — left unchanged.
+- Added `_validate_tool_references()`, run once at `checklist.py` import
+  time: asserts every tool name in every item's `tools` list exists in
+  `TOOL_REGISTRY`, with a message naming the offending item. This is
+  specifically to catch the `wappalyzer-cli` class of bug immediately
+  (a crash on startup) instead of it silently sitting there as a
+  missing dropdown option for however long, like this one did.
+- Migrated the one existing real engagement (`~/.surveil/engagements/
+  25f27157.json`, the user's actual "Snoopbee Lab1" lab work) to match:
+  its checklist items were snapshotted from `build_checklist()` at
+  creation time, so it had the stale `wappalyzer-cli` entry and the 3
+  wrong `owasp_ref`s baked in. Patched only those 4 exact stale
+  field values in place — left every other field (status, findings,
+  tool_outputs, notes, timestamps) completely untouched. Confirmed via
+  the live API afterward that the engagement's real progress (findings
+  count, done/pending status per item) was unaffected by the patch.
+
+**Verified:**
+- `_validate_tool_references()` passes cleanly on the current checklist;
+  confirmed it actually catches a regression by temporarily reintroducing
+  a fake unregistered tool name and checking the `AssertionError` fires
+  with a clear message.
+- `./venv/bin/python -c "from backend.main import app"` and `from
+  surveil.cli import build_checklist` both import without error.
+- Curled the live (already-running, `--reload`) backend's `/api/tools`
+  and confirmed `wappalyzer-cli` isn't there and `nuclei` is.
+- Curled `/api/engagements/25f27157` after the data migration and
+  confirmed the 4 fields now read correctly while findings count and
+  per-item done/pending status matched what they were before the patch.
+
+**Next steps for the next agent:**
+1. `_validate_tool_references()` only checks that a listed tool *exists*
+   — it doesn't (and can't, statically) verify the tool's actual
+   `build_command()` genuinely performs the specific sub-test a
+   checklist item describes (e.g. `WSTG-CONF-06`/Test HTTP Methods lists
+   `httpx`, which probes headers but doesn't itself enumerate allowed
+   HTTP methods the way `nmap`'s `http-methods` NSE script does — nmap
+   already covers the item for real, httpx's presence there is just a
+   generically-useful secondary probe, not wrong, just not load-bearing
+   for that specific item). Worth a closer per-item pass if this
+   becomes a recurring source of confusion.
+2. If more engagements exist on other machines/other testers' setups,
+   they'd have the same 4 stale fields baked in from before this fix —
+   the migration here only touched the one engagement file present on
+   this dev machine.
+
+---
+
 ## 2026-08-25 — Fix: 7 more tools hardcoded https:// against a plain-HTTP target
 
 **Done (user pasted a real failure): running `nikto` against this repo's
