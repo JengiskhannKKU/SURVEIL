@@ -70,6 +70,7 @@ export interface ToolInfo {
   install_hints: Record<string, string>;
   modes: Record<string, string>;
   domain_only: boolean;
+  help_flag: string;
 }
 
 export interface WordlistInfo {

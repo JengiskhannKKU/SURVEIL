@@ -9,6 +9,7 @@ class NiktoTool(BaseTool):
     binary = "nikto"
     description = "Scan the web server for known vulnerabilities and misconfigurations."
     example = "nikto -h https://example.com -Tuning 1234567890 -nointeractive -Display 1"
+    help_flag = "-Help"
     install_hints = {
         "brew": "brew install nikto",
         "apt": "sudo apt install -y nikto",

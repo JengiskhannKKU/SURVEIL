@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from functools import lru_cache
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException
@@ -54,6 +55,7 @@ def list_tools() -> list[dict]:
             "install_hints": cls.install_hints,
             "modes": cls.modes,
             "domain_only": cls.domain_only,
+            "help_flag": cls.help_flag,
         }
         for name, cls in sorted(TOOL_REGISTRY.items())
     ]
@@ -108,6 +110,29 @@ def preview_command(
         "recommended_category_label": CATEGORY_LABELS.get(category) if category else None,
         "nuclei_tags": nuclei_tags,
     }
+
+
+@lru_cache(maxsize=32)
+def _cached_help(tool_name: str) -> str:
+    tool_cls = TOOL_REGISTRY[tool_name]
+    return tool_cls(target="").run_help()
+
+
+@router.get("/{tool_name}/help")
+def tool_help(tool_name: str) -> dict:
+    """The tool's own --help output, straight from the installed binary —
+    cached after the first call since it can't change without reinstalling
+    the tool, and shelling out on every dialog open would be wasteful.
+    """
+    tool_cls = TOOL_REGISTRY.get(tool_name)
+    if tool_cls is None:
+        raise HTTPException(status_code=404, detail=f"Unknown tool: {tool_name}")
+    if not tool_cls(target="").is_available():
+        return {"available": False, "text": ""}
+    try:
+        return {"available": True, "text": _cached_help(tool_name)}
+    except Exception as exc:  # noqa: BLE001 - surface any help-flag failure as text, not a 500
+        return {"available": True, "text": f"Could not run {tool_name} {tool_cls.help_flag}: {exc}"}
 
 
 @router.get("/wordlists")

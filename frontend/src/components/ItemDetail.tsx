@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Box from "@mui/material/Box";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
@@ -107,6 +107,25 @@ export function ItemDetail({
 
   const hasRunnableTools = item.tools.length > 0;
 
+  // "R" opens the Run Tool dialog for whichever item is currently
+  // selected — documented in the README for a while before this was
+  // actually wired up. Guarded the same way Checklist.tsx's ↑/↓
+  // shortcut is: skip while focus is in a text field (including this
+  // item's own Notes textarea) so typing the letter "r" anywhere never
+  // gets hijacked.
+  useEffect(() => {
+    function handler(e: KeyboardEvent) {
+      if (e.key !== "r" && e.key !== "R") return;
+      const target = e.target as HTMLElement;
+      if (["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)) return;
+      if (!hasRunnableTools) return;
+      setRunAtPath(null);
+      setShowRun(true);
+    }
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [hasRunnableTools]);
+
   return (
     <Box display="flex" flexDirection="column" flex={1} sx={{ overflow: "hidden" }}>
       <Box sx={{ borderBottom: "1px solid", borderColor: "divider", px: 3, py: 2 }}>
@@ -165,6 +184,24 @@ export function ItemDetail({
                   setRunAtPath(null);
                   setShowRun(true);
                 }}
+                endIcon={
+                  <Box
+                    component="kbd"
+                    title="Keyboard shortcut: R"
+                    sx={{
+                      fontFamily: "var(--font-geist-mono)",
+                      fontSize: 10,
+                      lineHeight: 1,
+                      border: "1px solid rgba(0,0,0,0.35)",
+                      borderRadius: 0.5,
+                      px: 0.5,
+                      py: 0.25,
+                      opacity: 0.7,
+                    }}
+                  >
+                    R
+                  </Box>
+                }
               >
                 Run tool
               </Button>

@@ -9,6 +9,7 @@ class WpscanTool(BaseTool):
     binary = "wpscan"
     description = "Enumerate WordPress version, plugins/themes, and known vulnerabilities."
     example = "wpscan --url https://example.com --enumerate vp,vt,u --no-banner --format cli"
+    help_flag = "--help"
     install_hints = {
         "brew": "brew install wpscanteam/tap/wpscan",
         "gem": "gem install wpscan",

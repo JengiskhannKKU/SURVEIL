@@ -125,6 +125,9 @@ export const api = {
         (itemId ? `&item_id=${encodeURIComponent(itemId)}` : "")
     ),
 
+  getToolHelp: (tool: string) =>
+    request<{ available: boolean; text: string }>(`/api/tools/${tool}/help`),
+
   listWordlists: () => request<WordlistInfo[]>("/api/tools/wordlists"),
 
   listWordlistsGrouped: (itemId?: string) =>

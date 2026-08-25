@@ -6,6 +6,103 @@ was verified, and what the next agent should pick up.
 
 ---
 
+## 2026-08-25 (18) — Real per-tool `--help` output, shown from the Run Tool dialog
+
+**Done (user request: "add helping function near running button for
+describe each options on the tools such as `nmap -help`"):**
+- `BaseTool` (`surveil/tools/base.py`) gained `help_flag` (default `-h`)
+  and `run_help()`, which shells out to the resolved binary with that
+  flag and returns its raw stdout+stderr, exit code ignored (nikto and
+  testssl.sh both exit non-zero on their own help flag by design).
+  Overridden per tool where the real CLI doesn't take plain `-h`:
+  `nikto` → `-Help`, `gowitness`/`wpscan`/`testssl.sh`/`whatweb` →
+  `--help`, `sqlmap` → `-hh` (the extended/advanced option listing
+  rather than the terse default).
+- New backend endpoint `GET /api/tools/{tool_name}/help`, cached
+  in-process via `functools.lru_cache` (help text can't change without
+  reinstalling the binary, so there's no reason to re-run the subprocess
+  on every dialog open). Returns `{"available": false, "text": ""}`
+  without shelling out at all when the binary isn't on PATH — nothing
+  to run.
+- `list_tools()` now also returns each tool's `help_flag`, mirrored into
+  the frontend's `ToolInfo` type.
+- New `frontend/src/components/ToolHelpDialog.tsx`: shows the real
+  `--help` text verbatim in a monospace scrollable panel, titled e.g.
+  `nmap -h`, with the tool's logo. For a not-installed tool it falls
+  back to the existing description/example/install-hints instead of
+  trying to run anything.
+- A **Help** button (outlined, `HelpOutlineIcon`) now sits directly next
+  to **Run** in `RunToolDialog.tsx` — this is deliberately *not* a
+  hand-maintained summary of each tool's flags (18 tools × however many
+  flags each, drifting from whatever version is actually installed);
+  it's the tool's own current `--help` output, guaranteed accurate
+  because it comes straight from the binary being run.
+
+**Verified:**
+- `npx tsc --noEmit`, `eslint`, `next build` all clean.
+- Hit `/api/tools/{name}/help` directly for `nmap`, `nikto`, `testssl`,
+  `wpscan`, `gobuster`, `ffuf`, `sqlmap` — each returned real, correctly
+  flagged help text (confirmed the override tools actually used their
+  overridden flag, not a generic `-h`).
+- Full browser E2E against a real engagement (Snoopbee Lab3): opened
+  Run Tool on WSTG-INFO-02, confirmed the Help button renders next to
+  Run, clicked it, confirmed the dialog opens showing the selected
+  tool's (`httpx`) real `-h` output rendered correctly with logo/title.
+  Zero console errors.
+- **Environment note, not a code bug:** mid-session, `npm run build`
+  (run to typecheck this change) overwrote `.next` while the existing
+  `next start` production server (PID still serving the old build) was
+  running, so it started 500ing on every JS chunk and the app got stuck
+  on "Loading engagement…". Not caused by this feature's code — fixed
+  by restarting the `next start` process so it picked up the fresh
+  build. Worth knowing if a future agent sees the same symptom after
+  running `npm run build` against a live `next start` server.
+
+**Next steps for the next agent:**
+1. Help text isn't searchable/filterable within the dialog — for a tool
+   like `nmap` or `sqlmap` with a very long help output, a future
+   improvement could add a client-side filter box.
+2. The Tools catalog (`ToolsCatalog.tsx`, entry 16 below) still shows
+   only the curated one-line `example` command, not the full `--help`
+   — could link out to this same dialog from there too, so "what are
+   all of `nikto`'s flags" is answerable without first navigating into
+   a checklist item.
+
+---
+
+## 2026-08-25 (17) — Keyboard shortcut: R opens Run Tool dialog
+
+**Done (user request: "where helping function? add shortkey for run
+script and write on frontend button for short key"):**
+- The README already documented "Pressing `R` opens the Run Tool
+  dialog" as a shortcut, but it was never actually wired up — this
+  session implemented it for real. `ItemDetail.tsx` now has a
+  `keydown` listener (mirroring the guard pattern `Checklist.tsx`'s
+  existing ↑/↓ shortcut already uses) that opens the Run Tool dialog on
+  `r`/`R`, skipped while focus is inside any `INPUT`/`TEXTAREA`/`SELECT`
+  — including this item's own Notes textarea — so typing notes
+  containing the letter "r" can never accidentally pop the dialog open.
+  Also skipped when the item has no runnable tools.
+- The **Run tool** button itself now visibly shows the shortcut: a
+  small monospace `R` badge as its `endIcon`, so the hint is discoverable
+  without reading the README.
+
+**Verified:**
+- `npx tsc --noEmit`, `eslint`, `next build` all clean.
+- Full browser E2E against a real engagement (Snoopbee Lab3): confirmed
+  the button renders with the "R" badge, confirmed the dialog is closed
+  before any keypress, confirmed pressing `r` on the page opens it,
+  confirmed closing it and then typing "r" inside the Notes textarea
+  does *not* reopen it (guard works). Zero console errors. Screenshot
+  of the button with its badge visually confirmed.
+
+**Next steps for the next agent:**
+1. No other documented-but-unverified shortcuts are currently known —
+   worth a quick README sweep next time a "where's feature X" question
+   comes up, since this is the second time a doc got ahead of the code.
+
+---
+
 ## 2026-08-25 (16) — Tool logos, descriptions everywhere, and a Tools catalog
 
 **Done (user request: "can you add each tools's logo and can you

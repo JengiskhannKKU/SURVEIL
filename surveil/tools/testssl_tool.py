@@ -9,6 +9,7 @@ class TestsslTool(BaseTool):
     binary = "testssl.sh"
     description = "Analyze TLS/SSL configuration, protocols, ciphers, and known vulnerabilities."
     example = "testssl.sh --quiet --color 0 https://example.com"
+    help_flag = "--help"
     install_hints = {
         "brew": "brew install testssl",
         "apt": "sudo apt install -y testssl.sh",

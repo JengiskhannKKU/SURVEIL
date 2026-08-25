@@ -213,6 +213,17 @@ class BaseTool(ABC):
     # own -timeout flag (minutes) differs sharply between fast and full.
     timeout_seconds: int = 180
 
+    # Flag that prints this binary's own usage/options text (what you'd get
+    # running it by hand with --help). Powers the Run Tool dialog's "Help"
+    # button, which shells out to the real binary and shows its actual
+    # output verbatim — like `nmap -h` — rather than a hand-maintained copy
+    # that drifts from the installed version. Most tools take plain "-h";
+    # override on the handful that don't (nikto, gowitness, wpscan,
+    # testssl.sh, whatweb, gobuster use long-form --help/-Help; sqlmap's
+    # "-hh" gives the full advanced-options listing instead of the terse
+    # default).
+    help_flag: str = "-h"
+
     def __init__(self, target: str):
         self.target = target
 
@@ -221,6 +232,28 @@ class BaseTool(ABC):
 
     def get_timeout(self, fast: bool = False) -> int:
         return self.timeout_seconds
+
+    def run_help(self) -> str:
+        """Return this tool's real --help output, straight from the binary.
+
+        Runs synchronously with a short timeout — help text is fast to
+        print and this is called on demand from a dialog, not streamed.
+        Some tools (nikto, testssl.sh) exit non-zero on their help flag by
+        design, so the exit code is ignored; stdout/stderr are concatenated
+        since a few tools (gobuster) print usage to stderr.
+        """
+        resolved = resolve_binary(self.binary)
+        if resolved is None:
+            raise FileNotFoundError(self.binary)
+        proc = subprocess.run(
+            [resolved, self.help_flag],
+            capture_output=True,
+            text=True,
+            timeout=15,
+            env=_subprocess_env(),
+        )
+        text = (proc.stdout or "") + (proc.stderr or "")
+        return text.strip()
 
     @abstractmethod
     def build_command(self, fast: bool = False) -> list[str]:

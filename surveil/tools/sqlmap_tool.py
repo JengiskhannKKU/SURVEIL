@@ -14,6 +14,7 @@ class SqlmapTool(BaseTool):
         "to a specific -u \"https://target/page?id=1\" instead."
     )
     example = "sqlmap -u https://example.com --crawl=2 --forms --batch --level=2 --risk=1"
+    help_flag = "-hh"
     install_hints = {
         "brew": "brew install sqlmap",
         "apt": "sudo apt install -y sqlmap",

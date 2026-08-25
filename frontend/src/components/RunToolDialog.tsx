@@ -18,6 +18,7 @@ import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import CheckIcon from "@mui/icons-material/Check";
 import RestartAltIcon from "@mui/icons-material/RestartAlt";
 import ListAltIcon from "@mui/icons-material/ListAlt";
+import HelpOutlineIcon from "@mui/icons-material/HelpOutline";
 import IconButton from "@mui/material/IconButton";
 import { motion } from "framer-motion";
 import { api, WS_BASE } from "@/lib/api";
@@ -25,6 +26,7 @@ import { useToast } from "@/lib/toast";
 import { HighlightedLine } from "@/components/HighlightedOutput";
 import { InstallHints } from "@/components/InstallHints";
 import { WordlistPickerDialog } from "@/components/WordlistPickerDialog";
+import { ToolHelpDialog } from "@/components/ToolHelpDialog";
 import { ToolLogo } from "@/components/ToolLogo";
 import { isIpAddress } from "@/lib/target";
 import type { ChecklistItem, ToolInfo, WsMessage } from "@/lib/types";
@@ -56,6 +58,7 @@ export function RunToolDialog({
   const [defaultCommand, setDefaultCommand] = useState("");
   const [wordlistPath, setWordlistPath] = useState("");
   const [wordlistPickerOpen, setWordlistPickerOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
   const [recommendedCategoryLabel, setRecommendedCategoryLabel] = useState<string | null>(null);
   const [nucleiTags, setNucleiTags] = useState<string | null>(null);
   const [lines, setLines] = useState<string[]>([]);
@@ -368,7 +371,18 @@ export function RunToolDialog({
           </IconButton>
         </Stack>
 
-        <Box display="flex" justifyContent="flex-end" mb={2}>
+        <Box display="flex" justifyContent="flex-end" gap={1} mb={2}>
+          {tool && (
+            <Button
+              variant="outlined"
+              size="small"
+              startIcon={<HelpOutlineIcon fontSize="small" />}
+              onClick={() => setHelpOpen(true)}
+              title={`Show ${toolName}'s real --help output and every option it supports`}
+            >
+              Help
+            </Button>
+          )}
           <Button variant="contained" onClick={run} disabled={running || !toolName}>
             {running ? "Running…" : "Run"}
           </Button>
@@ -426,6 +440,8 @@ export function RunToolDialog({
           }}
         />
       )}
+
+      {helpOpen && tool && <ToolHelpDialog tool={tool} onClose={() => setHelpOpen(false)} />}
     </Dialog>
   );
 }
