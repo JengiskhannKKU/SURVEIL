@@ -1,7 +1,7 @@
 """arjun tool wrapper — hidden HTTP parameter discovery."""
 from __future__ import annotations
 
-from .base import BaseTool
+from .base import BaseTool, base_url
 
 
 class ArjunTool(BaseTool):
@@ -12,9 +12,10 @@ class ArjunTool(BaseTool):
     install_hints = {"pip": "pip install arjun"}
 
     def build_command(self, fast: bool = False) -> list[str]:
+        url = base_url(self.target)
         if fast:
-            return ["arjun", "-u", f"https://{self.target}", "-t", "20"]
-        return ["arjun", "-u", f"https://{self.target}", "--stable", "-t", "10"]
+            return ["arjun", "-u", url, "-t", "20"]
+        return ["arjun", "-u", url, "--stable", "-t", "10"]
 
     def mock_output(self) -> str:
         return f"""\

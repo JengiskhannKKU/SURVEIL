@@ -1,7 +1,7 @@
 """gowitness tool wrapper — screenshot capture of web pages."""
 from __future__ import annotations
 
-from .base import BaseTool
+from .base import BaseTool, base_url
 
 
 class GowitnessTool(BaseTool):
@@ -12,9 +12,10 @@ class GowitnessTool(BaseTool):
     install_hints = {"go": "go install github.com/sensepost/gowitness@latest"}
 
     def build_command(self, fast: bool = False) -> list[str]:
+        url = base_url(self.target)
         if fast:
-            return ["gowitness", "single", f"https://{self.target}", "--timeout", "10"]
-        return ["gowitness", "single", f"https://{self.target}", "--timeout", "30"]
+            return ["gowitness", "single", url, "--timeout", "10"]
+        return ["gowitness", "single", url, "--timeout", "30"]
 
     def mock_output(self) -> str:
         return f"""\

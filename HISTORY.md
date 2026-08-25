@@ -6,6 +6,65 @@ was verified, and what the next agent should pick up.
 
 ---
 
+## 2026-08-25 — Fix: 7 more tools hardcoded https:// against a plain-HTTP target
+
+**Done (user pasted a real failure): running `nikto` against this repo's
+own lab target `192.168.2.11` (plain HTTP, no TLS on port 443) failed —
+`nikto -h https://192.168.2.11 ...` → "Unable to connect to
+192.168.2.11:443", because `nikto_tool.py` hardcoded `https://` instead
+of using `base_url()`, the scheme-detection helper added a while back
+specifically to fix this exact bug in ffuf/gobuster (bare IPv4 → http://,
+bare hostname → https://, explicit scheme always respected).**
+- Grepped every tool wrapper for the same `f"https://{self.target}"`
+  pattern in `build_command()` (not just mock-output text, which doesn't
+  matter) and found it wasn't just nikto — same bug in `gowitness`,
+  `arjun`, `katana`, `nuclei`, `wafw00f`, and `wpscan`. Fixed all 7 to
+  call `base_url(self.target)` instead.
+- Deliberately left `testssl_tool.py`'s hardcoded `https://` alone —
+  testing TLS/SSL configuration is testssl's entire purpose, so forcing
+  https there is correct, not a bug (a target with no TLS at all
+  genuinely has nothing for it to test).
+- `httpx_tool.py` and `whatweb_tool.py` already passed the bare target
+  through untouched (both tools auto-detect scheme themselves) — no
+  change needed, confirmed by reading their `build_command()`.
+
+**Verified:**
+- `python3 -c` import + `build_command()` check across all 7 fixed
+  wrappers against both `192.168.2.11` (→ `http://`) and `example.com`
+  (→ `https://`) — correct in both directions for all of them.
+- Ran the exact previously-failing command for real:
+  `nikto -h http://192.168.2.11 -Tuning 1234567890 -nointeractive
+  -Display 1` — connected successfully this time (`Target Port: 80`,
+  real findings like "Apache/2.4.52 appears to be outdated").
+- Curled the backend's own `/api/tools/nikto/command?target=
+  192.168.2.11` preview endpoint — confirms it now returns
+  `http://192.168.2.11`, matching what the Run Tool dialog would show.
+- Dumped `build_command()` for every tool in `TOOL_REGISTRY` against
+  `192.168.2.11` in one pass — every HTTP-based tool now agrees
+  (`http://`), `testssl` is the one deliberate exception (`https://`),
+  and non-HTTP tools (`amass`, `dnsx`, `nmap`, `subfinder`) are
+  unaffected as expected.
+
+**Next steps for the next agent:**
+1. This class of bug (a wrapper re-deriving its own URL instead of
+   calling `base_url()`) has now recurred 3 times across this project's
+   life (ffuf/gobuster, then this batch of 7). If a new tool wrapper
+   gets added, default to `base_url(self.target)` for anything that
+   takes a URL rather than writing `f"https://{self.target}"` again.
+2. Ran into this live: real `nikto` v2.6.1 (installed via brew) prints
+   6-digit bracketed IDs like `[600050]`/`[013587]` instead of the
+   `OSVDB-NNNN` format this repo's `nikto_tool.py` mock output still
+   uses (nikto deprecated OSVDB IDs at some point). The output
+   highlighter added last session only recognizes `OSVDB-\d+`, so a real
+   nikto run's own finding IDs currently don't get the bold-magenta
+   treatment CVEs/OSVDB IDs get. Not fixed this session (out of scope —
+   this session was about the connection failure) but worth a follow-up:
+   either update `HighlightedOutput.tsx` to also match nikto's newer
+   `\[\d{6}\]` ID format, or update the bundled `nikto_tool.py` mock
+   output to match the real tool's current ID scheme (or both).
+
+---
+
 ## 2026-08-19 (9) — Highlight more "this matters" signal in tool output
 
 **Done (user request: "can you highlight output each output for

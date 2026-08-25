@@ -1,7 +1,7 @@
 """wpscan tool wrapper — WordPress-specific vulnerability scanner."""
 from __future__ import annotations
 
-from .base import BaseTool
+from .base import BaseTool, base_url
 
 
 class WpscanTool(BaseTool):
@@ -16,17 +16,18 @@ class WpscanTool(BaseTool):
     timeout_seconds = 300
 
     def build_command(self, fast: bool = False) -> list[str]:
+        url = base_url(self.target)
         if fast:
             return [
                 "wpscan",
-                "--url", f"https://{self.target}",
+                "--url", url,
                 "--enumerate", "vp",
                 "--no-banner",
                 "--format", "cli",
             ]
         return [
             "wpscan",
-            "--url", f"https://{self.target}",
+            "--url", url,
             "--enumerate", "vp,vt,u",
             "--no-banner",
             "--format", "cli",

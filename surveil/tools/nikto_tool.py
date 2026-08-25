@@ -1,7 +1,7 @@
 """nikto tool wrapper — web server vulnerability scanner."""
 from __future__ import annotations
 
-from .base import BaseTool
+from .base import BaseTool, base_url
 
 
 class NiktoTool(BaseTool):
@@ -17,7 +17,7 @@ class NiktoTool(BaseTool):
     def build_command(self, fast: bool = False) -> list[str]:
         cmd = [
             "nikto",
-            "-h", f"https://{self.target}",
+            "-h", base_url(self.target),
             "-Tuning", "1234567890",
             "-nointeractive",
             "-Display", "1",

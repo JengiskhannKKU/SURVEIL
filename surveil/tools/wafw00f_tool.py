@@ -1,7 +1,7 @@
 """wafw00f tool wrapper — WAF detection."""
 from __future__ import annotations
 
-from .base import BaseTool
+from .base import BaseTool, base_url
 
 
 class Wafw00fTool(BaseTool):
@@ -15,9 +15,10 @@ class Wafw00fTool(BaseTool):
     }
 
     def build_command(self, fast: bool = False) -> list[str]:
+        url = base_url(self.target)
         if fast:
-            return ["wafw00f", f"https://{self.target}"]
-        return ["wafw00f", f"https://{self.target}", "-a"]
+            return ["wafw00f", url]
+        return ["wafw00f", url, "-a"]
 
     def mock_output(self) -> str:
         return f"""\

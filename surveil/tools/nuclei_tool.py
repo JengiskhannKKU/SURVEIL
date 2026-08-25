@@ -1,7 +1,7 @@
 """nuclei tool wrapper — template-based vulnerability scanning."""
 from __future__ import annotations
 
-from .base import BaseTool
+from .base import BaseTool, base_url
 
 
 class NucleiTool(BaseTool):
@@ -16,17 +16,18 @@ class NucleiTool(BaseTool):
     timeout_seconds = 300
 
     def build_command(self, fast: bool = False) -> list[str]:
+        url = base_url(self.target)
         if fast:
             return [
                 "nuclei",
-                "-u", f"https://{self.target}",
+                "-u", url,
                 "-tags", "misconfig,exposure",
                 "-severity", "high,critical",
                 "-silent",
             ]
         return [
             "nuclei",
-            "-u", f"https://{self.target}",
+            "-u", url,
             "-tags", "misconfig,exposure,headers,tech",
             "-severity", "low,medium,high,critical",
             "-silent",

@@ -1,7 +1,7 @@
 """katana tool wrapper — web crawling and endpoint discovery."""
 from __future__ import annotations
 
-from .base import BaseTool
+from .base import BaseTool, base_url
 
 
 class KatanaTool(BaseTool):
@@ -14,7 +14,7 @@ class KatanaTool(BaseTool):
     def build_command(self, fast: bool = False) -> list[str]:
         return [
             "katana",
-            "-u", f"https://{self.target}",
+            "-u", base_url(self.target),
             "-d", "1" if fast else "3",
             "-jc", "-silent", "-nc",
         ]
