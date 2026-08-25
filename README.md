@@ -36,7 +36,7 @@ surveil is a terminal-native tool that brings together web application enumerati
 
 - **Tool Orchestration Layer** — wraps 18 tools via subprocess: `nmap`, `httpx`, `whatweb`, `wafw00f`, `subfinder`, `nuclei`, `arjun`, `dnsx`, `gowitness`, `wpscan`, `amass`, `ffuf`, `gobuster`, `katana`, `nikto`, `testssl`, `sqlmap`, `hydra` (see `TOOL_REGISTRY` in `surveil/tools/__init__.py`). Falls back to realistic simulated output when a tool is not installed (demo mode). Each tool supports a **Fast** and a **Full** command variant, and its exact command line is editable before running.
 - **Checklist & State Engine** — the full OWASP WSTG v4.2 table of contents, all 12 sections (97 items) with status tracking, Textual TUI, JSON persistence, and a saved-engagement picker.
-- **Auto-Finding Extraction** (`surveil/findings_extractor.py`) — parses raw output from `nmap`, `httpx`, `whatweb`, `nuclei`, `wafw00f`, `subfinder`, and `nikto` into `Finding` objects (auto CVSS scoring, OWASP/CWE mapping) flagged `verified=False`, so a tester gets a starting point to confirm or dismiss rather than a blank checklist.
+- **Auto-Finding Extraction** (`surveil/findings_extractor.py`) — parses raw output from 13 of the 18 tools (`nmap`, `httpx`, `whatweb`, `nuclei`, `wafw00f`, `subfinder`, `nikto`, `sqlmap`, `hydra`, `wpscan`, `dnsx`, `ffuf`, `gobuster`) into `Finding` objects (auto CVSS scoring, OWASP/CWE mapping) flagged `verified=False`, so a tester gets a starting point to confirm or dismiss rather than a blank checklist.
 - **Reporting Engine** — CVSS v3.1 base score calculator, OWASP/CWE metadata, Markdown and .docx export.
 
 ---
@@ -401,10 +401,13 @@ With 97 checklist items now (see above), the full item↔tool mapping is best re
 | `nikto` | Web server vulnerability scanning | CONF-02, CONF-09, ERRH-01 |
 | `testssl` | TLS/SSL configuration analysis | CONF-07, ATHN-01, CRYP-01/03, SESS-09 |
 
-Auto-finding extraction (`surveil/findings_extractor.py`) currently covers
-`nmap`, `httpx`, `whatweb`, `nuclei`, `wafw00f`, `subfinder`, and `nikto`;
-the other tools' output is stored and viewable but not yet auto-parsed
-into findings.
+Auto-finding extraction (`surveil/findings_extractor.py`) covers 13 of the
+18 tools: `nmap`, `httpx`, `whatweb`, `nuclei`, `wafw00f`, `subfinder`,
+`nikto`, `sqlmap`, `hydra`, `wpscan`, `dnsx`, `ffuf`, `gobuster`. The
+remaining 5 (`amass`, `arjun`, `gowitness`, `katana`, `testssl`) store and
+show their output but don't auto-parse it into findings yet — `testssl`'s
+output in particular is fixed-width columnar text that needs a different
+parsing approach than the line/regex matching the others use.
 
 ### Installing the tool binaries
 

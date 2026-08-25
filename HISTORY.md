@@ -6,6 +6,106 @@ was verified, and what the next agent should pick up.
 
 ---
 
+## 2026-08-25 (12) — Auto-finding extraction: 7 → 13 of 18 tools
+
+**Done (user picked this from two suggested next steps — extend
+auto-finding extraction vs. add a test suite — after I recommended it
+as the higher-leverage one since findings are the actual deliverable of
+a pentest tool, and 11 of 18 tools' output was going unparsed):**
+- 6 new extractors in `surveil/findings_extractor.py`, registered in
+  `EXTRACTORS`:
+  - `extract_sqlmap` — parses sqlmap's own real reporting format
+    (`Parameter: NAME (METHOD)` blocks with `Type:`/`Payload:` lines,
+    plus the `back-end DBMS is X` line) into one CRITICAL finding per
+    confirmed injection point.
+  - `extract_hydra` — parses hydra's real
+    `[PORT][service] host: H  login: U  password: P` line format into
+    one CRITICAL "weak/default credential" finding per pair found, plus
+    a MEDIUM finding if hydra's own "no lockout observed" note appears.
+  - `extract_wpscan` — parses the outdated-core version+count, every
+    `[!] Title: ... / Fixed in: ... / Reference: ...` vulnerability
+    block (core and plugin/theme alike), and enumerated usernames.
+  - `extract_dnsx` — flags a dangling CNAME as HIGH (not the full
+    confirmed-takeover CRITICAL — see below).
+  - `extract_ffuf` / `extract_gobuster` — share a new
+    `_flag_interesting_paths()` helper: both discover paths by brute
+    force, so a `.env`/`.git`/`backup`/`config`/`admin`/... match in a
+    discovered path means the same thing regardless of which of the two
+    tools found it.
+- New `COMMON_VECTORS` entries in `scoring.py`: `sql_injection`,
+  `default_credentials`, `known_cve_vulnerability`,
+  `sensitive_path_exposed`.
+- **Bug caught and fixed during self-review, before it ever shipped**:
+  `_make_finding()`'s existing behavior (used by every extractor
+  already) is that a passed `cvss_vector` gets auto-scored and *that
+  score's severity overrides whatever `severity=` was passed*. My first
+  draft of `_flag_interesting_paths()` used one shared high-impact
+  vector for every "interesting path" category — which flattened
+  "Admin Interface Discovered" (meant to be LOW) and "Environment
+  Configuration File Exposed" (meant to be HIGH) to the same computed
+  severity. Fixed by only attaching the shared vector to the genuinely
+  high-impact categories (`.env`, `.git`) and leaving the rest with no
+  vector, so their explicit manual severity stands — same fix applied
+  to `extract_wpscan` (per-vulnerability severity now sniffed from the
+  vuln's own title, same approach `extract_nikto` already used,
+  since WPScan's text report doesn't carry a CVSS score per entry — a
+  fixed vector there was scoring a plugin XSS the same as a core RCE).
+- **Also fixed**: `extract_dnsx`'s dangling-CNAME finding initially used
+  the pre-existing (previously unused) `subdomain_takeover` vector,
+  which scored it a full 10.0/CRITICAL — overstating certainty, since
+  dnsx only flags this as *potential* (it can't confirm the target
+  resource is actually deprovisioned). Changed to a manual HIGH
+  severity with no CVSS vector instead.
+
+**Verified:**
+- Ran `extract_findings()` directly against each of the 6 new tools'
+  real `mock_output()` text (not hand-written test fixtures — the
+  actual strings `RunToolDialog` shows a tester) and inspected every
+  resulting title/severity for correctness, iterating twice to catch
+  the two severity bugs above before considering it done.
+- Full real WebSocket round-trip against the live backend
+  (`ws://.../items/{id}/run`) for `sqlmap`: confirmed a real run
+  produces the same critical SQL-injection finding automatically,
+  proving the wiring through `Orchestrator.run_tool()` →
+  `extract_findings()` → the item's `findings` list works end-to-end,
+  not just the extractor function in isolation.
+- Also ran `hydra`/`ffuf` over real WebSocket calls against a
+  nonexistent test domain — both are genuinely installed on this dev
+  machine and correctly found nothing (real tool behavior against an
+  unreachable target, not an extractor bug — confirmed by reading the
+  actual captured raw output, which was empty/a real connection
+  failure banner).
+- Full browser E2E (throwaway Playwright script, deleted after use):
+  injected a real sqlmap finding via the extractor, confirmed the
+  engagement's progress bar correctly shows "1 critical" and the
+  finding renders in the item detail panel. Zero console errors.
+- `backend.main` and `surveil.cli` both import clean; `_validate_tool_
+  references()` (unrelated to this change but always runs at import)
+  still passes.
+
+**Next steps for the next agent:**
+1. 5 tools still have no extractor: `amass`, `arjun`, `gowitness`,
+   `katana`, `testssl`. `testssl`'s output is fixed-width columnar text
+   (`Rating`, `Vulnerable`, protocol/cipher tables) that doesn't fit the
+   line-regex approach every other extractor here uses — worth a
+   dedicated column-aware parser rather than forcing the same pattern.
+   `katana`/`gowitness` are crawling/screenshot tools without an
+   obvious "this line is a finding" signal in their own output — might
+   not be worth extracting from at all versus staying raw-output-only.
+2. `arjun`'s mock output already flags "may bypass auth", "potential
+   SSRF/XSS" per discovered parameter in its own "Notable findings"
+   block — same shape as the `⚠ Notable findings:` sections several
+   other tools already have; a generic "parse the tool's own Notable
+   findings block" extractor could plausibly cover arjun plus catch any
+   future tool that follows the same convention, instead of one
+   bespoke parser per tool.
+3. The test-suite option (the other thing suggested alongside this one)
+   is still untouched — worth revisiting once this extends further,
+   since a real test suite would have caught the two severity bugs
+   above via assertions instead of manual inspection.
+
+---
+
 ## 2026-08-25 (11) — Real per-item tool correctness fixes: nuclei tags, wordlist categories
 
 **Done (user request: "each script for run each testing is it correct

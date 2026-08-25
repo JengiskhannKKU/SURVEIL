@@ -486,6 +486,310 @@ def extract_nikto(item_id: str, output: str) -> list[Finding]:
 
 
 # ---------------------------------------------------------------------------
+# sqlmap findings
+# ---------------------------------------------------------------------------
+
+def extract_sqlmap(item_id: str, output: str) -> list[Finding]:
+    """Extract findings from sqlmap output.
+
+    Real sqlmap reports a confirmed injection point as a "Parameter: NAME
+    (METHOD)" block followed by one or more Type/Title/Payload groups —
+    this is sqlmap's actual reporting format, not just the mock output's,
+    so this parser works against a real run too.
+    """
+    findings: list[Finding] = []
+
+    param_block_re = re.compile(
+        r"Parameter:\s*(\S+)\s*\((\w+)\)\n((?:(?!Parameter:).)*)",
+        re.DOTALL,
+    )
+    type_re = re.compile(r"Type:\s*(.+)")
+
+    dbms_match = re.search(r"back-end DBMS is (\S+)", output)
+    dbms = dbms_match.group(1) if dbms_match else None
+
+    for match in param_block_re.finditer(output):
+        param, method, block = match.group(1), match.group(2), match.group(3)
+        types = [t.strip() for t in type_re.findall(block)]
+        if not types:
+            continue
+        description = (
+            f"sqlmap confirmed SQL injection in the '{param}' {method} parameter "
+            f"({', '.join(types)})."
+        )
+        if dbms:
+            description += f" Back-end DBMS: {dbms}."
+        findings.append(_make_finding(
+            item_id=item_id,
+            title=f"SQL Injection in '{param}' ({method}) Parameter",
+            severity=Severity.CRITICAL,
+            description=description,
+            evidence=block.strip()[:800],
+            owasp_category="WSTG-INPV-05",
+            cwe_id="CWE-89",
+            cvss_vector=COMMON_VECTORS["sql_injection"],
+            tool="sqlmap",
+            remediation=(
+                "Use parameterized queries/prepared statements for every database "
+                "call. Never build SQL by string-concatenating user input."
+            ),
+        ))
+
+    return findings
+
+
+# ---------------------------------------------------------------------------
+# hydra findings
+# ---------------------------------------------------------------------------
+
+def extract_hydra(item_id: str, output: str) -> list[Finding]:
+    """Extract findings from hydra output.
+
+    Real hydra prints a found credential pair as
+    "[PORT][service] host: HOST   login: USER   password: PASS" — this is
+    hydra's own real output format.
+    """
+    findings: list[Finding] = []
+
+    cred_re = re.compile(
+        r"\[\d+\]\[(\w+)\]\s+host:\s*(\S+)\s+login:\s*(\S+)\s+password:\s*(\S+)"
+    )
+    for service, host, login, password in cred_re.findall(output):
+        findings.append(_make_finding(
+            item_id=item_id,
+            title=f"Weak/Default Credential Accepted ({service})",
+            severity=Severity.CRITICAL,
+            description=(
+                f"hydra found a working credential pair on {host} via {service}: "
+                f"'{login}:{password}'. This account is protected only by a "
+                f"guessable password."
+            ),
+            evidence=f"{service}://{host} — {login}:{password}",
+            owasp_category="WSTG-ATHN-02",
+            cwe_id="CWE-521",
+            cvss_vector=COMMON_VECTORS["default_credentials"],
+            tool="hydra",
+            remediation=(
+                "Change this credential immediately, enforce a strong password "
+                "policy, and add account lockout / rate limiting (see WSTG-ATHN-03)."
+            ),
+        ))
+
+    if re.search(r"No account lockout observed", output, re.IGNORECASE):
+        findings.append(_make_finding(
+            item_id=item_id,
+            title="No Account Lockout After Repeated Failed Logins",
+            severity=Severity.MEDIUM,
+            description=(
+                "Repeated failed login attempts did not trigger any lockout or "
+                "throttling, leaving the login endpoint open to unlimited "
+                "brute-force/credential-stuffing attempts."
+            ),
+            evidence=_grep_context(output, "lockout", context=1),
+            owasp_category="WSTG-ATHN-03",
+            cwe_id="CWE-307",
+            tool="hydra",
+            remediation="Add account lockout or progressive-delay throttling after N failed attempts.",
+        ))
+
+    return findings
+
+
+# ---------------------------------------------------------------------------
+# wpscan findings
+# ---------------------------------------------------------------------------
+
+def extract_wpscan(item_id: str, output: str) -> list[Finding]:
+    """Extract findings from wpscan output."""
+    findings: list[Finding] = []
+
+    core_match = re.search(r"WordPress version (\S+) identified.*?(\d+) vulnerabilit", output, re.DOTALL)
+    if core_match:
+        version, count = core_match.group(1), core_match.group(2)
+        findings.append(_make_finding(
+            item_id=item_id,
+            title=f"Outdated WordPress Core: v{version} ({count} known vulnerabilities)",
+            severity=Severity.HIGH,
+            description=(
+                f"WordPress core version {version} has {count} known "
+                f"vulnerabilities against it per WPScan's vulnerability database."
+            ),
+            evidence=_grep_context(output, "WordPress version", context=2),
+            owasp_category="WSTG-INFO-08",
+            cwe_id="CWE-1104",
+            tool="wpscan",
+            remediation="Update WordPress core to the latest stable release.",
+        ))
+
+    # "[!] Title: ..." blocks appear for both core and plugin/theme
+    # vulnerabilities, each optionally followed by "Fixed in:"/"Reference:".
+    vuln_re = re.compile(
+        r"\[!\]\s*Title:\s*(.+?)\n"
+        r"(?:\s*\|?\s*Fixed in:\s*(\S+)\n)?"
+        r"(?:\s*\|?\s*Reference:\s*(\S+))?"
+    )
+    for title, fixed_in, reference in vuln_re.findall(output):
+        title = title.strip()
+        desc = title
+        if fixed_in:
+            desc += f" — fixed in {fixed_in}."
+
+        # The vuln database entry's own title is the only signal available
+        # for how bad it actually is (WPScan's text report doesn't carry a
+        # CVSS score per finding) — same keyword-sniffing approach as
+        # extract_nikto() above, rather than one fixed severity/CVSS vector
+        # for every entry regardless of whether it's an RCE or a low-impact
+        # disclosure.
+        lower_title = title.lower()
+        if any(kw in lower_title for kw in ("sql injection", "rce", "remote code", "arbitrary file")):
+            severity, cwe = Severity.CRITICAL, "CWE-89"
+        elif any(kw in lower_title for kw in ("xss", "csrf", "privilege escalation")):
+            severity, cwe = Severity.MEDIUM, "CWE-79"
+        elif any(kw in lower_title for kw in ("disclosure", "information")):
+            severity, cwe = Severity.LOW, "CWE-200"
+        else:
+            severity, cwe = Severity.HIGH, "CWE-1104"
+
+        findings.append(_make_finding(
+            item_id=item_id,
+            title=title[:90],
+            severity=severity,
+            description=desc,
+            evidence=reference or title,
+            owasp_category="WSTG-INFO-08",
+            cwe_id=cwe,
+            tool="wpscan",
+            remediation=f"Update to {fixed_in} or later." if fixed_in else "Update the affected component.",
+        ))
+
+    users = re.findall(r"\[\+\]\s*(\S+)\s*\(ID:\s*\d+\)", output)
+    if users:
+        findings.append(_make_finding(
+            item_id=item_id,
+            title=f"WordPress User Accounts Enumerated ({len(users)})",
+            severity=Severity.LOW,
+            description=(
+                f"{len(users)} WordPress user account(s) were enumerated via "
+                f"author-ID brute forcing: {', '.join(users)}. These are now a "
+                f"known target list for credential attacks."
+            ),
+            evidence=", ".join(users),
+            owasp_category="WSTG-IDNT-04",
+            cwe_id="CWE-203",
+            tool="wpscan",
+            remediation="Rename/hide default author archive URLs, or block user enumeration at the plugin/WAF level.",
+        ))
+
+    return findings
+
+
+# ---------------------------------------------------------------------------
+# dnsx findings
+# ---------------------------------------------------------------------------
+
+def extract_dnsx(item_id: str, output: str) -> list[Finding]:
+    """Extract findings from dnsx output."""
+    findings: list[Finding] = []
+
+    for match in re.finditer(
+        r"\[CNAME\]\s*(\S+)\n\s*→\s*(\S+)\.?\s*⚠\s*potential dangling CNAME",
+        output,
+    ):
+        subdomain, target = match.group(1), match.group(2)
+        findings.append(_make_finding(
+            item_id=item_id,
+            title=f"Potential Dangling CNAME: {subdomain}",
+            severity=Severity.HIGH,
+            description=(
+                f"{subdomain} has a CNAME record pointing at {target}, a "
+                f"third-party service — if that resource has been deprovisioned, "
+                f"an attacker can claim it and serve content under {subdomain}."
+            ),
+            evidence=f"{subdomain} → {target}",
+            owasp_category="WSTG-CONF-10",
+            cwe_id="CWE-350",
+            # No cvss_vector here deliberately: dnsx only flags this as
+            # *potential* (it can't confirm the target resource is actually
+            # deprovisioned) — the full subdomain_takeover vector implies a
+            # confirmed claim and would overstate a still-unverified finding
+            # as a 10.0/critical. HIGH (manual, not CVSS-computed) reflects
+            # "worth checking now" without claiming more certainty than the
+            # tool actually has.
+            tool="dnsx",
+            remediation=f"Verify whether the resource at {target} is still provisioned; remove the CNAME if not.",
+        ))
+
+    return findings
+
+
+# ---------------------------------------------------------------------------
+# ffuf / gobuster findings — both discover directories/files by brute
+# force; share the same "does this path look sensitive" heuristic.
+# ---------------------------------------------------------------------------
+
+_INTERESTING_PATHS: tuple[tuple[str, str, Severity, str, bool], ...] = (
+    # (substring to match in the discovered path, title, severity, cwe,
+    #  use the shared high-impact CVSS vector — only for the genuinely
+    #  high-severity ones; the rest keep their own fixed severity below,
+    #  since _make_finding() lets a passed cvss_vector's auto-computed
+    #  score override the severity= argument, and one shared vector for
+    #  every entry would have flattened "admin discovered" (low) and
+    #  ".env exposed" (high) to the same severity)
+    (".env", "Environment Configuration File Exposed", Severity.HIGH, "CWE-538", True),
+    (".git", "Git Repository Metadata Exposed", Severity.HIGH, "CWE-538", True),
+    ("phpmyadmin", "phpMyAdmin Interface Exposed", Severity.MEDIUM, "CWE-284", False),
+    ("wp-admin", "WordPress Admin Interface Exposed", Severity.MEDIUM, "CWE-284", False),
+    ("server-status", "Apache mod_status Exposed", Severity.MEDIUM, "CWE-200", False),
+    ("backup", "Backup File/Directory Exposed", Severity.MEDIUM, "CWE-530", False),
+    ("config", "Configuration Path Exposed", Severity.MEDIUM, "CWE-538", False),
+    ("admin", "Admin Interface Discovered", Severity.LOW, "CWE-284", False),
+)
+
+
+def _flag_interesting_paths(paths: list[str], item_id: str, tool: str) -> list[Finding]:
+    findings: list[Finding] = []
+    seen_titles: set[str] = set()
+    for path in paths:
+        lower = path.lower()
+        for keyword, title, severity, cwe, use_vector in _INTERESTING_PATHS:
+            if keyword in lower and title not in seen_titles:
+                seen_titles.add(title)
+                findings.append(_make_finding(
+                    item_id=item_id,
+                    title=title,
+                    severity=severity,
+                    description=f"A path matching '{keyword}' was discovered: {path}.",
+                    evidence=path,
+                    owasp_category="WSTG-CONF-05" if "admin" in keyword else "WSTG-CONF-04",
+                    cwe_id=cwe,
+                    cvss_vector=COMMON_VECTORS["sensitive_path_exposed"] if use_vector else "",
+                    tool=tool,
+                    remediation=f"Restrict or remove access to {path} if not intentionally public.",
+                ))
+                break
+    return findings
+
+
+def extract_ffuf(item_id: str, output: str) -> list[Finding]:
+    """Extract findings from ffuf output (both its own mock "| URL |" style
+    and real ffuf's -s silent bare-path-per-line output)."""
+    paths = re.findall(r"\|\s*URL\s*\|\s*(\S+)", output)
+    if not paths:
+        # Real ffuf -s output: one bare relative path per line, nothing else.
+        paths = [
+            line.strip() for line in output.splitlines()
+            if line.strip() and re.match(r"^[\w.\-/]+$", line.strip())
+        ]
+    return _flag_interesting_paths(paths, item_id, "ffuf")
+
+
+def extract_gobuster(item_id: str, output: str) -> list[Finding]:
+    """Extract findings from gobuster output."""
+    paths = re.findall(r"^(/\S*)\s+\(Status:", output, re.MULTILINE)
+    return _flag_interesting_paths(paths, item_id, "gobuster")
+
+
+# ---------------------------------------------------------------------------
 # Dispatcher: tool name → extractor
 # ---------------------------------------------------------------------------
 
@@ -497,6 +801,12 @@ EXTRACTORS: dict[str, callable] = {
     "wafw00f":   extract_wafw00f,
     "subfinder": extract_subfinder,
     "nikto":     extract_nikto,
+    "sqlmap":    extract_sqlmap,
+    "hydra":     extract_hydra,
+    "wpscan":    extract_wpscan,
+    "dnsx":      extract_dnsx,
+    "ffuf":      extract_ffuf,
+    "gobuster":  extract_gobuster,
 }
 
 
