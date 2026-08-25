@@ -6,6 +6,104 @@ was verified, and what the next agent should pick up.
 
 ---
 
+## 2026-08-25 (10) — Wrap the whole project in Docker (web app included)
+
+**Done (user request: "can you wrap all project by docker and update
+script for run and ignore files not necessary" — the existing
+Dockerfile only wrapped the CLI/TUI; the web app (backend + frontend)
+had no Docker path at all):**
+- `Dockerfile`: added `sqlmap`/`hydra` to the apt install list (both
+  packaged directly for Debian, no build step) so the image now bundles
+  all 18 tools, not 16. Switched `pip install .` to `pip install
+  ".[web]"` so FastAPI/uvicorn/websockets ship in the same image. Added
+  `COPY backend ./backend` and `ENV PYTHONPATH=/app` — `backend/` isn't
+  a pip-installed package (pyproject.toml's `packages.find` only
+  includes `surveil*`), so it needs to be on disk and importable via
+  `python -m uvicorn backend.main:app` for the new `backend` compose
+  service.
+- New `frontend/Dockerfile`: 3-stage build (deps → build → runtime) for
+  the Next.js app. `NEXT_PUBLIC_API_URL`/`NEXT_PUBLIC_WS_URL` build
+  args default to `http://localhost:8000`/`ws://localhost:8000` —
+  correct as-is for this compose setup, since those are inlined into
+  the *client* bundle and the browser (not the Docker network) is what
+  actually makes those calls, hitting the backend's published host port.
+- `docker-compose.yml` rewritten: `backend` + `frontend` services (what
+  a plain `docker compose up` starts by default) alongside the
+  pre-existing `surveil` CLI/TUI service, now gated behind a `cli`
+  profile specifically so a plain `up` doesn't try to start an
+  interactive-TTY-only service. All three share the same `surveil-data`
+  volume, so an engagement created via the web UI is visible to
+  `docker compose run --rm surveil status` and vice versa.
+- New `run-docker.sh` (mirrors the existing local-dev `run.sh`):
+  `up`/`down`/`logs`/`build` subcommands wrapping `docker compose`.
+- `.gitignore`/`.dockerignore` cleanup: removed 3 files that had no
+  business being tracked — `.DS_Store` (macOS junk), a ~48KB stray
+  terminal-session-log text file with a timestamp-only filename
+  (clearly an accidental paste, not project content), and
+  `demo_report.md` (a generated demo artifact). Kept on disk, just
+  untracked; `.gitignore` updated so they don't come back. Root
+  `.dockerignore` now also excludes `frontend/node_modules`,
+  `frontend/.next`, and the SecLists download cache so the root
+  Dockerfile's build context isn't needlessly bloated by directories it
+  never even COPYs.
+
+**Verified — this one got a real build, not just a static read:**
+- Docker Desktop wasn't running at the start of this session; started
+  it and did **actual builds**, not just `docker compose config`
+  syntax validation. Backend/CLI image build took ~13 minutes (mostly
+  compiling katana's large dependency tree — expected, matches the
+  original Dockerfile's own build time before this session); frontend
+  image built in under a minute.
+- Confirmed `sqlmap`/`hydra`/`testssl.sh` all present and executable in
+  the built image (`command -v` inside a running container).
+- Ran the real stack: `docker compose up -d backend frontend`, hit
+  `/api/health` (`{"status":"ok"}`), created a real engagement via the
+  API and confirmed it got all 97 checklist items, previewed a real
+  `sqlmap` command through the containerized backend.
+- **Chased down a false alarm while verifying**: `sqlmap`'s
+  `available` field read `false` when curled from the host but `true`
+  when checked from inside the container — turned out to be this dev
+  machine's own leftover local `uvicorn`/`next start` processes still
+  bound to `127.0.0.1:8000`/`:3000` from earlier in this session; macOS
+  routes a connection to `127.0.0.1:8000` to the more specific bind
+  (the local process) over Docker's wildcard (`0.0.0.0:8000`) proxy, so
+  every "verification" curl was silently hitting the old local process,
+  not the container. Killed the stale local processes, re-verified
+  clean against the actual container, confirmed all 18 tools report
+  available.
+- Full browser E2E against the real Docker stack (frontend container →
+  backend container, not localhost dev servers): created an engagement,
+  confirmed all 97 items rendered, opened the SQL Injection item,
+  selected `sqlmap`, confirmed no "not installed" warning (proving the
+  binary really is reachable inside the running container, not just
+  present in a `docker exec` shell). Zero console errors.
+- Restored the local dev environment afterward (stopped the Docker
+  containers, restarted local `uvicorn`/`next start` so the real
+  engagements — "Snoopbee Lab1/2/3" — created during this session by
+  the user testing in parallel were reachable again).
+
+**Next steps for the next agent:**
+1. The backend/CLI image build is genuinely slow (~13 min, dominated by
+   `go install`-ing katana and its headless-browser-adjacent dependency
+   tree) — this was already true before this session, not introduced by
+   it, but worth knowing if a future change to the Dockerfile seems to
+   "hang": it's very likely just this, not a real problem.
+2. `docker compose build` (no service name) builds all 3 services,
+   including the `cli`-profile-gated `surveil` one — `build` ignores
+   profile restrictions even though `up`/`run` respect them. Not a bug,
+   just worth knowing `make docker`/`docker compose build` do build all
+   three, not just the two the default `up` starts.
+3. The Docker backend/CLI services use a *separate* `surveil-data`
+   volume from this dev machine's local `~/.surveil/` — engagements
+   created via the containerized web app (like the "Docker Final Check"/
+   "Docker Stack Check" ones from this session's verification, deleted
+   afterward) are invisible to the local dev servers and vice versa.
+   Expected/correct (different persistence backing), just worth knowing
+   if "my engagement disappeared" ever gets reported — it's almost
+   certainly a local-vs-Docker split, not data loss.
+
+---
+
 ## 2026-08-25 (9) — Full OWASP WSTG v4.2 coverage: 97 checklist items
 
 **Done (user pasted the complete WSTG v4.2 table of contents — all 12

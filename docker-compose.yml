@@ -1,4 +1,32 @@
 services:
+  # Web app: `docker compose up` starts these two by default (no
+  # profile), FastAPI backend + Next.js frontend. Open
+  # http://localhost:3000 — that's the UI. The backend only serves
+  # /api/* and /ws/*, opening its port directly 404s on everything
+  # else (expected).
+  backend:
+    build: .
+    image: surveil:latest
+    working_dir: /app
+    entrypoint: ["python", "-m", "uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    ports:
+      - "8000:8000"
+    volumes:
+      - surveil-data:/data
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
+  # CLI/TUI: opt-in only (not started by a plain `docker compose up`),
+  # since it needs an interactive terminal and isn't part of "the app"
+  # in the web sense. Run one-off commands with:
+  #   docker compose run --rm surveil <args>
+  # or the interactive TUI with:
+  #   docker compose run --rm surveil tui
   surveil:
     build: .
     image: surveil:latest
@@ -8,6 +36,11 @@ services:
       - surveil-data:/data
     entrypoint: ["surveil"]
     command: ["--help"]
+    profiles: ["cli"]
 
 volumes:
+  # Shared between backend and the CLI service — both resolve engagement
+  # state under $HOME/.surveil (HOME=/data in the image), so an
+  # engagement created via the web UI is also visible to `docker compose
+  # run --rm surveil ...` against the same volume, and vice versa.
   surveil-data:

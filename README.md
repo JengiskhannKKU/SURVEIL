@@ -34,7 +34,7 @@ surveil is a terminal-native tool that brings together web application enumerati
 └────────────────┴────────────────────┴───────────────────────┘
 ```
 
-- **Tool Orchestration Layer** — wraps 16 tools via subprocess: `nmap`, `httpx`, `whatweb`, `wafw00f`, `subfinder`, `nuclei`, `arjun`, `dnsx`, `gowitness`, `wpscan`, `amass`, `ffuf`, `gobuster`, `katana`, `nikto`, `testssl` (see `TOOL_REGISTRY` in `surveil/tools/__init__.py`). Falls back to realistic simulated output when a tool is not installed (demo mode). Each tool supports a **Fast** and a **Full** command variant, and its exact command line is editable before running.
+- **Tool Orchestration Layer** — wraps 18 tools via subprocess: `nmap`, `httpx`, `whatweb`, `wafw00f`, `subfinder`, `nuclei`, `arjun`, `dnsx`, `gowitness`, `wpscan`, `amass`, `ffuf`, `gobuster`, `katana`, `nikto`, `testssl`, `sqlmap`, `hydra` (see `TOOL_REGISTRY` in `surveil/tools/__init__.py`). Falls back to realistic simulated output when a tool is not installed (demo mode). Each tool supports a **Fast** and a **Full** command variant, and its exact command line is editable before running.
 - **Checklist & State Engine** — the full OWASP WSTG v4.2 table of contents, all 12 sections (97 items) with status tracking, Textual TUI, JSON persistence, and a saved-engagement picker.
 - **Auto-Finding Extraction** (`surveil/findings_extractor.py`) — parses raw output from `nmap`, `httpx`, `whatweb`, `nuclei`, `wafw00f`, `subfinder`, and `nikto` into `Finding` objects (auto CVSS scoring, OWASP/CWE mapping) flagged `verified=False`, so a tester gets a starting point to confirm or dismiss rather than a blank checklist.
 - **Reporting Engine** — CVSS v3.1 base score calculator, OWASP/CWE metadata, Markdown and .docx export.
@@ -43,12 +43,18 @@ surveil is a terminal-native tool that brings together web application enumerati
 
 ## Run with Docker (recommended — works on any machine)
 
-The Docker image bundles Python, the `surveil` CLI/TUI, and all 16
+The same Docker image is used for the CLI/TUI, the web app's backend,
+*and* the frontend has its own image — `docker compose up` (no
+arguments) builds and starts the whole **web app**; see [Web app via
+Docker](#web-app-via-docker) below for that path. This section covers
+the CLI/TUI specifically.
+
+The Docker image bundles Python, the `surveil` CLI/TUI, and all 18
 enumeration binaries (`nmap`, `whatweb`, `wafw00f`, `subfinder`, `httpx`,
 `nuclei`, `arjun`, `dnsx`, `gowitness`, `wpscan`, `amass`, `ffuf`,
-`gobuster`, `katana`, `nikto`, `testssl.sh`), so scans produce real tool
-output instead of the simulated fallback — no local Python setup or tool
-installation required.
+`gobuster`, `katana`, `nikto`, `testssl.sh`, `sqlmap`, `hydra`), so scans
+produce real tool output instead of the simulated fallback — no local
+Python setup or tool installation required.
 
 Note: `gowitness` needs a Chromium/Chrome binary at runtime to actually
 capture screenshots, which the image does not bundle (it adds real
@@ -144,7 +150,35 @@ frontend, and stops both cleanly on Ctrl+C. `./run-backend.sh [port]` and
 `./run-frontend.sh [port]` run each half on its own, for when you want them
 in separate terminals (e.g. to watch their logs independently).
 
-### Manual setup
+### Web app via Docker
+
+No local Python or Node install needed at all — just Docker:
+
+```bash
+./run-docker.sh                  # builds (first run) and starts both
+./run-docker.sh logs             # follow both services' logs
+./run-docker.sh down             # stop (engagement data persists)
+```
+
+Or directly with compose (`run-docker.sh` is a thin wrapper around this):
+
+```bash
+docker compose up --build backend frontend
+```
+
+`docker compose up` with no service names does the same thing — the CLI
+service (`surveil`) is behind a `cli` profile specifically so a plain `up`
+only starts the web app, not an interactive-TTY-only service that would
+otherwise just sit there. Open http://localhost:3000. The backend
+(`:8000`) shares the same `surveil-data` volume as the CLI service (see
+[Run with Docker](#run-with-docker-recommended--works-on-any-machine)
+above), so an engagement created via `docker compose run --rm surveil
+new ...` is visible in the web UI and vice versa. `sqlmap`/`hydra` and
+every other enumeration tool are available in this image the same way
+they are for the CLI — see the note on `gowitness` above; it applies here
+too.
+
+### Manual setup (no Docker)
 
 ### 1. Backend
 

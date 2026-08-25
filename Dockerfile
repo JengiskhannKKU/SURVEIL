@@ -26,10 +26,13 @@ LABEL org.opencontainers.image.title="surveil" \
 #   - libjson-perl / libxml-writer-perl: nikto's report/plugin modules
 #   - bsdextrautils / procps: `hexdump` and `ps`, both used by testssl.sh
 #   - libcurl4: required at runtime by the `ffi`/`typhoeus` gems wpscan depends on
+#   - sqlmap / hydra: both packaged directly for Debian, no build step needed
 RUN apt-get update && apt-get install -y --no-install-recommends \
         nmap \
         whatweb \
         wafw00f \
+        sqlmap \
+        hydra \
         perl \
         libjson-perl \
         libxml-writer-perl \
@@ -72,11 +75,22 @@ RUN git clone --depth 1 https://github.com/testssl/testssl.sh.git /opt/testssl.s
 WORKDIR /app
 COPY pyproject.toml README.md ./
 COPY surveil ./surveil
+# backend/ isn't a pip-installed package (see pyproject.toml's
+# packages.find, which only includes "surveil*") — it's imported as
+# "backend.main:app" straight off disk by the `backend` docker-compose
+# service, so PYTHONPATH=/app below is what makes that resolve.
+COPY backend ./backend
 
-RUN pip install --no-cache-dir .
+# `.[web]` pulls in fastapi/uvicorn/websockets too, so the same image
+# serves both the CLI/TUI (default entrypoint below) and the `backend`
+# compose service (which overrides entrypoint/command to run uvicorn)
+# without needing a second, mostly-duplicate image.
+RUN pip install --no-cache-dir ".[web]"
 
 # Fetch nuclei templates at build time so scans work fully offline afterwards.
 RUN nuclei -update-templates || true
+
+ENV PYTHONPATH=/app
 
 # Engagement state is persisted under $HOME/.surveil — mount a
 # volume here to keep engagements/reports across container restarts.

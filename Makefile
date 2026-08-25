@@ -4,7 +4,8 @@
 install:
 	venv/bin/pip install -e . -q
 
-# Rebuild the Docker image (surveil:latest) from current source.
+# Rebuild all Docker images (surveil:latest — shared by the backend and
+# CLI services — plus the frontend image) from current source.
 docker:
 	docker compose build
 

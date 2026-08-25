@@ -26,3 +26,7 @@ surveil/data/wordlists_downloaded/
 # root, when run via the web UI's backend) on a real run — local scan
 # state, never meant to be committed.
 hydra.restore
+
+# Sample report generated while manually testing the report feature —
+# a demo artifact, not a project asset.
+demo_report.md
