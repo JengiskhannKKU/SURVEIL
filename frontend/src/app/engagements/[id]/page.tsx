@@ -9,10 +9,12 @@ import Button from "@mui/material/Button";
 import Skeleton from "@mui/material/Skeleton";
 import DescriptionOutlinedIcon from "@mui/icons-material/DescriptionOutlined";
 import ArticleOutlinedIcon from "@mui/icons-material/ArticleOutlined";
+import VisibilityOutlinedIcon from "@mui/icons-material/VisibilityOutlined";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import { api } from "@/lib/api";
 import { Checklist } from "@/components/Checklist";
 import { ItemDetail } from "@/components/ItemDetail";
+import { ReportView } from "@/components/ReportView";
 import { ProgressBar, SeverityBar } from "@/components/SeverityBar";
 import { useToast } from "@/lib/toast";
 import { severityCounts } from "@/lib/severity";
@@ -39,6 +41,7 @@ export default function EngagementPage({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [tools, setTools] = useState<ToolInfo[]>([]);
   const [error, setError] = useState("");
+  const [showReport, setShowReport] = useState(false);
 
   useEffect(() => {
     api
@@ -167,6 +170,14 @@ export default function EngagementPage({
           </Box>
           <Stack direction="row" spacing={1}>
             <Button
+              variant="contained"
+              size="small"
+              startIcon={<VisibilityOutlinedIcon />}
+              onClick={() => setShowReport(true)}
+            >
+              View Report
+            </Button>
+            <Button
               variant="outlined"
               size="small"
               startIcon={<ArticleOutlinedIcon />}
@@ -234,6 +245,10 @@ export default function EngagementPage({
           </Box>
         )}
       </Box>
+
+      {showReport && (
+        <ReportView engagementId={engagement.id} onClose={() => setShowReport(false)} />
+      )}
     </Box>
   );
 }

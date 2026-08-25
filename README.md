@@ -37,7 +37,7 @@ surveil is a terminal-native tool that brings together web application enumerati
 - **Tool Orchestration Layer** — wraps 18 tools via subprocess: `nmap`, `httpx`, `whatweb`, `wafw00f`, `subfinder`, `nuclei`, `arjun`, `dnsx`, `gowitness`, `wpscan`, `amass`, `ffuf`, `gobuster`, `katana`, `nikto`, `testssl`, `sqlmap`, `hydra` (see `TOOL_REGISTRY` in `surveil/tools/__init__.py`). Falls back to realistic simulated output when a tool is not installed (demo mode). Each tool supports a **Fast** and a **Full** command variant, and its exact command line is editable before running.
 - **Checklist & State Engine** — the full OWASP WSTG v4.2 table of contents, all 12 sections (97 items) with status tracking, Textual TUI, JSON persistence, and a saved-engagement picker.
 - **Auto-Finding Extraction** (`surveil/findings_extractor.py`) — parses raw output from 13 of the 18 tools (`nmap`, `httpx`, `whatweb`, `nuclei`, `wafw00f`, `subfinder`, `nikto`, `sqlmap`, `hydra`, `wpscan`, `dnsx`, `ffuf`, `gobuster`) into `Finding` objects (auto CVSS scoring, OWASP/CWE mapping) flagged `verified=False`, so a tester gets a starting point to confirm or dismiss rather than a blank checklist.
-- **Reporting Engine** — CVSS v3.1 base score calculator, OWASP/CWE metadata, Markdown and .docx export.
+- **Reporting Engine** — CVSS v3.1 base score calculator, OWASP/CWE metadata, Markdown and .docx export, plus an in-app **View Report** panel (web app) that renders the same Markdown report live instead of only downloading it.
 
 ---
 
@@ -135,7 +135,13 @@ Alongside the CLI/TUI, `surveil` has a browser-based interface: a FastAPI
 backend (`backend/`) that wraps the same orchestrator/state/report engine,
 and a Next.js frontend (`frontend/`) with a checklist UI, a Run Tool dialog
 that streams live tool output over a WebSocket, findings management, and
-report downloads.
+report downloads. The **View Report** button (top-right of an engagement
+page) opens the same Markdown report rendered live in a dialog —
+`frontend/src/components/ReportView.tsx` fetches it from a new
+`GET /api/engagements/{id}/report/content` endpoint (JSON, not a file
+download) and renders it with `react-markdown` + `remark-gfm`, styled to
+match the app's own terminal theme — so a tester can see exactly what
+was found without downloading anything first.
 
 **Quickest start** — one script that sets up and runs both:
 

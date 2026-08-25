@@ -6,6 +6,57 @@ was verified, and what the next agent should pick up.
 
 ---
 
+## 2026-08-25 (13) — In-app rendered report ("View Report")
+
+**Done (user request: "can you implement the result like markdown on
+interface can you show what we found at engagements" — the existing
+"Markdown"/"Word" buttons only ever triggered a file download; there
+was no way to see the report's content without downloading it first):**
+- `backend/routers/reports.py`: new `GET /api/engagements/{id}/report/
+  content` returning `{"content": "<markdown string>"}` — the exact
+  same string `generate_markdown()` already produced for the file
+  download, just returned as JSON instead of a `FileResponse`. No
+  changes to `surveil/report.py` needed; it already returned the string
+  directly regardless of whether `out_path` was given.
+- New `frontend/src/components/ReportView.tsx`: a dialog that fetches
+  that endpoint and renders it with `react-markdown` + `remark-gfm`
+  (added as new dependencies — the report uses GFM tables throughout,
+  which the base `react-markdown` doesn't parse without the plugin).
+  Custom component overrides for every element the report actually
+  uses (headings, tables, code blocks/spans, hr, links, lists) so it
+  reads like the rest of the app's terminal theme instead of
+  `react-markdown`'s browser-default styling — green heading accents,
+  black bordered code blocks, bordered tables matching the existing
+  Tool Output panel's look.
+- New **View Report** button on the engagement page (next to the
+  existing Markdown/Word download buttons, which are unchanged) opens
+  it.
+
+**Verified:**
+- Curled the new endpoint directly against a real engagement, confirmed
+  the returned JSON's `content` matches what the file-download endpoint
+  produces.
+- `npx tsc --noEmit`, `eslint`, `next build` all clean.
+- Full browser E2E against the user's own real "Snoopbee Lab1"
+  engagement (real findings, not synthetic test data): opened View
+  Report, confirmed the header table, Finding Severity Summary table,
+  and Checklist Coverage table all render correctly; scrolled to a real
+  finding block and confirmed its own field table, description,
+  evidence code block (real nmap/wafw00f output), and remediation text
+  all render correctly. Zero console errors.
+
+**Next steps for the next agent:**
+1. The dialog re-fetches and regenerates the report on every open (no
+   caching) — fine at this data scale, would need a caching layer if a
+   report ever got large enough for `generate_markdown()` itself to be
+   slow.
+2. No in-dialog way to jump from a finding in the report straight to
+   that checklist item's detail panel (the report is read-only/
+   self-contained) — worth adding if this becomes a frequently-used
+   view rather than an occasional "let me see everything at once" check.
+
+---
+
 ## 2026-08-25 (12) — Auto-finding extraction: 7 → 13 of 18 tools
 
 **Done (user picked this from two suggested next steps — extend

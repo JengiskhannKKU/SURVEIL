@@ -188,6 +188,9 @@ export const api = {
   reportUrl: (engId: string, format: "md" | "docx") =>
     `${API_BASE}/api/engagements/${engId}/report?format=${format}`,
 
+  getReportContent: (engId: string) =>
+    request<{ content: string }>(`/api/engagements/${engId}/report/content`),
+
   getConfig: () => request<AppConfig>("/api/config"),
 
   setWordlistDir: (wordlistDir: string | null) =>

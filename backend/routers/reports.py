@@ -18,6 +18,17 @@ _MEDIA_TYPES = {
 }
 
 
+@router.get("/content")
+def get_report_content(eng_id: str) -> dict:
+    """The Markdown report as a JSON string, for rendering in the web UI
+    (the "View Report" panel) rather than triggering a file download —
+    same content `GET .../report?format=md` writes to disk, just returned
+    inline instead of as a FileResponse.
+    """
+    engagement = load_engagement(eng_id)
+    return {"content": generate_markdown(engagement)}
+
+
 @router.get("")
 def get_report(eng_id: str, format: str = "md"):
     if format not in _MEDIA_TYPES:
