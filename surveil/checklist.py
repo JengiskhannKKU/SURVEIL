@@ -40,7 +40,54 @@ WORDLIST_CATEGORY: dict[str, str] = {
     "WSTG-CONF-03": "extensions",  # Test File Extension Handling
     "WSTG-CONF-04": "backup",      # Review Old Backup and Unreferenced Files
     "WSTG-CONF-05": "admin",       # Enumerate Admin Interfaces
+    "WSTG-CONF-09": "backup",      # Test File Permission (.git/.svn exposure — same shape as backup files)
     "WSTG-IDNT-04": "usernames",   # Test for Account Enumeration
+    "WSTG-IDNT-05": "usernames",   # Weak or Unenforced Username Policy
+    "WSTG-ATHN-04": "admin",       # Bypassing Authentication Schema (forced browsing to protected pages)
+    "WSTG-BUSL-08": "extensions",  # Upload of Unexpected File Types
+}
+
+# Maps a checklist item ID to the nuclei template tags actually relevant
+# to that test. NucleiTool.build_command() has one fixed tag set
+# ("misconfig,exposure,headers,tech") baked in as its own default — fine
+# for the handful of items that default genuinely suits (WSTG-CONF-02's
+# "check for verbose errors/exposed configs", WSTG-INFO-08/09's
+# fingerprinting), but nuclei is also mapped to ~20 Input
+# Validation/Authorization/Client-side items (XSS, SQLi-adjacent, SSRF,
+# SSTI, XXE, CORS, GraphQL, ...) that fixed tag set would never load
+# templates for — running "nuclei" from e.g. the SSRF item would silently
+# run the exact same generic misconfig scan as every other nuclei-mapped
+# item instead of anything that actually tests for SSRF. This dict lets
+# the backend swap in the right `-tags` value per item, same pattern as
+# WORDLIST_CATEGORY above. Items not listed here keep nuclei's own
+# built-in default, because that default already suits them.
+NUCLEI_TAGS: dict[str, str] = {
+    "WSTG-CONF-05": "exposure,panel",       # Enumerate Admin Interfaces
+    "WSTG-CONF-10": "takeover",             # Test for Subdomain Takeover
+    "WSTG-CONF-11": "exposure,misconfig",   # Test Cloud Storage
+    "WSTG-ATHN-02": "default-login",        # Test for Default Credentials
+    "WSTG-ATHN-04": "exposure,unauth",      # Bypassing Authentication Schema
+    "WSTG-ATHZ-01": "lfi",                  # Directory Traversal / File Include
+    "WSTG-ATHZ-02": "exposure,unauth",      # Bypassing Authorization Schema
+    "WSTG-SESS-05": "csrf",                 # Cross Site Request Forgery
+    "WSTG-INPV-01": "xss",                  # Reflected XSS
+    "WSTG-INPV-02": "xss",                  # Stored XSS
+    "WSTG-INPV-06": "ldapi",                # LDAP Injection
+    "WSTG-INPV-07": "xxe",                  # XML Injection
+    "WSTG-INPV-05": "sqli",                 # SQL Injection
+    "WSTG-INPV-08": "injection",            # SSI Injection
+    "WSTG-INPV-11": "lfi,rfi",              # Code Injection (LFI/RFI)
+    "WSTG-INPV-12": "rce,injection",        # Command Injection
+    "WSTG-INPV-15": "smuggling",            # HTTP Splitting/Smuggling
+    "WSTG-INPV-17": "injection,misconfig",  # Host Header Injection
+    "WSTG-INPV-18": "ssti",                 # Server-side Template Injection
+    "WSTG-INPV-19": "ssrf",                 # Server-Side Request Forgery
+    "WSTG-ERRH-01": "exposure,misconfig",   # Improper Error Handling
+    "WSTG-ERRH-02": "exposure",             # Stack Traces
+    "WSTG-CLNT-03": "xss",                  # HTML Injection
+    "WSTG-CLNT-04": "redirect",             # Client-side URL Redirect
+    "WSTG-CLNT-07": "cors",                 # Cross Origin Resource Sharing
+    "WSTG-APIT-01": "graphql",              # Testing GraphQL
 }
 
 # Human-readable label per category, shown in the Run Tool dialog's
@@ -1498,16 +1545,31 @@ def _validate_tool_references() -> None:
     exist (e.g. "wappalyzer-cli" sat here unregistered/unrunnable for a
     while) as soon as this module loads, instead of only noticing when a
     tester's Run Tool dropdown for that item is quietly missing an entry.
+
+    Also catches the NUCLEI_TAGS-specific version of the same mistake: a
+    typo'd item ID, or a tag override for an item whose `tools` doesn't
+    even include nuclei (so the override could never actually apply).
     """
     from .tools import TOOL_REGISTRY  # local import: tools/ has no reason to import checklist.py, but avoid any load-order assumption
 
     known = set(TOOL_REGISTRY.keys())
-    for item in build_checklist():
+    items_by_id = {item.id: item for item in build_checklist()}
+    for item in items_by_id.values():
         unknown = [t for t in item.tools if t not in known]
         if unknown:
             raise AssertionError(
                 f"{item.id} ({item.name}) lists unregistered tool(s) {unknown} — "
                 f"check TOOL_REGISTRY in surveil/tools/__init__.py"
+            )
+
+    for item_id in NUCLEI_TAGS:
+        item = items_by_id.get(item_id)
+        if item is None:
+            raise AssertionError(f"NUCLEI_TAGS references unknown checklist item {item_id!r}")
+        if "nuclei" not in item.tools:
+            raise AssertionError(
+                f"NUCLEI_TAGS overrides tags for {item_id}, but its tools list "
+                f"{item.tools} doesn't include 'nuclei' — the override can never apply"
             )
 
 

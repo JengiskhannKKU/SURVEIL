@@ -118,6 +118,7 @@ export const api = {
       available: boolean;
       recommended_category: string | null;
       recommended_category_label: string | null;
+      nuclei_tags: string | null;
     }>(
       `/api/tools/${tool}/command?target=${encodeURIComponent(target)}&fast=${fast}` +
         (mode ? `&mode=${encodeURIComponent(mode)}` : "") +

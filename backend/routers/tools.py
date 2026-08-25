@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from surveil import seclists_remote
-from surveil.checklist import CATEGORY_LABELS, WORDLIST_CATEGORY
+from surveil.checklist import CATEGORY_LABELS, NUCLEI_TAGS, WORDLIST_CATEGORY
 from surveil.tools import TOOL_REGISTRY
 from surveil.wordlists import (
     CATEGORY_KEYWORDS,
@@ -28,6 +28,16 @@ def _swap_wordlist_flag(command: list[str], new_path: str) -> list[str]:
     for i, tok in enumerate(cmd):
         if tok == "-w" and i + 1 < len(cmd):
             cmd[i + 1] = new_path
+            break
+    return cmd
+
+
+def _swap_nuclei_tags(command: list[str], tags: str) -> list[str]:
+    """Replace the value following a `-tags` flag, if present."""
+    cmd = list(command)
+    for i, tok in enumerate(cmd):
+        if tok == "-tags" and i + 1 < len(cmd):
+            cmd[i + 1] = tags
             break
     return cmd
 
@@ -79,11 +89,24 @@ def preview_command(
     if category:
         command = _swap_wordlist_flag(command, recommend_wordlist(category))
 
+    # nuclei's own build_command() has one fixed -tags value baked in
+    # ("misconfig,exposure,headers,tech"). That's the right default for
+    # some items (WSTG-CONF-02's "check for exposed configs", say), but
+    # nuclei is also mapped to ~20 other items — XSS, SSRF, SSTI, CORS,
+    # GraphQL, and more — that fixed tag set would never load templates
+    # for at all. Swap in the item-specific tags from NUCLEI_TAGS when
+    # one exists, so running "nuclei" from e.g. the SSRF checklist item
+    # actually runs SSRF templates instead of a generic misconfig scan.
+    nuclei_tags = NUCLEI_TAGS.get(item_id or "") if tool_name == "nuclei" else None
+    if nuclei_tags:
+        command = _swap_nuclei_tags(command, nuclei_tags)
+
     return {
         "command": command,
         "available": tool.is_available(),
         "recommended_category": category,
         "recommended_category_label": CATEGORY_LABELS.get(category) if category else None,
+        "nuclei_tags": nuclei_tags,
     }
 
 

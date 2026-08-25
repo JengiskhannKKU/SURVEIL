@@ -56,6 +56,7 @@ export function RunToolDialog({
   const [wordlistPath, setWordlistPath] = useState("");
   const [wordlistPickerOpen, setWordlistPickerOpen] = useState(false);
   const [recommendedCategoryLabel, setRecommendedCategoryLabel] = useState<string | null>(null);
+  const [nucleiTags, setNucleiTags] = useState<string | null>(null);
   const [lines, setLines] = useState<string[]>([]);
   const [running, setRunning] = useState(false);
   const [finished, setFinished] = useState(false);
@@ -84,6 +85,7 @@ export function RunToolDialog({
         setCommand(cmd);
         setDefaultCommand(cmd);
         setRecommendedCategoryLabel(res.recommended_category_label);
+        setNucleiTags(res.nuclei_tags);
       })
       .catch(() => toast.error("Could not reach the backend to preview the command."));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -291,6 +293,16 @@ export function RunToolDialog({
                 Using a wordlist recommended for this test —{" "}
                 <strong>{recommendedCategoryLabel}</strong>. Pick a different one from the
                 Wordlist dropdown above to override.
+              </Alert>
+            )}
+            {toolName === "nuclei" && nucleiTags && (
+              <Alert severity="success" variant="outlined">
+                Using template tags scoped to this test —{" "}
+                <strong>
+                  <code>{nucleiTags}</code>
+                </strong>{" "}
+                — instead of nuclei&apos;s generic misconfig/exposure scan. Edit the command below
+                to widen or narrow it.
               </Alert>
             )}
             {tool.domain_only && isIpAddress(target) && (

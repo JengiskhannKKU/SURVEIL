@@ -6,6 +6,81 @@ was verified, and what the next agent should pick up.
 
 ---
 
+## 2026-08-25 (11) — Real per-item tool correctness fixes: nuclei tags, wordlist categories
+
+**Done (user request: "each script for run each testing is it correct
+output? can you check it and if the tools not enough you can add any
+tools" — an audit of whether the 97 checklist items' tool mappings
+actually test what they claim to, following the previous entry's full
+WSTG coverage expansion):**
+- Audited every tool shared across multiple checklist items for the
+  "same command regardless of which test invoked it" failure mode.
+  Found it was real for **nuclei**, mapped to 35 different items: its
+  `build_command()` has one fixed `-tags` value
+  (`misconfig,exposure,headers,tech`) — correct for a few items, but
+  running "nuclei" from e.g. the SSRF or SSTI checklist item silently
+  ran the exact same generic misconfig scan as every other nuclei-
+  mapped item, never loading SSRF/SSTI templates at all.
+- Fixed with the same pattern as the existing wordlist recommendation
+  system: new `checklist.NUCLEI_TAGS: dict[item_id -> tags]` (26
+  entries — xss, sqli, ssrf, ssti, xxe, cors, csrf, lfi/rfi, rce,
+  takeover, default-login, graphql, smuggling, ldapi, and others), and
+  `backend/routers/tools.py`'s `preview_command()` swaps nuclei's
+  `-tags` value when the current item has an override, same as it
+  already does for ffuf/gobuster's `-w` wordlist flag. Items without an
+  override keep nuclei's sensible built-in default.
+- Also caught 2 more ffuf items during the audit that had no wordlist
+  category despite a real dedicated bundled wordlist fitting (added to
+  `WORDLIST_CATEGORY`): `WSTG-CONF-09` (File Permission → `backup`,
+  same shape as backup-file exposure), `WSTG-IDNT-05` (Username Policy
+  → `usernames`), `WSTG-ATHN-04` (Bypass Authentication Schema →
+  `admin`, forced-browsing to protected paths), `WSTG-BUSL-08` (Upload
+  of Unexpected File Types → `extensions`).
+- Extended `_validate_tool_references()` (the import-time guard) to
+  also catch a `NUCLEI_TAGS` entry referencing an unknown item ID, or
+  an item whose `tools` list doesn't even include `nuclei` (so the
+  override could never apply) — same "fail loudly at import" principle
+  as the existing tool-registry check.
+- Added a matching frontend hint: `RunToolDialog.tsx` shows a green
+  "Using template tags scoped to this test — `<tags>`" alert when
+  nuclei has an override for the current item, mirroring the existing
+  wordlist-recommendation hint.
+
+**Verified:**
+- Curled the live backend for ~10 different nuclei-mapped items
+  (SSRF, XSS, SSTI, GraphQL, CORS, default-login, SQLi, auth-bypass)
+  and confirmed each returns the correct, distinct `-tags` value —
+  previously every one of these would have returned the identical
+  generic command.
+- Confirmed an unmapped item (`WSTG-CONF-02`) still gets nuclei's
+  plain default, unaffected.
+- Confirmed the 4 new ffuf wordlist-category mappings resolve to the
+  right bundled wordlist and label via the live backend.
+- `_validate_tool_references()` passes with the new NUCLEI_TAGS checks
+  active; checklist still loads all 97 items with zero errors.
+- Full browser E2E (throwaway Playwright script, deleted after use):
+  opened the SSRF checklist item, selected nuclei, confirmed the new
+  green "template tags scoped to this test — ssrf" hint renders and
+  the command field shows `-tags ssrf`. Zero console errors.
+  `npx tsc --noEmit`, `eslint`, `next build` all clean.
+
+**Next steps for the next agent:**
+1. 9 nuclei-mapped items still use the plain default deliberately
+   (WSTG-INFO-08/09 fingerprinting, WSTG-CONF-02/06/07 which the
+   default genuinely suits, WSTG-INPV-03/04 which have no distinct real
+   nuclei tag to target, WSTG-CLNT-09 clickjacking which the `headers`
+   tag already covers). Worth a second look if any of these turn out
+   to need their own override in practice.
+2. The nuclei tag names in `NUCLEI_TAGS` are the community-standard
+   ones as best recalled/reasoned (`xss`, `sqli`, `ssrf`, `ssti`,
+   `xxe`, `takeover`, `default-login`, etc.) — nuclei's tag taxonomy is
+   community-maintained and does drift; worth spot-checking against a
+   real `nuclei -tag-list` output on a machine with nuclei's templates
+   actually installed if a specific tag ever turns out to match zero
+   templates.
+
+---
+
 ## 2026-08-25 (10) — Wrap the whole project in Docker (web app included)
 
 **Done (user request: "can you wrap all project by docker and update
