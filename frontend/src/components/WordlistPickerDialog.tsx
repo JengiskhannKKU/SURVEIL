@@ -166,8 +166,8 @@ function LocalWordlistsPane({
         <Typography variant="body2" color="text.secondary">
           No wordlists found on this host — install SecLists (
           <code>apt install seclists</code> on Kali/Debian, or set a custom directory in
-          Settings), use the &quot;SecLists (GitHub)&quot; tab to download individual files
-          on demand, or use surveil&apos;s bundled defaults.
+          Settings), use the &quot;SecLists (GitHub)&quot; tab to install individual files
+          into this project on demand, or use surveil&apos;s bundled defaults.
         </Typography>
       )}
 
@@ -388,11 +388,12 @@ function RemoteWordlistsPane({
       />
 
       <Typography variant="caption" color="text.disabled" display="block" mb={2}>
-        Downloads only the single file you pick from{" "}
+        Installs only the single file you pick from{" "}
         <Box component="span" sx={{ fontFamily: "var(--font-geist-mono)" }}>
           github.com/danielmiessler/SecLists
         </Box>{" "}
-        — not the whole repository.
+        into this project (<code>surveil/data/wordlists_downloaded/</code>) — not the whole
+        repository.
       </Typography>
 
       {loading && (

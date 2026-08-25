@@ -7,3 +7,11 @@ venv/
 build/
 dist/
 .DS_Store
+
+*.txt
+Proposal.pdf
+
+# Wordlists installed on demand from github.com/danielmiessler/SecLists
+# via the web UI's "SecLists (GitHub)" picker tab (surveil/seclists_remote.py)
+# — downloaded per checkout, not meant to be committed.
+surveil/data/wordlists_downloaded/

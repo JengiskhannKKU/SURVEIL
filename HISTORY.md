@@ -6,6 +6,64 @@ was verified, and what the next agent should pick up.
 
 ---
 
+## 2026-08-25 (5) — Install SecLists wordlists into the project, not the home dir
+
+**Done (user request: "can you implement at select wordlists and can
+install the wordlists to own project" — a direct follow-up to the prior
+entry, which had put picked-file downloads under `~/.surveil/wordlists/
+seclists/`; the ask was for them to live inside the project itself):**
+- `surveil/seclists_remote.py`: renamed the destination from
+  `CACHE_DIR = ~/.surveil/wordlists/seclists` to
+  `INSTALL_DIR = surveil/data/wordlists_downloaded/seclists` — inside
+  this project's own package directory, a sibling of (not mixed into)
+  the small hand-curated bundle at `surveil/data/wordlists/`. Kept
+  `CACHE_DIR` as a backwards-compatible alias pointing at the same
+  value. Added `install_wordlist` as an alias for `download_wordlist` —
+  same function, a name that matches how it reads in the UI now
+  ("Installs only the single file...").
+  - The *tree-listing* cache (`seclists_tree_cache.json` — which files
+    exist, not their content) deliberately stayed in `~/.surveil/` next
+    to `config.json`/`engagements/` — it's request metadata, not a
+    wordlist install, so home-dir persistence is still the right call
+    for it specifically.
+- `.gitignore`: added an explicit `surveil/data/wordlists_downloaded/`
+  entry — these are per-checkout downloads, not meant to be committed.
+  (There's also an unrelated pre-existing uncommitted `*.txt` rule in
+  this file from before this session that would incidentally cover the
+  same thing; added the explicit directory rule anyway so this doesn't
+  depend on that other, unrelated change staying in place.)
+- `surveil/wordlists.py`'s registered search root didn't need to change
+  — it already referenced `seclists_remote.CACHE_DIR.parent` generically,
+  which now just resolves to the project directory instead of the home
+  directory automatically.
+- Frontend (`WordlistPickerDialog.tsx`): updated the SecLists (GitHub)
+  tab's caption and the Local tab's empty-state hint from "downloads"/
+  "download" to "installs"/"install... into this project", naming the
+  actual destination path (`surveil/data/wordlists_downloaded/`) so a
+  tester knows where to look on disk.
+
+**Verified:**
+- Cleared any leftover files under the old `~/.surveil/wordlists/` path
+  from the previous entry's testing first.
+- `download_wordlist("Discovery/Web-Content/quickhits.txt")` against the
+  real repo: confirmed the file lands at `<project>/surveil/data/
+  wordlists_downloaded/seclists/Discovery/Web-Content/quickhits.txt`,
+  confirmed nothing appears under `~/.surveil/` matching a wordlist file,
+  confirmed `git status`/`git check-ignore -v` show it correctly ignored
+  (matched by the new explicit rule, not the unrelated stray one), and
+  confirmed it still surfaces under `discover_wordlists_grouped()`'s
+  `SecLists/Discovery` group.
+- `npx tsc --noEmit`, `eslint`, `next build` all clean.
+- Full browser E2E via a throwaway Playwright script (deleted after
+  use): opened the SecLists (GitHub) tab, confirmed the caption reads
+  "Installs only the single file... into this project
+  (surveil/data/wordlists_downloaded/)", searched "quickhits", installed
+  the matching file, confirmed the Run Tool dialog's command field
+  pointed at the new in-project path. Zero console errors. Deleted the
+  test engagement and the installed test file afterward.
+
+---
+
 ## 2026-08-25 (4) — Browse & selectively download individual SecLists wordlists
 
 **Done (user request: "implement wordlists that won't download all

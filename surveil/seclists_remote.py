@@ -1,4 +1,4 @@
-"""Browse and selectively download individual wordlist files from
+"""Browse and selectively "install" individual wordlist files from
 https://github.com/danielmiessler/SecLists without cloning the whole
 repository (multiple GB — `git clone`-ing it just to use two wordlists is
 wasteful, and not everyone wants that much disk committed to it).
@@ -8,9 +8,12 @@ Two operations:
     the repo (cached to disk for a day; unauthenticated API calls are
     rate-limited to 60/hour, and the tree barely changes hour to hour).
   - `download_wordlist(path)` — fetches exactly that one file's raw
-    content and saves it under `CACHE_DIR`, mirroring the repo's own
-    directory structure, so it also shows up in the normal local wordlist
-    discovery/grouping (`surveil/wordlists.py`) once downloaded.
+    content and installs it under `INSTALL_DIR`, *inside this project's
+    own source tree* (not the user's home directory) — mirroring the
+    repo's own directory structure, so it also shows up in the normal
+    local wordlist discovery/grouping (`surveil/wordlists.py`) once
+    installed, and persists with the project rather than a per-user
+    cache elsewhere.
 """
 from __future__ import annotations
 
@@ -25,14 +28,24 @@ GITHUB_API_TREE_URL = (
 )
 RAW_BASE_URL = "https://raw.githubusercontent.com/danielmiessler/SecLists/master/"
 
-# Downloaded files land here, mirroring the repo's own path structure
-# (e.g. CACHE_DIR/Discovery/Web-Content/common.txt) — kept separate from
-# surveil's bundled wordlists (surveil/data/wordlists) and registered as a
-# surveil/wordlists.py search root, so a file downloaded here is
-# immediately usable everywhere the local wordlist picker already looks.
-CACHE_DIR = Path.home() / ".surveil" / "wordlists" / "seclists"
+# Installed files land here, inside surveil's own package directory,
+# mirroring the repo's own path structure (e.g.
+# INSTALL_DIR/Discovery/Web-Content/common.txt) — a sibling of, not mixed
+# into, the small hand-curated bundle in surveil/data/wordlists/ (see
+# wordlists.py's BUNDLED_WORDLIST). Registered as a surveil/wordlists.py
+# search root, so an installed file is immediately usable everywhere the
+# local wordlist picker already looks. Gitignored (see .gitignore) —
+# these are downloaded on demand per checkout, not meant to be committed.
+INSTALL_DIR = Path(__file__).parent / "data" / "wordlists_downloaded" / "seclists"
 
-_TREE_CACHE_PATH = CACHE_DIR.parent / "seclists_tree_cache.json"
+# Backwards-compatible alias — some call sites/tests may still refer to
+# this as "the cache dir"; it's the same directory.
+CACHE_DIR = INSTALL_DIR
+
+# The GitHub API tree-listing response is just request metadata (which
+# files exist, not their content) — kept in the user's own state dir
+# rather than inside the project, same as engagements/config.json.
+_TREE_CACHE_PATH = Path.home() / ".surveil" / "seclists_tree_cache.json"
 _TREE_CACHE_TTL_SECONDS = 24 * 3600
 _USER_AGENT = "surveil-wordlist-browser"
 
@@ -85,13 +98,13 @@ def list_remote_wordlists(force_refresh: bool = False) -> list[dict]:
         category = parts[0] if len(parts) > 1 else "Other"
         files.append({"path": path, "category": category, "size": entry.get("size", 0)})
 
-    CACHE_DIR.parent.mkdir(parents=True, exist_ok=True)
+    _TREE_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
     _TREE_CACHE_PATH.write_text(json.dumps({"fetched_at": time.time(), "files": files}))
     return files
 
 
 def local_cache_path(remote_path: str) -> Path:
-    return CACHE_DIR / remote_path
+    return INSTALL_DIR / remote_path
 
 
 def is_downloaded(remote_path: str) -> bool:
@@ -99,10 +112,11 @@ def is_downloaded(remote_path: str) -> bool:
 
 
 def download_wordlist(remote_path: str) -> str:
-    """Download exactly one file from SecLists (not the whole repo).
+    """Install exactly one file from SecLists into this project (not the
+    whole repo, and not the user's home directory — see `INSTALL_DIR`).
 
-    No-ops (just returns the existing path) if already cached from a
-    previous download. Returns the local absolute path, ready to pass
+    No-ops (just returns the existing path) if already installed from a
+    previous call. Returns the local absolute path, ready to pass
     straight to a tool's -w flag.
     """
     dest = local_cache_path(remote_path)
@@ -110,7 +124,7 @@ def download_wordlist(remote_path: str) -> str:
         return str(dest)
 
     # remote_path ultimately comes from a request query param a tester
-    # could hand-edit — refuse anything that would escape CACHE_DIR.
+    # could hand-edit — refuse anything that would escape INSTALL_DIR.
     normalized = Path(remote_path)
     if normalized.is_absolute() or ".." in normalized.parts:
         raise ValueError(f"Invalid wordlist path: {remote_path}")
@@ -126,3 +140,9 @@ def download_wordlist(remote_path: str) -> str:
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_bytes(content)
     return str(dest)
+
+
+# "install" is the name that matches how this reads in the UI ("Install
+# to project") — same function, kept as an alias so either name makes
+# sense at a call site.
+install_wordlist = download_wordlist
