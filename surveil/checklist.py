@@ -1,11 +1,25 @@
-"""OWASP WSTG checklist definitions with tool mappings.
+"""OWASP WSTG v4.2 checklist definitions with tool mappings.
 
-Covers:
+Covers the full WSTG v4.2 table of contents (4.1 through 4.12):
   • WSTG-INFO-01 … WSTG-INFO-10  (Information Gathering)
-  • WSTG-CONF-01 … WSTG-CONF-10  (Configuration & Deployment Management)
-  • WSTG-IDNT-04                 (Identity Management)
-  • WSTG-ATHN-02, WSTG-ATHN-03   (Authentication)
-  • WSTG-INPV-01, 05, 12         (Input Validation)
+  • WSTG-CONF-01 … WSTG-CONF-11  (Configuration & Deployment Management)
+  • WSTG-IDNT-01 … WSTG-IDNT-05  (Identity Management)
+  • WSTG-ATHN-01 … WSTG-ATHN-10  (Authentication)
+  • WSTG-ATHZ-01 … WSTG-ATHZ-04  (Authorization)
+  • WSTG-SESS-01 … WSTG-SESS-09  (Session Management)
+  • WSTG-INPV-01 … WSTG-INPV-19  (Input Validation)
+  • WSTG-ERRH-01, WSTG-ERRH-02   (Error Handling)
+  • WSTG-CRYP-01 … WSTG-CRYP-04  (Weak Cryptography)
+  • WSTG-BUSL-01 … WSTG-BUSL-09  (Business Logic)
+  • WSTG-CLNT-01 … WSTG-CLNT-13  (Client-side)
+  • WSTG-APIT-01                 (API Testing)
+
+Many items in the back half of the guide (Business Logic, most of
+Authentication/Session Management, several Client-side tests) are
+inherently manual/logic-driven — no CLI tool can decide whether an
+application's workflow can legitimately be circumvented. Those items
+list `tools=[]` or the closest thing that provides *supporting* evidence
+(e.g. httpx for a cookie's flags) rather than a tool that "does" the test.
 """
 from __future__ import annotations
 
@@ -43,10 +57,10 @@ CATEGORY_LABELS: dict[str, str] = {
 
 
 def build_checklist() -> list[ChecklistItem]:
-    """Return a fresh, ordered list of OWASP WSTG checklist items."""
+    """Return a fresh, ordered list of OWASP WSTG v4.2 checklist items."""
     return [
         # ================================================================
-        # INFORMATION GATHERING
+        # 4.1 INFORMATION GATHERING
         # ================================================================
         ChecklistItem(
             id="WSTG-INFO-01",
@@ -195,7 +209,7 @@ def build_checklist() -> list[ChecklistItem]:
             cwe_ids=["CWE-200"],
         ),
         # ================================================================
-        # CONFIGURATION & DEPLOYMENT MANAGEMENT
+        # 4.2 CONFIGURATION & DEPLOYMENT MANAGEMENT
         # ================================================================
         ChecklistItem(
             id="WSTG-CONF-01",
@@ -216,14 +230,15 @@ def build_checklist() -> list[ChecklistItem]:
             name="Test Application Platform Configuration",
             description=(
                 "Check for verbose error messages, directory listings, debug mode enabled, "
-                "and exposed configuration endpoints (/actuator, /.env, /config.php). "
-                "Verbose errors leak stack traces and internal paths."
+                "exposed configuration endpoints (/actuator, /.env, /config.php), and "
+                "missing/misconfigured security response headers (CSP, X-Frame-Options, "
+                "X-Content-Type-Options, Referrer-Policy, Permissions-Policy)."
             ),
             category="Configuration Management",
             category_code="CONF",
             tools=["nikto", "nuclei", "httpx"],
             owasp_ref="WSTG-CONF-02",
-            cwe_ids=["CWE-16", "CWE-209"],
+            cwe_ids=["CWE-16", "CWE-209", "CWE-693"],
         ),
         ChecklistItem(
             id="WSTG-CONF-03",
@@ -255,7 +270,7 @@ def build_checklist() -> list[ChecklistItem]:
         ),
         ChecklistItem(
             id="WSTG-CONF-05",
-            name="Enumerate Admin Interfaces",
+            name="Enumerate Infrastructure and Application Admin Interfaces",
             description=(
                 "Discover administrative and management interfaces reachable without "
                 "authentication or via default credentials: /admin, /wp-admin, /phpmyadmin, "
@@ -297,21 +312,35 @@ def build_checklist() -> list[ChecklistItem]:
         ),
         ChecklistItem(
             id="WSTG-CONF-08",
-            name="Test Security Response Headers",
+            name="Test RIA Cross Domain Policy",
             description=(
-                "Audit all security-relevant response headers: Content-Security-Policy, "
-                "X-Frame-Options, X-Content-Type-Options, Referrer-Policy, "
-                "Permissions-Policy. Missing or misconfigured headers enable clickjacking, "
-                "MIME sniffing, and XSS."
+                "Fetch and review crossdomain.xml (Flash) and clientaccesspolicy.xml "
+                "(Silverlight) for overly permissive cross-domain access (allow-access-"
+                "from domain=\"*\"), which lets any third-party site make authenticated "
+                "cross-origin requests against the application."
             ),
             category="Configuration Management",
             category_code="CONF",
-            tools=["httpx", "nuclei"],
+            tools=["httpx"],
             owasp_ref="WSTG-CONF-08",
-            cwe_ids=["CWE-693", "CWE-116"],
+            cwe_ids=["CWE-942"],
         ),
         ChecklistItem(
             id="WSTG-CONF-09",
+            name="Test File Permission",
+            description=(
+                "Check for world-readable/writable files exposed over HTTP: version "
+                "control metadata (.git, .svn, .hg), editor swap/backup files, and "
+                "server config files with overly permissive access."
+            ),
+            category="Configuration Management",
+            category_code="CONF",
+            tools=["ffuf", "nikto"],
+            owasp_ref="WSTG-CONF-09",
+            cwe_ids=["CWE-732"],
+        ),
+        ChecklistItem(
+            id="WSTG-CONF-10",
             name="Test for Subdomain Takeover",
             description=(
                 "Enumerate all subdomains and check for dangling DNS records pointing to "
@@ -321,29 +350,73 @@ def build_checklist() -> list[ChecklistItem]:
             category="Configuration Management",
             category_code="CONF",
             tools=["subfinder", "dnsx", "nuclei"],
-            owasp_ref="WSTG-CONF-09",
+            owasp_ref="WSTG-CONF-10",
             cwe_ids=["CWE-350"],
         ),
         ChecklistItem(
-            id="WSTG-CONF-10",
-            name="Test WAF Detection",
+            id="WSTG-CONF-11",
+            name="Test Cloud Storage",
             description=(
-                "Detect the presence and vendor of any Web Application Firewall. "
-                "Document WAF type (Cloudflare, Akamai, AWS WAF) as this affects the "
-                "reliability of subsequent active scanning."
+                "Identify cloud storage buckets (S3, Azure Blob, GCS) referenced by the "
+                "application or guessable from its name, and check for public read/write "
+                "access, directory listing, and sensitive files inside."
             ),
             category="Configuration Management",
             category_code="CONF",
-            tools=["wafw00f", "nuclei"],
-            owasp_ref="WSTG-CONF-10",
-            cwe_ids=["CWE-693"],
+            tools=["nuclei", "ffuf"],
+            owasp_ref="WSTG-CONF-11",
+            cwe_ids=["CWE-284", "CWE-668"],
         ),
         # ================================================================
-        # IDENTITY MANAGEMENT
+        # 4.3 IDENTITY MANAGEMENT
         # ================================================================
         ChecklistItem(
+            id="WSTG-IDNT-01",
+            name="Test Role Definitions",
+            description=(
+                "Document every distinct role the application defines and the "
+                "privilege boundary each implies — the baseline a later authorization "
+                "test (WSTG-ATHZ) checks enforcement against. Inherently manual: no "
+                "tool can infer intended role semantics from the outside."
+            ),
+            category="Identity Management",
+            category_code="IDNT",
+            tools=[],
+            owasp_ref="WSTG-IDNT-01",
+            cwe_ids=["CWE-269"],
+        ),
+        ChecklistItem(
+            id="WSTG-IDNT-02",
+            name="Test User Registration Process",
+            description=(
+                "Review the self-registration flow for identity verification gaps: can "
+                "an account be created with someone else's email/identity, are duplicate "
+                "accounts prevented, is the role assigned at signup ever attacker-"
+                "controllable (e.g. a hidden 'role' field)?"
+            ),
+            category="Identity Management",
+            category_code="IDNT",
+            tools=["katana"],
+            owasp_ref="WSTG-IDNT-02",
+            cwe_ids=["CWE-287"],
+        ),
+        ChecklistItem(
+            id="WSTG-IDNT-03",
+            name="Test Account Provisioning Process",
+            description=(
+                "Confirm only authorized parties can provision new accounts (especially "
+                "elevated ones), and that de-provisioning on offboarding actually revokes "
+                "access rather than just disabling a UI login."
+            ),
+            category="Identity Management",
+            category_code="IDNT",
+            tools=[],
+            owasp_ref="WSTG-IDNT-03",
+            cwe_ids=["CWE-284"],
+        ),
+        ChecklistItem(
             id="WSTG-IDNT-04",
-            name="Test for Account Enumeration",
+            name="Test for Account Enumeration and Guessable User Account",
             description=(
                 "Probe login/registration/password-reset endpoints for a response "
                 "difference between a valid and invalid username (different error "
@@ -356,9 +429,37 @@ def build_checklist() -> list[ChecklistItem]:
             owasp_ref="WSTG-IDNT-04",
             cwe_ids=["CWE-203", "CWE-204"],
         ),
+        ChecklistItem(
+            id="WSTG-IDNT-05",
+            name="Testing for Weak or Unenforced Username Policy",
+            description=(
+                "Check whether usernames are predictable (sequential IDs, "
+                "firstname.lastname with no variation) and whether the registration "
+                "form leaks which usernames are already taken."
+            ),
+            category="Identity Management",
+            category_code="IDNT",
+            tools=["ffuf"],
+            owasp_ref="WSTG-IDNT-05",
+            cwe_ids=["CWE-521"],
+        ),
         # ================================================================
-        # AUTHENTICATION
+        # 4.4 AUTHENTICATION
         # ================================================================
+        ChecklistItem(
+            id="WSTG-ATHN-01",
+            name="Testing for Credentials Transported over an Encrypted Channel",
+            description=(
+                "Confirm every login form and its submission endpoint are served over "
+                "HTTPS only, with no HTTP fallback that would let credentials be "
+                "captured in plaintext over the wire."
+            ),
+            category="Authentication",
+            category_code="ATHN",
+            tools=["testssl", "httpx"],
+            owasp_ref="WSTG-ATHN-01",
+            cwe_ids=["CWE-319"],
+        ),
         ChecklistItem(
             id="WSTG-ATHN-02",
             name="Test for Default Credentials",
@@ -388,12 +489,302 @@ def build_checklist() -> list[ChecklistItem]:
             owasp_ref="WSTG-ATHN-03",
             cwe_ids=["CWE-307"],
         ),
+        ChecklistItem(
+            id="WSTG-ATHN-04",
+            name="Testing for Bypassing Authentication Schema",
+            description=(
+                "Try to reach authenticated-only pages/APIs directly (forced browsing, "
+                "parameter tampering, header injection like X-Original-URL) without "
+                "ever completing the login flow."
+            ),
+            category="Authentication",
+            category_code="ATHN",
+            tools=["ffuf", "nuclei"],
+            owasp_ref="WSTG-ATHN-04",
+            cwe_ids=["CWE-288"],
+        ),
+        ChecklistItem(
+            id="WSTG-ATHN-05",
+            name="Testing for Vulnerable Remember Password",
+            description=(
+                "Check how 'remember me' persists a session — a long-lived plaintext/"
+                "reversible cookie or the password itself cached client-side is a "
+                "durable credential-theft target."
+            ),
+            category="Authentication",
+            category_code="ATHN",
+            tools=["httpx"],
+            owasp_ref="WSTG-ATHN-05",
+            cwe_ids=["CWE-522"],
+        ),
+        ChecklistItem(
+            id="WSTG-ATHN-06",
+            name="Testing for Browser Cache Weaknesses",
+            description=(
+                "Confirm authenticated pages set Cache-Control: no-store (not just "
+                "no-cache) so sensitive content isn't recoverable from local browser "
+                "cache/back-button after logout on a shared machine."
+            ),
+            category="Authentication",
+            category_code="ATHN",
+            tools=["httpx"],
+            owasp_ref="WSTG-ATHN-06",
+            cwe_ids=["CWE-525"],
+        ),
+        ChecklistItem(
+            id="WSTG-ATHN-07",
+            name="Testing for Weak Password Policy",
+            description=(
+                "Review the registration/password-change form's enforced minimum "
+                "length, complexity, and rejection of common/breached passwords "
+                "(rockyou-style lists) — weak policy is a root cause behind most "
+                "successful credential attacks."
+            ),
+            category="Authentication",
+            category_code="ATHN",
+            tools=[],
+            owasp_ref="WSTG-ATHN-07",
+            cwe_ids=["CWE-521"],
+        ),
+        ChecklistItem(
+            id="WSTG-ATHN-08",
+            name="Testing for Weak Security Question Answer",
+            description=(
+                "If security questions gate account recovery, confirm the questions "
+                "aren't trivially OSINT-able (mother's maiden name, first pet) and "
+                "answers aren't guessable/brute-forceable without lockout."
+            ),
+            category="Authentication",
+            category_code="ATHN",
+            tools=[],
+            owasp_ref="WSTG-ATHN-08",
+            cwe_ids=["CWE-640"],
+        ),
+        ChecklistItem(
+            id="WSTG-ATHN-09",
+            name="Testing for Weak Password Change or Reset Functionalities",
+            description=(
+                "Test the password-reset flow for a predictable/guessable reset token, "
+                "a token that doesn't expire or isn't invalidated after use, and whether "
+                "the old password is required to set a new one while authenticated."
+            ),
+            category="Authentication",
+            category_code="ATHN",
+            tools=["katana"],
+            owasp_ref="WSTG-ATHN-09",
+            cwe_ids=["CWE-640"],
+        ),
+        ChecklistItem(
+            id="WSTG-ATHN-10",
+            name="Testing for Weaker Authentication in Alternative Channel",
+            description=(
+                "Check whether a mobile app, legacy API, or 'classic site' alternate "
+                "channel enforces weaker authentication (no MFA, no lockout, an older "
+                "auth scheme) than the primary web flow — attackers pick the weakest door."
+            ),
+            category="Authentication",
+            category_code="ATHN",
+            tools=["httpx"],
+            owasp_ref="WSTG-ATHN-10",
+            cwe_ids=["CWE-303"],
+        ),
         # ================================================================
-        # INPUT VALIDATION
+        # 4.5 AUTHORIZATION
+        # ================================================================
+        ChecklistItem(
+            id="WSTG-ATHZ-01",
+            name="Testing Directory Traversal File Include",
+            description=(
+                "Fuzz any input that builds a filesystem path (file/page/template "
+                "parameters) with ../ traversal sequences and null-byte/encoding "
+                "tricks to read files outside the intended directory, or trigger "
+                "local/remote file inclusion."
+            ),
+            category="Authorization",
+            category_code="ATHZ",
+            tools=["nuclei", "ffuf"],
+            owasp_ref="WSTG-ATHZ-01",
+            cwe_ids=["CWE-22", "CWE-98"],
+        ),
+        ChecklistItem(
+            id="WSTG-ATHZ-02",
+            name="Testing for Bypassing Authorization Schema",
+            description=(
+                "Access another role's functionality/data by tampering with role/"
+                "permission parameters, replaying a lower-privilege token against a "
+                "higher-privilege endpoint, or hitting an endpoint the UI never links to."
+            ),
+            category="Authorization",
+            category_code="ATHZ",
+            tools=["nuclei"],
+            owasp_ref="WSTG-ATHZ-02",
+            cwe_ids=["CWE-285"],
+        ),
+        ChecklistItem(
+            id="WSTG-ATHZ-03",
+            name="Testing for Privilege Escalation",
+            description=(
+                "Attempt vertical (low-priv user gains admin function) and horizontal "
+                "(user A performs an action scoped to user B) privilege escalation "
+                "across every role boundary identified in WSTG-IDNT-01."
+            ),
+            category="Authorization",
+            category_code="ATHZ",
+            tools=[],
+            owasp_ref="WSTG-ATHZ-03",
+            cwe_ids=["CWE-269"],
+        ),
+        ChecklistItem(
+            id="WSTG-ATHZ-04",
+            name="Testing for Insecure Direct Object References",
+            description=(
+                "Increment/guess an object identifier in a URL or API call (order ID, "
+                "invoice number, user ID) to access another user's record without an "
+                "authorization check on the server side."
+            ),
+            category="Authorization",
+            category_code="ATHZ",
+            tools=["ffuf"],
+            owasp_ref="WSTG-ATHZ-04",
+            cwe_ids=["CWE-639"],
+        ),
+        # ================================================================
+        # 4.6 SESSION MANAGEMENT
+        # ================================================================
+        ChecklistItem(
+            id="WSTG-SESS-01",
+            name="Testing for Session Management Schema",
+            description=(
+                "Analyse how session tokens are generated (randomness/entropy, "
+                "predictability across multiple logins) and where they're transmitted "
+                "(cookie vs. URL vs. body) — a weak scheme undermines every other "
+                "session-management defense below."
+            ),
+            category="Session Management",
+            category_code="SESS",
+            tools=["httpx"],
+            owasp_ref="WSTG-SESS-01",
+            cwe_ids=["CWE-330"],
+        ),
+        ChecklistItem(
+            id="WSTG-SESS-02",
+            name="Testing for Cookies Attributes",
+            description=(
+                "Verify every session cookie sets Secure, HttpOnly, and an appropriate "
+                "SameSite value — missing flags expose the cookie to network sniffing, "
+                "XSS-driven theft, or CSRF respectively."
+            ),
+            category="Session Management",
+            category_code="SESS",
+            tools=["httpx"],
+            owasp_ref="WSTG-SESS-02",
+            cwe_ids=["CWE-614", "CWE-1004"],
+        ),
+        ChecklistItem(
+            id="WSTG-SESS-03",
+            name="Testing for Session Fixation",
+            description=(
+                "Set a known session ID before authenticating and check whether the "
+                "server issues a *new* ID on login — if it keeps the pre-auth one, an "
+                "attacker who planted it can hijack the now-authenticated session."
+            ),
+            category="Session Management",
+            category_code="SESS",
+            tools=[],
+            owasp_ref="WSTG-SESS-03",
+            cwe_ids=["CWE-384"],
+        ),
+        ChecklistItem(
+            id="WSTG-SESS-04",
+            name="Testing for Exposed Session Variables",
+            description=(
+                "Check for session tokens/identifiers leaking into URLs (and therefore "
+                "browser history, proxy/server logs, and the Referer header sent to "
+                "third-party resources on the page)."
+            ),
+            category="Session Management",
+            category_code="SESS",
+            tools=["katana", "httpx"],
+            owasp_ref="WSTG-SESS-04",
+            cwe_ids=["CWE-598"],
+        ),
+        ChecklistItem(
+            id="WSTG-SESS-05",
+            name="Testing for Cross Site Request Forgery",
+            description=(
+                "Check whether state-changing requests (form posts, JSON APIs) require "
+                "an unpredictable per-session/per-request anti-CSRF token, and whether "
+                "that token is actually validated server-side rather than just present."
+            ),
+            category="Session Management",
+            category_code="SESS",
+            tools=["nuclei"],
+            owasp_ref="WSTG-SESS-05",
+            cwe_ids=["CWE-352"],
+        ),
+        ChecklistItem(
+            id="WSTG-SESS-06",
+            name="Testing for Logout Functionality",
+            description=(
+                "Confirm logout actually invalidates the session server-side (not just "
+                "clears the client-side cookie) — replay the pre-logout token afterward "
+                "and confirm it's rejected."
+            ),
+            category="Session Management",
+            category_code="SESS",
+            tools=[],
+            owasp_ref="WSTG-SESS-06",
+            cwe_ids=["CWE-613"],
+        ),
+        ChecklistItem(
+            id="WSTG-SESS-07",
+            name="Testing Session Timeout",
+            description=(
+                "Confirm an idle session expires within a reasonable window (both "
+                "client-side and, more importantly, server-side) rather than staying "
+                "valid indefinitely."
+            ),
+            category="Session Management",
+            category_code="SESS",
+            tools=[],
+            owasp_ref="WSTG-SESS-07",
+            cwe_ids=["CWE-613"],
+        ),
+        ChecklistItem(
+            id="WSTG-SESS-08",
+            name="Testing for Session Puzzling",
+            description=(
+                "Check whether a session attribute set in one workflow (e.g. a "
+                "multi-step registration) gets reused/trusted in a different, "
+                "unrelated workflow in a way that skips a check it wasn't meant to."
+            ),
+            category="Session Management",
+            category_code="SESS",
+            tools=[],
+            owasp_ref="WSTG-SESS-08",
+            cwe_ids=["CWE-841"],
+        ),
+        ChecklistItem(
+            id="WSTG-SESS-09",
+            name="Testing for Session Hijacking",
+            description=(
+                "Assess whether a captured session token (via XSS, network sniffing on "
+                "a non-HTTPS path, or a shared/public machine) is sufficient alone to "
+                "impersonate the user — no additional binding (IP/device fingerprint) "
+                "to make a stolen token less useful."
+            ),
+            category="Session Management",
+            category_code="SESS",
+            tools=["testssl"],
+            owasp_ref="WSTG-SESS-09",
+            cwe_ids=["CWE-384"],
+        ),
+        # ================================================================
+        # 4.7 INPUT VALIDATION
         # ================================================================
         ChecklistItem(
             id="WSTG-INPV-01",
-            name="Test for Reflected Cross-Site Scripting",
+            name="Testing for Reflected Cross Site Scripting",
             description=(
                 "Inject script payloads into every input (query params, form "
                 "fields, headers) and check whether the target reflects them back "
@@ -406,12 +797,58 @@ def build_checklist() -> list[ChecklistItem]:
             cwe_ids=["CWE-79"],
         ),
         ChecklistItem(
+            id="WSTG-INPV-02",
+            name="Testing for Stored Cross Site Scripting",
+            description=(
+                "Submit script payloads into any field that's persisted and later "
+                "rendered back to the same or a different user (comments, profile "
+                "fields, support tickets) — higher-impact than reflected XSS since it "
+                "fires on every subsequent view."
+            ),
+            category="Input Validation",
+            category_code="INPV",
+            tools=["nuclei"],
+            owasp_ref="WSTG-INPV-02",
+            cwe_ids=["CWE-79"],
+        ),
+        ChecklistItem(
+            id="WSTG-INPV-03",
+            name="Testing for HTTP Verb Tampering",
+            description=(
+                "Re-send a protected request with a different HTTP verb (GET instead "
+                "of POST, or an unexpected one) — some access-control middleware only "
+                "guards the verb it expects, letting others slip through."
+            ),
+            category="Input Validation",
+            category_code="INPV",
+            tools=["nmap", "nuclei"],
+            owasp_ref="WSTG-INPV-03",
+            cwe_ids=["CWE-436"],
+        ),
+        ChecklistItem(
+            id="WSTG-INPV-04",
+            name="Testing for HTTP Parameter Pollution",
+            description=(
+                "Submit the same parameter name multiple times in one request "
+                "(?id=1&id=2) — different frameworks/servers pick the first, last, or "
+                "concatenate, creating parsing inconsistencies that bypass filters."
+            ),
+            category="Input Validation",
+            category_code="INPV",
+            tools=["nuclei", "ffuf"],
+            owasp_ref="WSTG-INPV-04",
+            cwe_ids=["CWE-235"],
+        ),
+        ChecklistItem(
             id="WSTG-INPV-05",
-            name="Test SQL Injection",
+            name="Testing for SQL Injection",
             description=(
                 "Test every input that reaches a database query for SQL injection: "
-                "boolean-based, error-based, UNION-based, and time-based blind. "
-                "One of the highest-impact, most consequential web vulnerabilities."
+                "boolean-based, error-based, UNION-based, and time-based blind, across "
+                "whatever back-end DBMS is in play (MySQL, PostgreSQL, MSSQL, Oracle, "
+                "MS Access, or a NoSQL/ORM equivalent — sqlmap fingerprints and adapts "
+                "automatically). One of the highest-impact, most consequential web "
+                "vulnerabilities."
             ),
             category="Input Validation",
             category_code="INPV",
@@ -420,8 +857,93 @@ def build_checklist() -> list[ChecklistItem]:
             cwe_ids=["CWE-89"],
         ),
         ChecklistItem(
+            id="WSTG-INPV-06",
+            name="Testing for LDAP Injection",
+            description=(
+                "Inject LDAP filter metacharacters (*, (, ), \\, NUL) into inputs that "
+                "reach a directory-service query (login forms backed by AD/LDAP are "
+                "the classic case) to bypass authentication or exfiltrate directory data."
+            ),
+            category="Input Validation",
+            category_code="INPV",
+            tools=["nuclei"],
+            owasp_ref="WSTG-INPV-06",
+            cwe_ids=["CWE-90"],
+        ),
+        ChecklistItem(
+            id="WSTG-INPV-07",
+            name="Testing for XML Injection",
+            description=(
+                "Test XML-consuming endpoints for injected elements/entities, "
+                "including XXE (external entity) payloads that can read local files "
+                "or trigger SSRF via a malicious DOCTYPE declaration."
+            ),
+            category="Input Validation",
+            category_code="INPV",
+            tools=["nuclei"],
+            owasp_ref="WSTG-INPV-07",
+            cwe_ids=["CWE-91", "CWE-611"],
+        ),
+        ChecklistItem(
+            id="WSTG-INPV-08",
+            name="Testing for SSI Injection",
+            description=(
+                "On servers with Server-Side Includes enabled, test whether user "
+                "input reaches an SSI directive (<!--#exec cmd=\"...\"-->) unescaped, "
+                "which leads directly to remote command execution."
+            ),
+            category="Input Validation",
+            category_code="INPV",
+            tools=["nuclei"],
+            owasp_ref="WSTG-INPV-08",
+            cwe_ids=["CWE-97"],
+        ),
+        ChecklistItem(
+            id="WSTG-INPV-09",
+            name="Testing for XPath Injection",
+            description=(
+                "Inject XPath metacharacters into inputs that build an XPath query "
+                "against XML data storage/auth — similar impact to SQL injection but "
+                "against XML instead of a relational database."
+            ),
+            category="Input Validation",
+            category_code="INPV",
+            tools=[],
+            owasp_ref="WSTG-INPV-09",
+            cwe_ids=["CWE-643"],
+        ),
+        ChecklistItem(
+            id="WSTG-INPV-10",
+            name="Testing for IMAP SMTP Injection",
+            description=(
+                "Inject IMAP/SMTP command sequences (CRLF-separated) into inputs that "
+                "reach a mail server (contact forms, password-reset emails) to smuggle "
+                "extra commands or headers into the mail transaction."
+            ),
+            category="Input Validation",
+            category_code="INPV",
+            tools=[],
+            owasp_ref="WSTG-INPV-10",
+            cwe_ids=["CWE-93", "CWE-147"],
+        ),
+        ChecklistItem(
+            id="WSTG-INPV-11",
+            name="Testing for Code Injection",
+            description=(
+                "Test for local file inclusion (an input controls which local file a "
+                "script includes/executes) and remote file inclusion (the include "
+                "target is a URL the attacker controls) — both can lead to full "
+                "code execution."
+            ),
+            category="Input Validation",
+            category_code="INPV",
+            tools=["nuclei", "ffuf"],
+            owasp_ref="WSTG-INPV-11",
+            cwe_ids=["CWE-94", "CWE-98"],
+        ),
+        ChecklistItem(
             id="WSTG-INPV-12",
-            name="Test Command Injection",
+            name="Testing for Command Injection",
             description=(
                 "Test inputs that might reach a shell/OS command (file names, "
                 "hostnames passed to ping/nslookup-style utilities, export/convert "
@@ -432,6 +954,541 @@ def build_checklist() -> list[ChecklistItem]:
             tools=["nuclei"],
             owasp_ref="WSTG-INPV-12",
             cwe_ids=["CWE-78"],
+        ),
+        ChecklistItem(
+            id="WSTG-INPV-13",
+            name="Testing for Format String Injection",
+            description=(
+                "In native/C-backed components, test whether user input reaches a "
+                "format-string function (printf-family) directly — %x/%s/%n sequences "
+                "can leak memory or crash the process."
+            ),
+            category="Input Validation",
+            category_code="INPV",
+            tools=[],
+            owasp_ref="WSTG-INPV-13",
+            cwe_ids=["CWE-134"],
+        ),
+        ChecklistItem(
+            id="WSTG-INPV-14",
+            name="Testing for Incubated Vulnerability",
+            description=(
+                "Look for multi-stage attacks where an initial low-impact upload/"
+                "injection (e.g. an image with embedded payload) lies dormant until a "
+                "later, separate action triggers it."
+            ),
+            category="Input Validation",
+            category_code="INPV",
+            tools=[],
+            owasp_ref="WSTG-INPV-14",
+            cwe_ids=["CWE-73"],
+        ),
+        ChecklistItem(
+            id="WSTG-INPV-15",
+            name="Testing for HTTP Splitting Smuggling",
+            description=(
+                "Test for CRLF injection into response headers (response splitting) "
+                "and for front-end/back-end request-parsing disagreements (request "
+                "smuggling) that let one request be interpreted as two."
+            ),
+            category="Input Validation",
+            category_code="INPV",
+            tools=["nuclei"],
+            owasp_ref="WSTG-INPV-15",
+            cwe_ids=["CWE-113", "CWE-444"],
+        ),
+        ChecklistItem(
+            id="WSTG-INPV-16",
+            name="Testing for HTTP Incoming Requests",
+            description=(
+                "Monitor/review raw incoming request handling for anomalies — "
+                "malformed headers, unexpected verbs, or oversized requests the "
+                "front-end silently normalizes in a way that hides an attack from "
+                "logging/WAF inspection."
+            ),
+            category="Input Validation",
+            category_code="INPV",
+            tools=[],
+            owasp_ref="WSTG-INPV-16",
+            cwe_ids=["CWE-444"],
+        ),
+        ChecklistItem(
+            id="WSTG-INPV-17",
+            name="Testing for Host Header Injection",
+            description=(
+                "Send requests with a tampered Host header and check whether the "
+                "application trusts it for password-reset links, cache keys, or "
+                "routing decisions — enables password-reset poisoning and cache "
+                "poisoning."
+            ),
+            category="Input Validation",
+            category_code="INPV",
+            tools=["nuclei", "httpx"],
+            owasp_ref="WSTG-INPV-17",
+            cwe_ids=["CWE-644"],
+        ),
+        ChecklistItem(
+            id="WSTG-INPV-18",
+            name="Testing for Server-side Template Injection",
+            description=(
+                "Inject template-engine syntax ({{7*7}}, ${7*7}, etc.) into inputs "
+                "that might be rendered through a server-side template engine — "
+                "confirmed evaluation usually escalates directly to remote code "
+                "execution."
+            ),
+            category="Input Validation",
+            category_code="INPV",
+            tools=["nuclei"],
+            owasp_ref="WSTG-INPV-18",
+            cwe_ids=["CWE-1336"],
+        ),
+        ChecklistItem(
+            id="WSTG-INPV-19",
+            name="Testing for Server-Side Request Forgery",
+            description=(
+                "Find any server-side feature that fetches a URL on the attacker's "
+                "behalf (webhooks, PDF/image renderers, 'import from URL') and redirect "
+                "it at internal-only services, cloud metadata endpoints (169.254.169.254), "
+                "or localhost."
+            ),
+            category="Input Validation",
+            category_code="INPV",
+            tools=["nuclei"],
+            owasp_ref="WSTG-INPV-19",
+            cwe_ids=["CWE-918"],
+        ),
+        # ================================================================
+        # 4.8 TESTING FOR ERROR HANDLING
+        # ================================================================
+        ChecklistItem(
+            id="WSTG-ERRH-01",
+            name="Testing for Improper Error Handling",
+            description=(
+                "Trigger unexpected input/state (malformed data, missing parameters, "
+                "wrong content-type) and confirm the application fails to a generic "
+                "error page rather than a framework-default error page."
+            ),
+            category="Error Handling",
+            category_code="ERRH",
+            tools=["nikto", "nuclei"],
+            owasp_ref="WSTG-ERRH-01",
+            cwe_ids=["CWE-209"],
+        ),
+        ChecklistItem(
+            id="WSTG-ERRH-02",
+            name="Testing for Stack Traces",
+            description=(
+                "Look specifically for a full stack trace leaking in an error "
+                "response — reveals internal file paths, framework/library versions, "
+                "and sometimes query structure, all useful for follow-on attacks."
+            ),
+            category="Error Handling",
+            category_code="ERRH",
+            tools=["nuclei"],
+            owasp_ref="WSTG-ERRH-02",
+            cwe_ids=["CWE-209", "CWE-200"],
+        ),
+        # ================================================================
+        # 4.9 TESTING FOR WEAK CRYPTOGRAPHY
+        # ================================================================
+        ChecklistItem(
+            id="WSTG-CRYP-01",
+            name="Testing for Weak Transport Layer Security",
+            description=(
+                "Audit the TLS configuration: protocol versions offered (TLS 1.0/1.1 "
+                "should be disabled), cipher suite strength, certificate validity/chain, "
+                "and known TLS-layer vulnerabilities (Heartbleed, POODLE, etc.)."
+            ),
+            category="Weak Cryptography",
+            category_code="CRYP",
+            tools=["testssl"],
+            owasp_ref="WSTG-CRYP-01",
+            cwe_ids=["CWE-326", "CWE-327"],
+        ),
+        ChecklistItem(
+            id="WSTG-CRYP-02",
+            name="Testing for Padding Oracle",
+            description=(
+                "If the application decrypts CBC-mode ciphertext it receives from the "
+                "client (encrypted view state, tokens), check whether padding-validation "
+                "errors are distinguishable from other errors — a padding oracle lets an "
+                "attacker decrypt/forge ciphertext without the key."
+            ),
+            category="Weak Cryptography",
+            category_code="CRYP",
+            tools=[],
+            owasp_ref="WSTG-CRYP-02",
+            cwe_ids=["CWE-696"],
+        ),
+        ChecklistItem(
+            id="WSTG-CRYP-03",
+            name="Testing for Sensitive Information Sent via Unencrypted Channels",
+            description=(
+                "Beyond the login form (WSTG-ATHN-01), check every channel that might "
+                "carry sensitive data — API calls, WebSocket traffic, third-party "
+                "widget requests — for a plaintext HTTP path."
+            ),
+            category="Weak Cryptography",
+            category_code="CRYP",
+            tools=["httpx", "testssl"],
+            owasp_ref="WSTG-CRYP-03",
+            cwe_ids=["CWE-319"],
+        ),
+        ChecklistItem(
+            id="WSTG-CRYP-04",
+            name="Testing for Weak Encryption",
+            description=(
+                "Review any application-level (not just transport-level) use of "
+                "cryptography — password hashing algorithm, encrypted-at-rest fields, "
+                "custom token signing — for weak/deprecated primitives (MD5, SHA1, "
+                "unsalted hashes, hardcoded keys)."
+            ),
+            category="Weak Cryptography",
+            category_code="CRYP",
+            tools=[],
+            owasp_ref="WSTG-CRYP-04",
+            cwe_ids=["CWE-327", "CWE-916"],
+        ),
+        # ================================================================
+        # 4.10 BUSINESS LOGIC TESTING
+        # ================================================================
+        ChecklistItem(
+            id="WSTG-BUSL-01",
+            name="Test Business Logic Data Validation",
+            description=(
+                "Submit logically invalid but syntactically valid data (negative "
+                "quantities, a discount code with a future start date used early, an "
+                "out-of-range but well-formed value) and check whether business rules, "
+                "not just input format, are actually validated server-side."
+            ),
+            category="Business Logic",
+            category_code="BUSL",
+            tools=[],
+            owasp_ref="WSTG-BUSL-01",
+            cwe_ids=["CWE-20"],
+        ),
+        ChecklistItem(
+            id="WSTG-BUSL-02",
+            name="Test Ability to Forge Requests",
+            description=(
+                "Replay/modify a request that carries client-side-computed state "
+                "(price, total, a hidden 'approved' flag) and confirm the server "
+                "recomputes/re-validates it rather than trusting whatever the client sent."
+            ),
+            category="Business Logic",
+            category_code="BUSL",
+            tools=[],
+            owasp_ref="WSTG-BUSL-02",
+            cwe_ids=["CWE-441"],
+        ),
+        ChecklistItem(
+            id="WSTG-BUSL-03",
+            name="Test Integrity Checks",
+            description=(
+                "Tamper with data passed through multiple steps of a workflow (a "
+                "multi-page checkout, a signed/hashed hidden field) and confirm any "
+                "integrity check on it is actually enforced rather than decorative."
+            ),
+            category="Business Logic",
+            category_code="BUSL",
+            tools=[],
+            owasp_ref="WSTG-BUSL-03",
+            cwe_ids=["CWE-345"],
+        ),
+        ChecklistItem(
+            id="WSTG-BUSL-04",
+            name="Test for Process Timing",
+            description=(
+                "Look for timing differences in a sensitive operation (login, token "
+                "validation, discount-code check) that leak information about correct "
+                "vs. incorrect input independent of the stated error response."
+            ),
+            category="Business Logic",
+            category_code="BUSL",
+            tools=[],
+            owasp_ref="WSTG-BUSL-04",
+            cwe_ids=["CWE-208"],
+        ),
+        ChecklistItem(
+            id="WSTG-BUSL-05",
+            name="Test Number of Times a Function Can Be Used Limits",
+            description=(
+                "Check whether a function meant to be used a limited number of times "
+                "(redeem a coupon once, one free trial per account, a single vote) "
+                "actually enforces that limit server-side against repeated/parallel "
+                "requests."
+            ),
+            category="Business Logic",
+            category_code="BUSL",
+            tools=[],
+            owasp_ref="WSTG-BUSL-05",
+            cwe_ids=["CWE-799"],
+        ),
+        ChecklistItem(
+            id="WSTG-BUSL-06",
+            name="Testing for the Circumvention of Work Flows",
+            description=(
+                "Try skipping steps in a multi-step process (jump straight to a "
+                "'confirmation' page/API without completing prior steps, replay a "
+                "later step's request out of order) to see if server-side state "
+                "actually enforces the intended sequence."
+            ),
+            category="Business Logic",
+            category_code="BUSL",
+            tools=[],
+            owasp_ref="WSTG-BUSL-06",
+            cwe_ids=["CWE-841"],
+        ),
+        ChecklistItem(
+            id="WSTG-BUSL-07",
+            name="Test Defenses Against Application Misuse",
+            description=(
+                "Probe whether the application detects/throttles obviously abusive "
+                "usage patterns (rapid-fire requests, scripted account creation, "
+                "scraping) rather than treating every request as legitimate at any rate."
+            ),
+            category="Business Logic",
+            category_code="BUSL",
+            tools=[],
+            owasp_ref="WSTG-BUSL-07",
+            cwe_ids=["CWE-799"],
+        ),
+        ChecklistItem(
+            id="WSTG-BUSL-08",
+            name="Test Upload of Unexpected File Types",
+            description=(
+                "Upload files with an unexpected but structurally valid type/extension "
+                "to a file-upload feature (polyglot files, wrong-but-accepted MIME "
+                "type, double extensions) and confirm server-side type validation, not "
+                "just a client-side/extension check."
+            ),
+            category="Business Logic",
+            category_code="BUSL",
+            tools=["ffuf"],
+            owasp_ref="WSTG-BUSL-08",
+            cwe_ids=["CWE-434"],
+        ),
+        ChecklistItem(
+            id="WSTG-BUSL-09",
+            name="Test Upload of Malicious Files",
+            description=(
+                "Upload a webshell, EICAR test file, or an oversized/zip-bomb file to "
+                "confirm the application scans/rejects malicious content and doesn't "
+                "serve uploaded files from an executable path."
+            ),
+            category="Business Logic",
+            category_code="BUSL",
+            tools=[],
+            owasp_ref="WSTG-BUSL-09",
+            cwe_ids=["CWE-434"],
+        ),
+        # ================================================================
+        # 4.11 CLIENT-SIDE TESTING
+        # ================================================================
+        ChecklistItem(
+            id="WSTG-CLNT-01",
+            name="Testing for DOM-Based Cross Site Scripting",
+            description=(
+                "Trace client-side JavaScript sources (location.hash, "
+                "postMessage, document.referrer) to sinks (innerHTML, eval, "
+                "document.write) that render attacker-controlled data without "
+                "sanitization — invisible to server-side scanning, needs "
+                "browser-based/manual review of the actual JS."
+            ),
+            category="Client-side Testing",
+            category_code="CLNT",
+            tools=["katana"],
+            owasp_ref="WSTG-CLNT-01",
+            cwe_ids=["CWE-79"],
+        ),
+        ChecklistItem(
+            id="WSTG-CLNT-02",
+            name="Testing for JavaScript Execution",
+            description=(
+                "Review bundled/inline JavaScript for dangerous patterns (eval on "
+                "external data, dynamically constructed script tags) that an attacker "
+                "could reach via a supply-chain or injection vector."
+            ),
+            category="Client-side Testing",
+            category_code="CLNT",
+            tools=["katana"],
+            owasp_ref="WSTG-CLNT-02",
+            cwe_ids=["CWE-95"],
+        ),
+        ChecklistItem(
+            id="WSTG-CLNT-03",
+            name="Testing for HTML Injection",
+            description=(
+                "Inject HTML markup (without script tags) into inputs reflected/stored "
+                "in the page — even without JS execution, injected markup can deface "
+                "content or build a convincing phishing overlay."
+            ),
+            category="Client-side Testing",
+            category_code="CLNT",
+            tools=["nuclei"],
+            owasp_ref="WSTG-CLNT-03",
+            cwe_ids=["CWE-79", "CWE-80"],
+        ),
+        ChecklistItem(
+            id="WSTG-CLNT-04",
+            name="Testing for Client-side URL Redirect",
+            description=(
+                "Find any redirect parameter (?next=, ?returnUrl=, ?redirect=) and "
+                "test whether it accepts an attacker-controlled external URL — enables "
+                "convincing phishing via a trusted domain's own redirect."
+            ),
+            category="Client-side Testing",
+            category_code="CLNT",
+            tools=["nuclei", "ffuf"],
+            owasp_ref="WSTG-CLNT-04",
+            cwe_ids=["CWE-601"],
+        ),
+        ChecklistItem(
+            id="WSTG-CLNT-05",
+            name="Testing for CSS Injection",
+            description=(
+                "Check whether user input reaches a stylesheet/style attribute "
+                "unescaped — modern CSS (attribute selectors, @import) can exfiltrate "
+                "page data or overlay convincing UI without any JavaScript."
+            ),
+            category="Client-side Testing",
+            category_code="CLNT",
+            tools=[],
+            owasp_ref="WSTG-CLNT-05",
+            cwe_ids=["CWE-79"],
+        ),
+        ChecklistItem(
+            id="WSTG-CLNT-06",
+            name="Testing for Client-side Resource Manipulation",
+            description=(
+                "Check whether client-side JS builds a resource reference (an AJAX "
+                "URL, a dynamically inserted <script src>) from attacker-influenceable "
+                "data without validation."
+            ),
+            category="Client-side Testing",
+            category_code="CLNT",
+            tools=["katana"],
+            owasp_ref="WSTG-CLNT-06",
+            cwe_ids=["CWE-79"],
+        ),
+        ChecklistItem(
+            id="WSTG-CLNT-07",
+            name="Testing Cross Origin Resource Sharing",
+            description=(
+                "Send requests with varied Origin headers and check the "
+                "Access-Control-Allow-Origin response — reflecting an arbitrary "
+                "Origin (especially combined with Allow-Credentials: true) lets any "
+                "site read authenticated responses cross-origin."
+            ),
+            category="Client-side Testing",
+            category_code="CLNT",
+            tools=["httpx", "nuclei"],
+            owasp_ref="WSTG-CLNT-07",
+            cwe_ids=["CWE-346"],
+        ),
+        ChecklistItem(
+            id="WSTG-CLNT-08",
+            name="Testing for Cross Site Flashing",
+            description=(
+                "For any legacy Flash (.swf) content still served, review its "
+                "cross-domain permissions and input handling — largely obsolete as "
+                "Flash is EOL, but a leftover .swf on an old server is still a real "
+                "finding if present."
+            ),
+            category="Client-side Testing",
+            category_code="CLNT",
+            tools=["ffuf"],
+            owasp_ref="WSTG-CLNT-08",
+            cwe_ids=["CWE-79"],
+        ),
+        ChecklistItem(
+            id="WSTG-CLNT-09",
+            name="Testing for Clickjacking",
+            description=(
+                "Confirm the application sets X-Frame-Options or a frame-ancestors "
+                "CSP directive — without it, the page can be iframed on an attacker "
+                "site and its UI overlaid to trick users into unintended clicks."
+            ),
+            category="Client-side Testing",
+            category_code="CLNT",
+            tools=["httpx", "nuclei"],
+            owasp_ref="WSTG-CLNT-09",
+            cwe_ids=["CWE-1021"],
+        ),
+        ChecklistItem(
+            id="WSTG-CLNT-10",
+            name="Testing WebSockets",
+            description=(
+                "Check WebSocket handshake origin validation, whether the connection "
+                "requires the same authentication as the rest of the app, and whether "
+                "messages are validated server-side like any other input."
+            ),
+            category="Client-side Testing",
+            category_code="CLNT",
+            tools=[],
+            owasp_ref="WSTG-CLNT-10",
+            cwe_ids=["CWE-346"],
+        ),
+        ChecklistItem(
+            id="WSTG-CLNT-11",
+            name="Testing Web Messaging",
+            description=(
+                "Review postMessage() listeners for missing origin checks on the "
+                "message sender and for passing message data into a dangerous sink "
+                "(innerHTML, eval) unsanitized."
+            ),
+            category="Client-side Testing",
+            category_code="CLNT",
+            tools=["katana"],
+            owasp_ref="WSTG-CLNT-11",
+            cwe_ids=["CWE-346"],
+        ),
+        ChecklistItem(
+            id="WSTG-CLNT-12",
+            name="Testing Browser Storage",
+            description=(
+                "Inspect localStorage/sessionStorage/IndexedDB for sensitive data "
+                "(tokens, PII) stored client-side, where it's readable by any script "
+                "on the page (including an XSS payload) and persists beyond the session."
+            ),
+            category="Client-side Testing",
+            category_code="CLNT",
+            tools=[],
+            owasp_ref="WSTG-CLNT-12",
+            cwe_ids=["CWE-922"],
+        ),
+        ChecklistItem(
+            id="WSTG-CLNT-13",
+            name="Testing for Cross Site Script Inclusion",
+            description=(
+                "Check whether a sensitive endpoint returns executable JavaScript "
+                "(JSONP, a .js-served API) containing user-specific data without "
+                "verifying the request's origin — a third-party page can <script "
+                "src> it and read the response."
+            ),
+            category="Client-side Testing",
+            category_code="CLNT",
+            tools=["httpx"],
+            owasp_ref="WSTG-CLNT-13",
+            cwe_ids=["CWE-352"],
+        ),
+        # ================================================================
+        # 4.12 API TESTING
+        # ================================================================
+        ChecklistItem(
+            id="WSTG-APIT-01",
+            name="Testing GraphQL",
+            description=(
+                "Check whether GraphQL introspection is exposed in production "
+                "(reveals the full schema to an attacker), test for missing "
+                "field-level authorization, and probe for resource-exhaustion via "
+                "deeply nested or batched queries."
+            ),
+            category="API Testing",
+            category_code="APIT",
+            tools=["nuclei", "httpx"],
+            owasp_ref="WSTG-APIT-01",
+            cwe_ids=["CWE-200", "CWE-285", "CWE-400"],
         ),
     ]
 

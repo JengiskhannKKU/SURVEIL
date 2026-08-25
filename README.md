@@ -35,7 +35,7 @@ surveil is a terminal-native tool that brings together web application enumerati
 ```
 
 - **Tool Orchestration Layer** — wraps 16 tools via subprocess: `nmap`, `httpx`, `whatweb`, `wafw00f`, `subfinder`, `nuclei`, `arjun`, `dnsx`, `gowitness`, `wpscan`, `amass`, `ffuf`, `gobuster`, `katana`, `nikto`, `testssl` (see `TOOL_REGISTRY` in `surveil/tools/__init__.py`). Falls back to realistic simulated output when a tool is not installed (demo mode). Each tool supports a **Fast** and a **Full** command variant, and its exact command line is editable before running.
-- **Checklist & State Engine** — OWASP WSTG INFO, CONF, IDNT, ATHN, and INPV items (26 items) with status tracking, Textual TUI, JSON persistence, and a saved-engagement picker.
+- **Checklist & State Engine** — the full OWASP WSTG v4.2 table of contents, all 12 sections (97 items) with status tracking, Textual TUI, JSON persistence, and a saved-engagement picker.
 - **Auto-Finding Extraction** (`surveil/findings_extractor.py`) — parses raw output from `nmap`, `httpx`, `whatweb`, `nuclei`, `wafw00f`, `subfinder`, and `nikto` into `Finding` objects (auto CVSS scoring, OWASP/CWE mapping) flagged `verified=False`, so a tester gets a starting point to confirm or dismiss rather than a blank checklist.
 - **Reporting Engine** — CVSS v3.1 base score calculator, OWASP/CWE metadata, Markdown and .docx export.
 
@@ -314,13 +314,29 @@ Raw tool output streams into the Tool Output panel live as it runs (and replays 
 
 ## Checklist Coverage
 
+The full OWASP WSTG v4.2 table of contents — 97 items across all 12 sections:
+
 | Category | Items |
 |---|---|
 | Information Gathering (INFO) | WSTG-INFO-01 … WSTG-INFO-10 |
-| Configuration Management (CONF) | WSTG-CONF-01 … WSTG-CONF-10 |
-| Identity Management (IDNT) | WSTG-IDNT-04 |
-| Authentication (ATHN) | WSTG-ATHN-02, WSTG-ATHN-03 |
-| Input Validation (INPV) | WSTG-INPV-01, WSTG-INPV-05, WSTG-INPV-12 |
+| Configuration Management (CONF) | WSTG-CONF-01 … WSTG-CONF-11 |
+| Identity Management (IDNT) | WSTG-IDNT-01 … WSTG-IDNT-05 |
+| Authentication (ATHN) | WSTG-ATHN-01 … WSTG-ATHN-10 |
+| Authorization (ATHZ) | WSTG-ATHZ-01 … WSTG-ATHZ-04 |
+| Session Management (SESS) | WSTG-SESS-01 … WSTG-SESS-09 |
+| Input Validation (INPV) | WSTG-INPV-01 … WSTG-INPV-19 |
+| Error Handling (ERRH) | WSTG-ERRH-01, WSTG-ERRH-02 |
+| Weak Cryptography (CRYP) | WSTG-CRYP-01 … WSTG-CRYP-04 |
+| Business Logic (BUSL) | WSTG-BUSL-01 … WSTG-BUSL-09 |
+| Client-side Testing (CLNT) | WSTG-CLNT-01 … WSTG-CLNT-13 |
+| API Testing (APIT) | WSTG-APIT-01 |
+
+Many Business Logic, Session Management, and Client-side items are
+inherently manual/logic-driven — no CLI tool can judge whether a workflow
+can legitimately be circumvented. Those items list `tools=[]` or the
+closest thing that provides supporting evidence (e.g. `httpx` for a
+cookie's flags) rather than a tool that "does" the test; see the
+docstring at the top of `surveil/checklist.py`.
 
 ---
 
@@ -328,26 +344,28 @@ Raw tool output streams into the Tool Output panel live as it runs (and replays 
 
 Each wrapper tries the real binary first. If not installed, it returns realistic simulated output so the demo always works. All 18 are registered in `TOOL_REGISTRY` (`surveil/tools/__init__.py`) and invokable from both the CLI and TUI. Every wrapper also carries a `description` and `example` (shown as the guide in the TUI's Run Tool dialog) and a Fast/Full `build_command(fast=...)` variant.
 
-| Tool | Purpose | Checklist Items |
+With 97 checklist items now (see above), the full item↔tool mapping is best read directly from each `ChecklistItem`'s `tools=[...]` in `surveil/checklist.py` rather than kept in sync by hand here — the table below is a representative sample per tool, not exhaustive.
+
+| Tool | Purpose | Example Checklist Items |
 |---|---|---|
-| `nmap` | Port scanning & service fingerprinting | INFO-02, CONF-01, CONF-06 |
-| `httpx` | HTTP probing & header analysis | INFO-02, CONF-07, CONF-08 |
+| `nmap` | Port scanning & service fingerprinting | INFO-02, CONF-01, CONF-06, INPV-03 |
+| `httpx` | HTTP probing & header analysis | INFO-02, CONF-07, CONF-08, SESS-01/02, CLNT-07/09/13 |
 | `whatweb` | Technology & CMS fingerprinting | INFO-02, INFO-08 |
-| `wafw00f` | WAF detection | INFO-10, CONF-10 |
-| `subfinder` | Subdomain discovery | INFO-01, CONF-09 |
-| `nuclei` | Template-based vulnerability scanning | CONF-02, CONF-05, CONF-08, ATHN-02, INPV-01/05/12 |
+| `wafw00f` | WAF detection | INFO-10 |
+| `subfinder` | Subdomain discovery | INFO-01, CONF-10 |
+| `nuclei` | Template-based vulnerability scanning | CONF-02, CONF-05, ATHN-02, ATHZ-01/02, SESS-05, INPV-01/02/05/06/07/08/12/15/17/18/19, CLNT-03/04/07/09 |
 | `arjun` | Hidden HTTP parameter discovery | INFO-04 |
-| `dnsx` | DNS resolution & enumeration | INFO-01, CONF-09 |
+| `dnsx` | DNS resolution & enumeration | INFO-01, CONF-10 |
 | `gowitness` | Screenshot capture of web pages | INFO-04 |
 | `wpscan` | WordPress-specific vulnerability scanning | INFO-08 |
 | `amass` | Passive subdomain enumeration | INFO-01 |
-| `ffuf` | Directory/file brute-forcing | INFO-04, CONF-01, CONF-04, CONF-05, IDNT-04 |
+| `ffuf` | Directory/file brute-forcing | INFO-04, CONF-01/04/05/09, IDNT-04/05, ATHN-04, ATHZ-01/04, INPV-04/11 |
 | `gobuster` | Directory brute-forcing | CONF-04, CONF-05 |
-| `katana` | Web crawling & endpoint discovery | INFO-04 |
-| `nikto` | Web server vulnerability scanning | CONF-02 |
-| `testssl` | TLS/SSL configuration analysis | CONF-06 |
-| `sqlmap` | Automated SQL injection detection/exploitation | INPV-05 |
-| `hydra` | Online brute-force login testing (SSH by default) | ATHN-02, ATHN-03 |
+| `sqlmap` | SQL injection detection/exploitation | INPV-05 |
+| `hydra` | Brute-force login testing | ATHN-02, ATHN-03 |
+| `katana` | Web crawling & endpoint discovery | INFO-04/05/06/07, CLNT-01/02/06/11 |
+| `nikto` | Web server vulnerability scanning | CONF-02, CONF-09, ERRH-01 |
+| `testssl` | TLS/SSL configuration analysis | CONF-07, ATHN-01, CRYP-01/03, SESS-09 |
 
 Auto-finding extraction (`surveil/findings_extractor.py`) currently covers
 `nmap`, `httpx`, `whatweb`, `nuclei`, `wafw00f`, `subfinder`, and `nikto`;
