@@ -24,11 +24,52 @@ def _severity_badge(sev: Severity) -> str:
     return icons.get(sev, "⚪")
 
 
+def _deduplicate_findings(engagement: Engagement) -> list[tuple[list[str], Finding]]:
+    """Group findings by (tool, title) and return one representative Finding
+    per group, alongside every checklist item ID it recurred under.
+
+    Several checklist items commonly run the same tool (nmap alone is now
+    mapped to WSTG-INFO-02/04, WSTG-CONF-01/06) — each run's
+    extract_findings() independently produces its own Finding object for
+    the same real-world fact (e.g. "Server Version Disclosure:
+    Apache/httpd"), since findings are tracked per checklist item, not
+    deduplicated across the engagement. That's correct for the live
+    per-item findings panel (each item genuinely detected it), but it
+    means an *un-deduplicated* report shows the identical finding block
+    two, three, four times — confirmed against real engagement data
+    (one real engagement had "Server Version Disclosure" 4 times).
+
+    Deliberately keys on (tool, title) rather than also including
+    `evidence`: the same underlying finding's evidence text can differ
+    slightly between runs (`_grep_context()` in findings_extractor.py
+    captures a few surrounding lines around the match, which shifts
+    depending on where exactly the match lands in that particular
+    tool_outputs block) even though it's the same real finding.
+    """
+    groups: dict[tuple[str, str], list[tuple[str, Finding]]] = {}
+    for item in engagement.checklist_items:
+        for f in item.findings:
+            groups.setdefault((f.tool, f.title), []).append((item.id, f))
+
+    result: list[tuple[list[str], Finding]] = []
+    for entries in groups.values():
+        item_ids = sorted({item_id for item_id, _ in entries})
+        # Prefer a verified finding as the representative if any of the
+        # duplicates were manually verified, so a tester's verification
+        # work on *any* one instance is what the report reflects.
+        representative = next((f for _, f in entries if f.verified), entries[0][1])
+        result.append((item_ids, representative))
+    return result
+
+
 def generate_markdown(engagement: Engagement, out_path: Optional[Path] = None) -> str:
     """Render *engagement* as a Markdown pentest report string."""
     lines: list[str] = []
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
-    sev = engagement.findings_by_severity
+    deduped = _deduplicate_findings(engagement)
+    sev: dict[str, int] = {s.value: 0 for s in Severity}
+    for _item_ids, f in deduped:
+        sev[f.severity.value] += 1
 
     # ── Header ──────────────────────────────────────────────────────────────
     lines += [
@@ -60,7 +101,7 @@ def generate_markdown(engagement: Engagement, out_path: Optional[Path] = None) -
         f"| 🟡 Medium   | {sev.get('medium', 0)} |",
         f"| 🔵 Low      | {sev.get('low', 0)} |",
         f"| ⚪ Info     | {sev.get('info', 0)} |",
-        f"| **Total**   | **{engagement.total_findings}** |",
+        f"| **Total**   | **{len(deduped)}** |",
         "",
         "---",
         "",
@@ -77,37 +118,43 @@ def generate_markdown(engagement: Engagement, out_path: Optional[Path] = None) -
             f"| `{item.id}` | {item.name} | {icon} {item.status.value} | {count} |"
         )
 
-    lines += ["", "---", "", "## Detailed Findings", ""]
-
-    # Group all findings by severity
-    all_findings: list[tuple[str, Finding]] = []
-    for item in engagement.checklist_items:
-        for f in item.findings:
-            all_findings.append((item.id, f))
+    lines += [
+        "",
+        "---",
+        "",
+        "## Detailed Findings",
+        "",
+        "*Deduplicated — the same finding detected via more than one checklist "
+        "item (e.g. several items running the same tool) is listed once, with "
+        "every checklist item it was found under.*",
+        "",
+    ]
 
     # Sort: critical → high → medium → low → info
     order = {s.value: i for i, s in enumerate(
         [Severity.CRITICAL, Severity.HIGH, Severity.MEDIUM, Severity.LOW, Severity.INFO]
     )}
-    all_findings.sort(key=lambda x: order.get(x[1].severity.value, 99))
+    deduped.sort(key=lambda x: order.get(x[1].severity.value, 99))
 
-    if not all_findings:
+    if not deduped:
         lines.append("*No findings recorded for this engagement.*")
     else:
-        for item_id, f in all_findings:
+        for item_ids, f in deduped:
             badge = _severity_badge(f.severity)
             verified_str = "✅ Verified" if f.verified else "⚠️ Unverified (tool)"
             cvss_str = (
                 f"`{f.cvss_vector}` → **{f.cvss_score:.1f}**"
                 if f.cvss_vector else f"**{f.cvss_score:.1f}**"
             )
+            items_label = "Checklist Items" if len(item_ids) > 1 else "Checklist Item"
+            items_value = ", ".join(f"`{i}`" for i in item_ids)
             lines += [
                 f"### {badge} [{f.severity.value.upper()}] {f.title}",
                 "",
                 f"| Field | Value |",
                 f"|---|---|",
                 f"| **Finding ID** | `{f.id}` |",
-                f"| **Checklist Item** | `{item_id}` |",
+                f"| **{items_label}** | {items_value} |",
                 f"| **Severity** | {f.severity.value.upper()} |",
                 f"| **CVSS Score** | {cvss_str} |",
                 f"| **OWASP Category** | {f.owasp_category or '—'} |",
@@ -200,7 +247,7 @@ def generate_docx(engagement: Engagement, out_path: Path) -> Path:
         ("Engagement ID",    engagement.id),
         ("Report Date",      datetime.now().strftime("%Y-%m-%d %H:%M")),
         ("Progress",         f"{engagement.done_items}/{engagement.total_items} items"),
-        ("Total Findings",   str(engagement.total_findings)),
+        ("Total Findings",   str(len(_deduplicate_findings(engagement)))),
     ]
     for k, v in meta:
         row = table.add_row().cells
@@ -217,15 +264,15 @@ def generate_docx(engagement: Engagement, out_path: Path) -> Path:
         "info":     RGBColor(0x70, 0x70, 0x70),
     }
 
-    all_findings: list[tuple[str, Finding]] = []
-    for item in engagement.checklist_items:
-        for f in item.findings:
-            all_findings.append((item.id, f))
+    # Deduplicated — see _deduplicate_findings()'s docstring: several
+    # checklist items commonly run the same tool, so the same real finding
+    # otherwise appears once per item that detected it.
+    deduped = _deduplicate_findings(engagement)
 
     order = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
-    all_findings.sort(key=lambda x: order.get(x[1].severity.value, 99))
+    deduped.sort(key=lambda x: order.get(x[1].severity.value, 99))
 
-    for item_id, f in all_findings:
+    for item_ids, f in deduped:
         heading = doc.add_heading(f"[{f.severity.value.upper()}] {f.title}", level=2)
         run = heading.runs[0]
         run.font.color.rgb = sev_colors.get(f.severity.value, RGBColor(0, 0, 0))
@@ -235,7 +282,7 @@ def generate_docx(engagement: Engagement, out_path: Path) -> Path:
         t.rows[0].cells[0].text = "Field"
         t.rows[0].cells[1].text = "Value"
         fields = [
-            ("Checklist Item", item_id),
+            ("Checklist Item" if len(item_ids) == 1 else "Checklist Items", ", ".join(item_ids)),
             ("CVSS Score",     str(f.cvss_score)),
             ("CVSS Vector",    f.cvss_vector or "—"),
             ("OWASP",          f.owasp_category or "—"),

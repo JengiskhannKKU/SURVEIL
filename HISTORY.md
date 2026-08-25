@@ -6,6 +6,85 @@ was verified, and what the next agent should pick up.
 
 ---
 
+## 2026-08-25 (15) — Fix: duplicate findings in the report
+
+**Done (user bug report: "some testing process it found the finding the
+same then report it display duplicated finding"):**
+- **Confirmed against real data before writing any fix**: dumped every
+  finding across all 3 real engagements on this dev machine, grouped by
+  (tool, title) — "Snoopbee Lab1" had "Server Version Disclosure:
+  Apache/httpd" 4 times, "Snoopbee Lab3" had it 3 times. Root cause:
+  findings are tracked per checklist item (correct — each item's own
+  `run_tool()` genuinely re-derives findings from that run's output),
+  but several checklist items now run the *same* tool (`nmap` alone is
+  mapped to `WSTG-INFO-02`/`04`, `WSTG-CONF-01`/`06` since the WSTG
+  coverage expansion two sessions ago) — running nmap from each of those
+  4 items independently produces its own Finding object for the same
+  real-world fact. `orchestrator.run_tool()` already dedupes *within* a
+  single item/tool re-run (clears that tool's prior unverified findings
+  before adding new ones) — there was just no dedup *across* items.
+- Fixed at the report layer specifically (not the underlying data model
+  — the per-item findings panel correctly keeps its own per-item list,
+  since each item genuinely did detect it): new
+  `surveil/report.py::_deduplicate_findings()` groups by `(tool,
+  title)` — deliberately *not* also `evidence`, since the same real
+  finding's evidence text can differ slightly between runs
+  (`_grep_context()` in `findings_extractor.py` captures a few
+  surrounding lines around the match, which shifts depending on exactly
+  where the match lands in that run's output) — and returns one
+  representative Finding per group plus every checklist item ID it
+  recurred under (preferring an already-verified instance as the
+  representative, if any of the duplicates were manually verified).
+- Both `generate_markdown()` and `generate_docx()` now use this for
+  their Detailed Findings section (now shows a "Checklist Items" row
+  listing all of them, e.g. `WSTG-CONF-01, WSTG-CONF-06, WSTG-INFO-02,
+  WSTG-INFO-04`, instead of 4 identical blocks) and their severity-count
+  totals (previously `engagement.total_findings`/`findings_by_severity`,
+  which count raw per-item findings — now `len(deduped)` /
+  per-severity counts over the deduped list, so the Executive Summary's
+  numbers match what Detailed Findings actually lists below it).
+  Added a one-line note in the Markdown report explaining the dedup so
+  a tester comparing it against the raw per-item "Findings" count in
+  the Checklist Coverage table isn't confused by the two numbers
+  legitimately differing.
+
+**Verified:**
+- Ran `_deduplicate_findings()` directly against the real "Snoopbee
+  Lab1" engagement: 5 raw findings → 2 deduplicated, with the
+  recurring one correctly listing all 4 checklist items.
+- Generated the actual Markdown report and confirmed "Server Version
+  Disclosure" now appears exactly once (was 4), with the "Checklist
+  Items" field listing all 4 IDs; confirmed the Finding Severity
+  Summary's Total now reads 2, matching the deduplicated list below it.
+- Generated a real `.docx` via `generate_docx()` and confirmed it
+  completes without error (37.7KB output).
+- Curled the live backend's `/report/content` endpoint and confirmed
+  the JSON response matches (1 occurrence, not 4).
+- Full browser E2E against the same real engagement's View Report
+  dialog: confirmed exactly 1 occurrence of the finding title, all 4
+  checklist items listed, the dedup note visible, and the Total now
+  reading 2. Zero console errors.
+
+**Next steps for the next agent:**
+1. Deliberately left `Engagement.total_findings`/`findings_by_severity`
+   (in `surveil/models.py`) untouched — those still return raw,
+   non-deduplicated counts, and feed the dashboard's `SeverityBar` on
+   the engagement page (outside the report). The user's report was
+   specifically about the report showing duplicates; the dashboard
+   wasn't reported as wrong and per-item semantics there are arguably
+   correct as-is (each item's own progress/findings count should
+   reflect what that item detected). Worth revisiting only if the
+   dashboard count itself gets reported as confusing.
+2. The dedup key `(tool, title)` is intentionally coarse — two
+   genuinely different findings from the same tool that happen to earn
+   an identical auto-generated title (rare, since most extractor
+   titles embed a specific value like a version number or path) would
+   incorrectly merge. Not observed in the real data checked here, but
+   worth knowing if a report ever seems to be missing a finding that
+   should be listed separately.
+
+---
+
 ## 2026-08-25 (14) — Report layout: collapsible sections, colored finding cards
 
 **Done (user follow-up: "can you adjust the layout on report more read
