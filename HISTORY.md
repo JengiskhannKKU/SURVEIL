@@ -6,6 +6,58 @@ was verified, and what the next agent should pick up.
 
 ---
 
+## 2026-08-25 (14) — Report layout: collapsible sections, colored finding cards
+
+**Done (user follow-up: "can you adjust the layout on report more read
+easier" — the just-shipped View Report dialog rendered the whole
+markdown string as one unbroken scroll, so reaching "Detailed Findings"
+meant scrolling past a 97-row Checklist Coverage table first, and
+finding blocks were plain text headers with no visual separation):**
+- `ReportView.tsx`: `splitIntoSections()` splits the markdown string on
+  its own top-level `## ` headers (Overview / Executive Summary /
+  Checklist Coverage / Detailed Findings / Appendix — Raw Tool Output —
+  matching `surveil/report.py`'s own structure exactly, no backend
+  change needed) and renders each as a collapsible MUI `Accordion` with
+  a size chip (row/sub-heading count) so a collapsed section still
+  communicates its size without opening it.
+- **Checklist Coverage** and **Appendix — Raw Tool Output** — the two
+  genuinely long, skim-once sections — start collapsed.
+  **Overview**/**Executive Summary**/**Detailed Findings** — what a
+  tester actually opens this dialog to see — start expanded.
+- Individual finding headings (`### 🔴 [CRITICAL] Title`) now render
+  with a colored left border matching their severity emoji (parsed from
+  the heading's own text via a small `textOf()` walker, no change to
+  the markdown source), so findings are scannable as colored cards
+  instead of identical plain headers.
+- Long tables and evidence code blocks now cap at a fixed max-height
+  with their own internal scroll (was: the whole dialog just kept
+  growing), and table headers stick to the top of that scroll area.
+- Dialog widened from `maxWidth="md"` to `"lg"` — tables (finding field
+  table, checklist coverage) were cramped at the old width.
+
+**Verified:**
+- `npx tsc --noEmit`, `eslint`, `next build` all clean.
+- Full browser E2E against the same real "Snoopbee Lab1" engagement:
+  confirmed Checklist Coverage starts collapsed with a "20" count chip,
+  clicking it expands the real 20-row table with a sticky header;
+  confirmed Detailed Findings starts expanded showing a real finding's
+  full field table/description/evidence/remediation; confirmed Appendix
+  starts collapsed with a "56" chip and expands to real per-item tool
+  output sections. Zero console errors.
+
+**Next steps for the next agent:**
+1. Section expand/collapse state resets every time the dialog reopens
+   (no persistence) — reasonable default, but worth reconsidering if
+   testers report wanting their expand choices remembered across opens.
+2. `splitIntoSections()` assumes `report.py`'s exact `## ` section
+   structure — if a future report.py change adds/renames/removes a
+   top-level section, it'll just show up as its own new Accordion
+   automatically (nothing hardcoded beyond the collapsed-by-default
+   title set), so this should stay robust to most structural changes
+   without a frontend update, but worth a quick check if that ever happens.
+
+---
+
 ## 2026-08-25 (13) — In-app rendered report ("View Report")
 
 **Done (user request: "can you implement the result like markdown on
