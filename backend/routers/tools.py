@@ -8,7 +8,12 @@ from pydantic import BaseModel
 from surveil import seclists_remote
 from surveil.checklist import CATEGORY_LABELS, WORDLIST_CATEGORY
 from surveil.tools import TOOL_REGISTRY
-from surveil.wordlists import discover_wordlists, discover_wordlists_grouped, recommend_wordlist
+from surveil.wordlists import (
+    CATEGORY_KEYWORDS,
+    discover_wordlists,
+    discover_wordlists_grouped,
+    recommend_wordlist,
+)
 
 router = APIRouter(prefix="/api/tools", tags=["tools"])
 
@@ -107,10 +112,20 @@ def list_wordlists_grouped(item_id: Optional[str] = None) -> dict:
 @router.get("/wordlists/remote/browse")
 def browse_remote_wordlists(q: Optional[str] = None, item_id: Optional[str] = None) -> dict:
     """Every wordlist file in github.com/danielmiessler/SecLists, grouped by
-    its top-level folder — for picking exactly one file to download rather
+    its top-level folder — for picking exactly one file to install rather
     than cloning the whole (multi-GB) repo. *q* filters by substring on the
-    path; *item_id* flags the category matching the current test's
-    recommendation, same as `/wordlists/grouped`.
+    path.
+
+    If *item_id* has a recommended category (see checklist.WORDLIST_CATEGORY
+    — e.g. "admin" for "Enumerate Admin Interfaces"), individual files whose
+    *path* matches that category's keywords (CATEGORY_KEYWORDS, the same
+    lookup the Local tab and recommend_wordlist() already use) are flagged
+    `recommended: true` and collected into a synthetic "Recommended" group
+    pinned first — a plain top-level-folder match (e.g. "Discovery") isn't
+    useful signal on its own since SecLists' folders are broad topics, not
+    per-test categories; the file's own name is what actually indicates fit
+    (".../Discovery/Web-Content/admin-panels.txt" for an admin-interfaces
+    test, for instance).
     """
     try:
         files = seclists_remote.list_remote_wordlists()
@@ -122,20 +137,28 @@ def browse_remote_wordlists(q: Optional[str] = None, item_id: Optional[str] = No
         files = [f for f in files if query in f["path"].lower()]
 
     category = WORDLIST_CATEGORY.get(item_id or "")
+    keywords = CATEGORY_KEYWORDS.get(category or "", (category,) if category else ())
+
+    def is_recommended(path: str) -> bool:
+        lower = path.lower()
+        return category is not None and any(kw in lower for kw in keywords)
+
     groups: dict[str, list[dict]] = {}
+    recommended_files: list[dict] = []
     for f in files:
-        groups.setdefault(f["category"], []).append(
-            {
-                "label": f["path"],
-                "path": f["path"],
-                "size": f["size"],
-                "downloaded": seclists_remote.is_downloaded(f["path"]),
-            }
-        )
+        entry = {
+            "label": f["path"],
+            "path": f["path"],
+            "size": f["size"],
+            "downloaded": seclists_remote.is_downloaded(f["path"]),
+            "recommended": is_recommended(f["path"]),
+        }
+        groups.setdefault(f["category"], []).append(entry)
+        if entry["recommended"]:
+            recommended_files.append(entry)
 
     def sort_key(cat: str) -> tuple[int, str]:
-        is_recommended = category is not None and cat.lower() == category.lower()
-        return (0 if is_recommended else 1, cat)
+        return (1, cat)
 
     # SecLists' "Fuzzing" folder alone has 4600+ files — sending every one
     # over the wire on an unfiltered browse is pure waste when the dialog
@@ -145,13 +168,26 @@ def browse_remote_wordlists(q: Optional[str] = None, item_id: Optional[str] = No
     PER_CATEGORY_CAP = 40 if not query else None
 
     ordered = []
+    if recommended_files:
+        recommended_sorted = sorted(recommended_files, key=lambda w: w["label"])
+        ordered.append(
+            {
+                "category": "Recommended",
+                "recommended": True,
+                "total": len(recommended_sorted),
+                "truncated": False,
+                # Capped separately from PER_CATEGORY_CAP — this group is
+                # meant as a short, high-signal shortlist, not a full browse.
+                "wordlists": recommended_sorted[:20],
+            }
+        )
     for cat, items in sorted(groups.items(), key=lambda kv: sort_key(kv[0])):
         items = sorted(items, key=lambda w: w["label"])
         total = len(items)
         ordered.append(
             {
                 "category": cat,
-                "recommended": sort_key(cat)[0] == 0,
+                "recommended": False,
                 "total": total,
                 "truncated": PER_CATEGORY_CAP is not None and total > PER_CATEGORY_CAP,
                 "wordlists": items[:PER_CATEGORY_CAP] if PER_CATEGORY_CAP else items,

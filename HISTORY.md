@@ -6,6 +6,59 @@ was verified, and what the next agent should pick up.
 
 ---
 
+## 2026-08-25 (6) — Real per-file recommendations in the SecLists (GitHub) tab
+
+**Done (user request: "recommend the wordlists in seclist at script
+also" — the per-test wordlist recommendation feature from earlier this
+session only ever applied to Local/bundled wordlists; the remote
+GitHub-browse tab's own "recommended" flag existed but was checked
+against whole SecLists folder names like `cat.lower() == "admin"`,
+which never matches since SecLists' real top-level folders are broad
+topics — `Discovery`, `Fuzzing`, `Passwords`, `Usernames`, ... — not
+per-test categories, so the remote tab's recommendation never actually
+fired for any real test):**
+- `surveil/wordlists.py`: renamed the private `_CATEGORY_KEYWORDS` dict
+  to public `CATEGORY_KEYWORDS` so it's importable elsewhere — same
+  lookup `recommend_wordlist()` and the Local tab's grouping already
+  use (e.g. `"admin": ("admin",)`, `"api": ("api", "swagger",
+  "endpoint", "graphql")`).
+- `backend/routers/tools.py`'s `/wordlists/remote/browse`: now checks
+  each *individual file's path* against the category's keywords (not
+  the folder name), and collects every match — regardless of which
+  folder it actually lives in — into a synthetic `"Recommended"` group
+  pinned first in the response, capped to 20. Also flags `recommended:
+  true` on the matching file's entry within its normal folder group too
+  (so browsing by folder still shows the star), and threads
+  `RemoteWordlistInfo`'s new `recommended` field through.
+- `WordlistPickerDialog.tsx`: renders a small green star next to a
+  recommended file's name within its normal folder group (skipped
+  inside the "Recommended" group itself, where it'd be redundant on
+  every card); the synthetic group itself already got the star+green
+  category-header treatment for free since it reuses the same
+  `group.recommended` rendering as any other group.
+
+**Verified:**
+- Curled `/wordlists/remote/browse?item_id=WSTG-CONF-05` (admin
+  interfaces) against the real GitHub data: got back 3 genuinely
+  relevant files in a `"Recommended"` group —
+  `Discovery/Web-Content/.../admin.txt`,
+  `Discovery/Web-Content/Service-Specific/confluence-administration.txt`,
+  `Usernames/CommonAdminBase64.txt` — pulled from 2 different top-level
+  folders neither of which is named "admin". Repeated for
+  `WSTG-CONF-04` (backup → `Common-DB-Backups.txt`), `WSTG-INFO-06`
+  (api → `Swagger.txt`, `Docker-API.txt`, `strapi.txt`, ...), and
+  `WSTG-INFO-03` (metafiles → `versioning_metafiles.txt`) — all
+  correctly relevant, none of it possible under the old
+  folder-name-only check.
+- `npx tsc --noEmit`, `eslint`, `next build` all clean.
+- Full browser E2E via a throwaway Playwright script (deleted after
+  use): opened the SecLists (GitHub) tab for "Enumerate Admin
+  Interfaces", confirmed a green-starred "Recommended" section with 3
+  cards appeared pinned above the regular `Ai`/`Discovery`/... folder
+  groups, screenshot-confirmed correct rendering. Zero console errors.
+
+---
+
 ## 2026-08-25 (5) — Install SecLists wordlists into the project, not the home dir
 
 **Done (user request: "can you implement at select wordlists and can

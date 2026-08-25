@@ -491,14 +491,19 @@ function RemoteWordlistsPane({
                         <CloudDownloadOutlinedIcon fontSize="small" sx={{ color: "text.disabled", mt: 0.25 }} />
                       )}
                       <Box minWidth={0}>
-                        <Typography
-                          variant="body2"
-                          noWrap
-                          title={w.label}
-                          sx={{ fontFamily: "var(--font-geist-mono)", fontSize: 13 }}
-                        >
-                          {w.label.split("/").pop()}
-                        </Typography>
+                        <Stack direction="row" spacing={0.5} alignItems="center">
+                          {w.recommended && group.category !== "Recommended" && (
+                            <StarIcon sx={{ fontSize: 13, color: "#22c55e" }} />
+                          )}
+                          <Typography
+                            variant="body2"
+                            noWrap
+                            title={w.label}
+                            sx={{ fontFamily: "var(--font-geist-mono)", fontSize: 13 }}
+                          >
+                            {w.label.split("/").pop()}
+                          </Typography>
+                        </Stack>
                         <Typography variant="caption" color="text.disabled" noWrap title={w.path} display="block">
                           {w.path} · {formatSize(w.size)}
                         </Typography>

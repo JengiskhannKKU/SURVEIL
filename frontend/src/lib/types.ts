@@ -94,6 +94,7 @@ export interface RemoteWordlistInfo {
   path: string;
   size: number;
   downloaded: boolean;
+  recommended: boolean;
 }
 
 export interface RemoteWordlistGroup {

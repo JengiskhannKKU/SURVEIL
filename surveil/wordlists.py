@@ -52,7 +52,7 @@ BUNDLED_WORDLIST = _BUNDLED_DIR / "common.txt"
 # Keywords used to recognize a discovered wordlist as matching a test
 # category (see checklist.WORDLIST_CATEGORY) — covers common SecLists-style
 # naming as well as the category name itself.
-_CATEGORY_KEYWORDS: dict[str, tuple[str, ...]] = {
+CATEGORY_KEYWORDS: dict[str, tuple[str, ...]] = {
     "admin": ("admin",),
     "api": ("api", "swagger", "endpoint", "graphql"),
     "backup": ("backup", "old-files", "old_files"),
@@ -198,7 +198,7 @@ def discover_wordlists_grouped(recommended_category: str | None = None) -> list[
     if bundled:
         groups["Bundled (built-in)"] = [(p.name, str(p)) for p in bundled]
 
-    keywords = _CATEGORY_KEYWORDS.get(recommended_category or "", (recommended_category or "",))
+    keywords = CATEGORY_KEYWORDS.get(recommended_category or "", (recommended_category or "",))
     bundled_match = recommended_category and (_BUNDLED_DIR / f"{recommended_category}.txt").is_file()
 
     def group_is_recommended(category: str, wordlists: list[tuple[str, str]]) -> bool:
@@ -261,7 +261,7 @@ def recommend_wordlist(category: str | None) -> str:
     """Best wordlist for a specific test category (checklist.WORDLIST_CATEGORY).
 
     Order: a discovered wordlist whose path matches the category's
-    keywords (_CATEGORY_KEYWORDS) -> a category-specific wordlist bundled
+    keywords (CATEGORY_KEYWORDS) -> a category-specific wordlist bundled
     with surveil -> the general default_wordlist(). *category* being None
     or unrecognized (e.g. a custom tester-added checklist item) just falls
     straight through to default_wordlist().
@@ -269,7 +269,7 @@ def recommend_wordlist(category: str | None) -> str:
     if not category:
         return default_wordlist()
 
-    keywords = _CATEGORY_KEYWORDS.get(category, (category,))
+    keywords = CATEGORY_KEYWORDS.get(category, (category,))
     for _label, path in discover_wordlists():
         lower = path.lower()
         if any(kw in lower for kw in keywords):
