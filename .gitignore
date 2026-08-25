@@ -11,6 +11,12 @@ dist/
 *.txt
 Proposal.pdf
 
+# The blanket *.txt rule above would otherwise also hide surveil's own
+# small hand-curated bundled wordlists (surveil/data/wordlists/*.txt —
+# admin.txt, usernames.txt, etc.), which genuinely need to be committed;
+# they're project assets, not scratch/downloaded files.
+!surveil/data/wordlists/*.txt
+
 # Wordlists installed on demand from github.com/danielmiessler/SecLists
 # via the web UI's "SecLists (GitHub)" picker tab (surveil/seclists_remote.py)
 # — downloaded per checkout, not meant to be committed.

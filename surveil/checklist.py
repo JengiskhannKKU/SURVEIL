@@ -3,6 +3,9 @@
 Covers:
   • WSTG-INFO-01 … WSTG-INFO-10  (Information Gathering)
   • WSTG-CONF-01 … WSTG-CONF-10  (Configuration & Deployment Management)
+  • WSTG-IDNT-04                 (Identity Management)
+  • WSTG-ATHN-02, WSTG-ATHN-03   (Authentication)
+  • WSTG-INPV-01, 05, 12         (Input Validation)
 """
 from __future__ import annotations
 
@@ -23,6 +26,7 @@ WORDLIST_CATEGORY: dict[str, str] = {
     "WSTG-CONF-03": "extensions",  # Test File Extension Handling
     "WSTG-CONF-04": "backup",      # Review Old Backup and Unreferenced Files
     "WSTG-CONF-05": "admin",       # Enumerate Admin Interfaces
+    "WSTG-IDNT-04": "usernames",   # Test for Account Enumeration
 }
 
 # Human-readable label per category, shown in the Run Tool dialog's
@@ -34,6 +38,7 @@ CATEGORY_LABELS: dict[str, str] = {
     "extensions": "file extension handling",
     "backup": "backup & old files",
     "admin": "admin interfaces",
+    "usernames": "username enumeration",
 }
 
 
@@ -332,6 +337,101 @@ def build_checklist() -> list[ChecklistItem]:
             tools=["wafw00f", "nuclei"],
             owasp_ref="WSTG-CONF-10",
             cwe_ids=["CWE-693"],
+        ),
+        # ================================================================
+        # IDENTITY MANAGEMENT
+        # ================================================================
+        ChecklistItem(
+            id="WSTG-IDNT-04",
+            name="Test for Account Enumeration",
+            description=(
+                "Probe login/registration/password-reset endpoints for a response "
+                "difference between a valid and invalid username (different error "
+                "message, status code, response time, or redirect) — lets an attacker "
+                "build a list of real accounts to target with credential attacks."
+            ),
+            category="Identity Management",
+            category_code="IDNT",
+            tools=["ffuf"],
+            owasp_ref="WSTG-IDNT-04",
+            cwe_ids=["CWE-203", "CWE-204"],
+        ),
+        # ================================================================
+        # AUTHENTICATION
+        # ================================================================
+        ChecklistItem(
+            id="WSTG-ATHN-02",
+            name="Test for Default Credentials",
+            description=(
+                "Try common default/weak username-password pairs (admin:admin, "
+                "admin:password, root:toor, ...) against every exposed login — SSH, "
+                "admin panels, device management interfaces. A shockingly common "
+                "finding on internal/staging systems that were never hardened."
+            ),
+            category="Authentication",
+            category_code="ATHN",
+            tools=["hydra", "nuclei"],
+            owasp_ref="WSTG-ATHN-02",
+            cwe_ids=["CWE-521", "CWE-1392"],
+        ),
+        ChecklistItem(
+            id="WSTG-ATHN-03",
+            name="Test for Weak Lock Out Mechanism",
+            description=(
+                "Attempt repeated failed logins and confirm the account/IP is "
+                "throttled or locked after a reasonable number of tries. No lockout "
+                "means credential-stuffing and brute-force attacks run unimpeded."
+            ),
+            category="Authentication",
+            category_code="ATHN",
+            tools=["hydra"],
+            owasp_ref="WSTG-ATHN-03",
+            cwe_ids=["CWE-307"],
+        ),
+        # ================================================================
+        # INPUT VALIDATION
+        # ================================================================
+        ChecklistItem(
+            id="WSTG-INPV-01",
+            name="Test for Reflected Cross-Site Scripting",
+            description=(
+                "Inject script payloads into every input (query params, form "
+                "fields, headers) and check whether the target reflects them back "
+                "unencoded into the response HTML — the classic XSS entry point."
+            ),
+            category="Input Validation",
+            category_code="INPV",
+            tools=["nuclei"],
+            owasp_ref="WSTG-INPV-01",
+            cwe_ids=["CWE-79"],
+        ),
+        ChecklistItem(
+            id="WSTG-INPV-05",
+            name="Test SQL Injection",
+            description=(
+                "Test every input that reaches a database query for SQL injection: "
+                "boolean-based, error-based, UNION-based, and time-based blind. "
+                "One of the highest-impact, most consequential web vulnerabilities."
+            ),
+            category="Input Validation",
+            category_code="INPV",
+            tools=["sqlmap", "nuclei"],
+            owasp_ref="WSTG-INPV-05",
+            cwe_ids=["CWE-89"],
+        ),
+        ChecklistItem(
+            id="WSTG-INPV-12",
+            name="Test Command Injection",
+            description=(
+                "Test inputs that might reach a shell/OS command (file names, "
+                "hostnames passed to ping/nslookup-style utilities, export/convert "
+                "features) for OS command injection using shell metacharacters."
+            ),
+            category="Input Validation",
+            category_code="INPV",
+            tools=["nuclei"],
+            owasp_ref="WSTG-INPV-12",
+            cwe_ids=["CWE-78"],
         ),
     ]
 

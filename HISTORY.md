@@ -6,6 +6,104 @@ was verified, and what the next agent should pick up.
 
 ---
 
+## 2026-08-25 (7) — New tools, new WSTG coverage, more wordlist categories
+
+**Done (user request: "can you add other strategies or tools" —
+clarified via AskUserQuestion into all three: more wordlist categories,
+more tool wrappers, more checklist coverage):**
+
+- **2 new tool wrappers** (`surveil/tools/`), registered in
+  `TOOL_REGISTRY` (18 tools total, was 16):
+  - `sqlmap_tool.py` — SQL injection detection/exploitation. Default
+    command crawls the target and tests every form/link parameter found
+    (`--crawl=2 --forms --batch --level=2 --risk=1`) rather than
+    requiring a pre-known injectable URL, so it's actually runnable
+    out of the box; description tells the tester to edit the command to
+    a specific `-u "...?id=1"` for a faster, targeted run once they've
+    found a real parameter to test.
+  - `hydra_tool.py` — online brute-force login testing. Defaults to SSH
+    (`ssh://target`, the single most commonly exposed brute-forceable
+    service) using two new small bundled wordlists (below); description
+    explains how to edit the command for `http-post-form` or another
+    protocol instead, since that part is inherently site-specific.
+    `uses_wordlist = False` — hydra needs *two* lists (`-L`/`-P`), which
+    doesn't fit the picker's single-`-w` assumption, so its default
+    wordlists are just hardcoded paths in `build_command()` rather than
+    wired into the picker.
+- **2 new bundled wordlists**: `surveil/data/wordlists/usernames.txt`
+  (~30 common account names) and `passwords.txt` (~30 common/default
+  passwords) — same small-curated-default pattern as the existing
+  admin/api/backup/etc. bundles.
+- **6 new checklist items**, 3 new WSTG sections beyond the existing
+  INFO/CONF (26 items total, was 20):
+  - `WSTG-IDNT-04` Test for Account Enumeration (`ffuf`)
+  - `WSTG-ATHN-02` Test for Default Credentials (`hydra`, `nuclei`)
+  - `WSTG-ATHN-03` Test for Weak Lock Out Mechanism (`hydra`)
+  - `WSTG-INPV-01` Test for Reflected XSS (`nuclei`)
+  - `WSTG-INPV-05` Test SQL Injection (`sqlmap`, `nuclei`)
+  - `WSTG-INPV-12` Test Command Injection (`nuclei`)
+- **2 new wordlist recommendation categories**
+  (`surveil.wordlists.CATEGORY_KEYWORDS`, `checklist.WORDLIST_CATEGORY`):
+  `"usernames"` (mapped to `WSTG-IDNT-04`) and `"passwords"` (not
+  currently mapped to any picker-using item since hydra doesn't use the
+  picker — added for consistency/future use). Keywords deliberately
+  tight (`"username"`/`"usernames/"`, `"password"`/`"passwords/"`/
+  `"rockyou"`) after an initial looser attempt (`"names"` as a
+  usernames keyword) matched way too broadly against the real SecLists
+  tree — service-name lists, variable-name lists, PHP filename lists all
+  false-positived before narrowing it.
+
+**Verified:**
+- `_validate_tool_references()` (added last session specifically to
+  catch a dead/unregistered tool reference) passes cleanly — confirms
+  every new item's tools are real, registered names.
+- `build_checklist()` returns 26 items; new tools' `build_command()`
+  produce correct, runnable commands for both fast/full.
+- `recommend_wordlist("usernames")`/`("passwords")` correctly fall back
+  to the new bundled files when no local SecLists install exists.
+- Curled the live backend's `/wordlists/remote/browse?item_id=
+  WSTG-IDNT-04` against the real GitHub SecLists data: 17 genuinely
+  username-relevant files recommended (`Usernames/CommonAdminBase64.txt`,
+  `Usernames/top-usernames-shortlist.txt`, etc.) after the keyword
+  narrowing above.
+- `./venv/bin/python -c "from backend.main import app"` imports clean;
+  live backend (already running with `--reload`) picked up both new
+  tools and all 6 new items with no errors.
+- Full browser E2E via a throwaway Playwright script (deleted after
+  use): confirmed the 3 new section headers (Identity Management,
+  Authentication, Input Validation) render in the sidebar, `sqlmap`
+  appears as a tool option on the SQL Injection item, `hydra` appears
+  on the Default Credentials item (with its install-hints alert showing
+  correctly, since neither is installed on this dev machine), and the
+  Account Enumeration item's Run Tool dialog shows the "username
+  enumeration" recommendation hint. Zero console errors.
+- `tool_installer.py`'s tester-facing tool list iterates `TOOL_REGISTRY`
+  dynamically — confirmed `sqlmap`/`hydra` show up there with no
+  additional code, correctly flagged as not installed on this machine.
+
+**Next steps for the next agent:**
+1. `sqlmap`/`hydra` aren't in `tool_installer.py`'s `RECOMMENDED` starter
+   set — deliberate, since neither has `findings_extractor.py`
+   auto-parsing wired up yet (that set specifically matches the 7 tools
+   that do). Worth adding auto-extraction for at least `sqlmap` (its
+   "identified the following injection point(s)" block is fairly
+   parseable) if this becomes a commonly-used item.
+2. The existing "Snoopbee Lab1" engagement (created before this
+   session) won't retroactively gain the 6 new checklist items — its
+   `checklist_items` were snapshotted from `build_checklist()` at
+   creation time, same as any other engagement. This matches existing
+   behavior (checklist items are per-engagement snapshots, not live
+   references) and wasn't changed here; a tester who wants the new
+   items on an old engagement would need to add them manually via the
+   existing "+ add item" checklist UI.
+3. Real OWASP WSTG has ~90 more items beyond what's covered now
+   (Session Management, Authorization, Business Logic, Client-Side,
+   Error Handling, Cryptography, API Testing, ...) — this pass added 6
+   from 3 of those sections as a bounded, concrete slice per the user's
+   request, not full coverage.
+
+---
+
 ## 2026-08-25 (6) — Real per-file recommendations in the SecLists (GitHub) tab
 
 **Done (user request: "recommend the wordlists in seclist at script

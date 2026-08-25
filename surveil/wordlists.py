@@ -59,6 +59,8 @@ CATEGORY_KEYWORDS: dict[str, tuple[str, ...]] = {
     "extensions": ("extension", "raft-small-files", "filenames"),
     "metafiles": ("metafile", "seo"),
     "common": ("common", "raft-small-directories", "directory-list", "dirb"),
+    "usernames": ("username", "usernames/"),
+    "passwords": ("password", "passwords/", "rockyou"),
 }
 
 # A real SecLists checkout (what Kali's `seclists` package installs, and

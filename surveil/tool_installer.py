@@ -3,7 +3,7 @@
 Reuses each tool wrapper's `install_hints` (surveil/tools/*_tool.py) as the
 single source of truth for install commands — nothing here is duplicated
 into a shell script. Lets the tester pick a subset rather than install all
-16 at once, with a recommended starter set pre-selected: the 7 tools whose
+18 at once, with a recommended starter set pre-selected: the 7 tools whose
 output `findings_extractor.py` auto-parses into findings.
 """
 from __future__ import annotations

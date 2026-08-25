@@ -35,7 +35,7 @@ surveil is a terminal-native tool that brings together web application enumerati
 ```
 
 - **Tool Orchestration Layer** — wraps 16 tools via subprocess: `nmap`, `httpx`, `whatweb`, `wafw00f`, `subfinder`, `nuclei`, `arjun`, `dnsx`, `gowitness`, `wpscan`, `amass`, `ffuf`, `gobuster`, `katana`, `nikto`, `testssl` (see `TOOL_REGISTRY` in `surveil/tools/__init__.py`). Falls back to realistic simulated output when a tool is not installed (demo mode). Each tool supports a **Fast** and a **Full** command variant, and its exact command line is editable before running.
-- **Checklist & State Engine** — OWASP WSTG INFO + CONF items (20 items) with status tracking, Textual TUI, JSON persistence, and a saved-engagement picker.
+- **Checklist & State Engine** — OWASP WSTG INFO, CONF, IDNT, ATHN, and INPV items (26 items) with status tracking, Textual TUI, JSON persistence, and a saved-engagement picker.
 - **Auto-Finding Extraction** (`surveil/findings_extractor.py`) — parses raw output from `nmap`, `httpx`, `whatweb`, `nuclei`, `wafw00f`, `subfinder`, and `nikto` into `Finding` objects (auto CVSS scoring, OWASP/CWE mapping) flagged `verified=False`, so a tester gets a starting point to confirm or dismiss rather than a blank checklist.
 - **Reporting Engine** — CVSS v3.1 base score calculator, OWASP/CWE metadata, Markdown and .docx export.
 
@@ -316,12 +316,15 @@ Raw tool output streams into the Tool Output panel live as it runs (and replays 
 |---|---|
 | Information Gathering (INFO) | WSTG-INFO-01 … WSTG-INFO-10 |
 | Configuration Management (CONF) | WSTG-CONF-01 … WSTG-CONF-10 |
+| Identity Management (IDNT) | WSTG-IDNT-04 |
+| Authentication (ATHN) | WSTG-ATHN-02, WSTG-ATHN-03 |
+| Input Validation (INPV) | WSTG-INPV-01, WSTG-INPV-05, WSTG-INPV-12 |
 
 ---
 
 ## Tool Wrappers
 
-Each wrapper tries the real binary first. If not installed, it returns realistic simulated output so the demo always works. All 16 are registered in `TOOL_REGISTRY` (`surveil/tools/__init__.py`) and invokable from both the CLI and TUI. Every wrapper also carries a `description` and `example` (shown as the guide in the TUI's Run Tool dialog) and a Fast/Full `build_command(fast=...)` variant.
+Each wrapper tries the real binary first. If not installed, it returns realistic simulated output so the demo always works. All 18 are registered in `TOOL_REGISTRY` (`surveil/tools/__init__.py`) and invokable from both the CLI and TUI. Every wrapper also carries a `description` and `example` (shown as the guide in the TUI's Run Tool dialog) and a Fast/Full `build_command(fast=...)` variant.
 
 | Tool | Purpose | Checklist Items |
 |---|---|---|
@@ -330,26 +333,28 @@ Each wrapper tries the real binary first. If not installed, it returns realistic
 | `whatweb` | Technology & CMS fingerprinting | INFO-02, INFO-08 |
 | `wafw00f` | WAF detection | INFO-10, CONF-10 |
 | `subfinder` | Subdomain discovery | INFO-01, CONF-09 |
-| `nuclei` | Template-based vulnerability scanning | CONF-02, CONF-05, CONF-08 |
+| `nuclei` | Template-based vulnerability scanning | CONF-02, CONF-05, CONF-08, ATHN-02, INPV-01/05/12 |
 | `arjun` | Hidden HTTP parameter discovery | INFO-04 |
 | `dnsx` | DNS resolution & enumeration | INFO-01, CONF-09 |
 | `gowitness` | Screenshot capture of web pages | INFO-04 |
 | `wpscan` | WordPress-specific vulnerability scanning | INFO-08 |
 | `amass` | Passive subdomain enumeration | INFO-01 |
-| `ffuf` | Directory/file brute-forcing | INFO-04, CONF-01, CONF-04, CONF-05 |
+| `ffuf` | Directory/file brute-forcing | INFO-04, CONF-01, CONF-04, CONF-05, IDNT-04 |
 | `gobuster` | Directory brute-forcing | CONF-04, CONF-05 |
 | `katana` | Web crawling & endpoint discovery | INFO-04 |
 | `nikto` | Web server vulnerability scanning | CONF-02 |
 | `testssl` | TLS/SSL configuration analysis | CONF-06 |
+| `sqlmap` | Automated SQL injection detection/exploitation | INPV-05 |
+| `hydra` | Online brute-force login testing (SSH by default) | ATHN-02, ATHN-03 |
 
 Auto-finding extraction (`surveil/findings_extractor.py`) currently covers
 `nmap`, `httpx`, `whatweb`, `nuclei`, `wafw00f`, `subfinder`, and `nikto`;
-the other 9 tools' output is stored and viewable but not yet auto-parsed
+the other tools' output is stored and viewable but not yet auto-parsed
 into findings.
 
 ### Installing the tool binaries
 
-None of the 16 tools are required — each falls back to simulated demo
+None of the 18 tools are required — each falls back to simulated demo
 output when its binary isn't found. To get real output, install what you
 need with:
 
