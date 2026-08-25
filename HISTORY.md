@@ -6,6 +6,57 @@ was verified, and what the next agent should pick up.
 
 ---
 
+## 2026-08-25 (3) — Fix: dnsx "command not found" (shell-wrapped tool, PATH not inherited)
+
+**Done (user pasted a real failure): `/bin/sh: dnsx: command not found`
+when running the `dnsx` checklist tool for real.**
+- Root cause: `dnsx_tool.py`'s `build_command()` has to shell out —
+  `["sh", "-c", "echo target | dnsx -a ... -silent"]` — since dnsx reads
+  its target from stdin rather than a flag. `BaseTool.run()` already
+  resolves `cmd[0]` to a full path via `resolve_binary()` before
+  spawning (the fix for the earlier "subfinder installed but can't use
+  it" bug, which checks Go's bin dir since `go install` binaries aren't
+  on PATH by default) — but for dnsx, `cmd[0]` is `"sh"`, not `"dnsx"`.
+  `sh` resolves fine via the ordinary PATH, so that resolution never
+  reaches the *nested* `dnsx` invocation inside the shell string at all;
+  the child shell just inherits the parent process's own PATH, which
+  doesn't include the Go bin dir either.
+- Fixed in `surveil/tools/base.py`: new `_subprocess_env()` builds the
+  environment passed to every `run_tool()` subprocess with the same
+  extra dirs `_extra_bin_dirs()`/`resolve_binary()` already know about
+  (`$GOBIN`, `$GOPATH/bin`) prepended to `PATH`. Fixes this for dnsx and
+  for any other shell-wrapped tool the same way, without parsing/
+  rewriting each command string individually — the general architectural
+  gap was "surveil's own binary search path never reaches a subprocess's
+  own env," not "dnsx specifically is broken."
+
+**Verified:**
+- Reproduced the exact reported failure locally first: put a fake `dnsx`
+  executable only in a directory pointed at by `$GOBIN` (not on plain
+  `PATH`), ran `DnsxTool(target="example.com").run()` against the
+  pre-fix code (via `git stash` on just `base.py`) — got the identical
+  error, `/bin/sh: dnsx: command not found`, exit code 127.
+- Same reproduction against the fixed code: `sh -c` now finds and runs
+  the fake dnsx correctly (`simulated=False`, `exit_code=0`, real output
+  parsed from the fake binary).
+- Confirmed no regression for a normal (non-shell-wrapped) tool — `nmap`
+  still runs for real, unaffected by the `PATH` change.
+- Live backend (already running with `--reload`) picked up the change
+  with no import/startup errors; curled `/api/tools` and confirmed
+  `dnsx` still reports correctly.
+
+**Also this session:** removed the `Co-Authored-By: Claude` trailer from
+every commit message on `main` (8 commits had it) via `git filter-branch
+--msg-filter` + `git push --force-with-lease`, per explicit user request
+after confirming the scope (rewrite + force-push, not just "stop adding
+it going forward"). File contents are unchanged — verified with `git
+diff <old-head> <new-head> --stat` showing zero differences before
+pushing. **Every commit hash on `main` changed as a result** — worth
+knowing if anything anywhere references an old hash (there's nothing
+tracked in this repo that does, as of this session).
+
+---
+
 ## 2026-08-25 (2) — Audit: does each checklist item's tool list match its purpose?
 
 **Done (user question: "each script tools it related with purpose each

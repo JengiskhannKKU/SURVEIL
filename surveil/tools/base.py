@@ -86,6 +86,29 @@ def resolve_binary(name: str) -> str | None:
     return None
 
 
+def _subprocess_env() -> dict[str, str]:
+    """Environment for a spawned tool subprocess: this process's own env,
+    with the Go bin dirs (see `_extra_bin_dirs()`) prepended to PATH.
+
+    `BaseTool.run()` already resolves *cmd[0]* to a full path via
+    `resolve_binary()` before calling `run_tool()`, which covers a bare
+    "dnsx" invocation. But dnsx's own wrapper (see `dnsx_tool.py`) has to
+    shell out — `["sh", "-c", "echo target | dnsx ..."]` — since dnsx reads
+    its target from stdin; there, *cmd[0]* is "sh", not "dnsx", so that
+    resolution never reaches the *nested* dnsx call at all, and the child
+    shell falls back to its own inherited PATH, which may not include
+    dnsx's actual location (a `go install` binary, PATH-invisible by
+    default). Prepending the same extra dirs to the subprocess's PATH here
+    fixes that case and any other shell-wrapped tool the same way, without
+    needing to parse/rewrite each such command string individually.
+    """
+    env = dict(os.environ)
+    extra = [str(d) for d in _extra_bin_dirs() if d.is_dir()]
+    if extra:
+        env["PATH"] = os.pathsep.join(extra) + os.pathsep + env.get("PATH", "")
+    return env
+
+
 def run_tool(
     command: list[str],
     timeout: int = 120,
@@ -108,6 +131,7 @@ def run_tool(
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
+            env=_subprocess_env(),
             # Own process group so a timeout can kill the whole tree (see
             # below) — several tools here are themselves shell scripts that
             # spawn their own subprocesses (testssl.sh -> openssl, for one),
