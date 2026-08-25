@@ -3,12 +3,18 @@ from __future__ import annotations
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
 
+from surveil import seclists_remote
 from surveil.checklist import CATEGORY_LABELS, WORDLIST_CATEGORY
 from surveil.tools import TOOL_REGISTRY
 from surveil.wordlists import discover_wordlists, discover_wordlists_grouped, recommend_wordlist
 
 router = APIRouter(prefix="/api/tools", tags=["tools"])
+
+
+class DownloadWordlistRequest(BaseModel):
+    path: str  # repo-relative path, e.g. "Discovery/Web-Content/common.txt"
 
 
 def _swap_wordlist_flag(command: list[str], new_path: str) -> list[str]:
@@ -96,3 +102,74 @@ def list_wordlists_grouped(item_id: Optional[str] = None) -> dict:
         "recommended_category_label": CATEGORY_LABELS.get(category) if category else None,
         "groups": discover_wordlists_grouped(category),
     }
+
+
+@router.get("/wordlists/remote/browse")
+def browse_remote_wordlists(q: Optional[str] = None, item_id: Optional[str] = None) -> dict:
+    """Every wordlist file in github.com/danielmiessler/SecLists, grouped by
+    its top-level folder — for picking exactly one file to download rather
+    than cloning the whole (multi-GB) repo. *q* filters by substring on the
+    path; *item_id* flags the category matching the current test's
+    recommendation, same as `/wordlists/grouped`.
+    """
+    try:
+        files = seclists_remote.list_remote_wordlists()
+    except seclists_remote.RemoteFetchError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    query = (q or "").strip().lower()
+    if query:
+        files = [f for f in files if query in f["path"].lower()]
+
+    category = WORDLIST_CATEGORY.get(item_id or "")
+    groups: dict[str, list[dict]] = {}
+    for f in files:
+        groups.setdefault(f["category"], []).append(
+            {
+                "label": f["path"],
+                "path": f["path"],
+                "size": f["size"],
+                "downloaded": seclists_remote.is_downloaded(f["path"]),
+            }
+        )
+
+    def sort_key(cat: str) -> tuple[int, str]:
+        is_recommended = category is not None and cat.lower() == category.lower()
+        return (0 if is_recommended else 1, cat)
+
+    # SecLists' "Fuzzing" folder alone has 4600+ files — sending every one
+    # over the wire on an unfiltered browse is pure waste when the dialog
+    # only ever shows a handful before the tester expands or searches.
+    # Once they've actually typed a query, honor it in full (a narrowed
+    # search shouldn't then hide a match behind this same cap).
+    PER_CATEGORY_CAP = 40 if not query else None
+
+    ordered = []
+    for cat, items in sorted(groups.items(), key=lambda kv: sort_key(kv[0])):
+        items = sorted(items, key=lambda w: w["label"])
+        total = len(items)
+        ordered.append(
+            {
+                "category": cat,
+                "recommended": sort_key(cat)[0] == 0,
+                "total": total,
+                "truncated": PER_CATEGORY_CAP is not None and total > PER_CATEGORY_CAP,
+                "wordlists": items[:PER_CATEGORY_CAP] if PER_CATEGORY_CAP else items,
+            }
+        )
+    return {
+        "recommended_category": category,
+        "recommended_category_label": CATEGORY_LABELS.get(category) if category else None,
+        "groups": ordered,
+    }
+
+
+@router.post("/wordlists/remote/download")
+def download_remote_wordlist(body: DownloadWordlistRequest) -> dict:
+    try:
+        local_path = seclists_remote.download_wordlist(body.path)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except seclists_remote.RemoteFetchError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    return {"path": local_path}

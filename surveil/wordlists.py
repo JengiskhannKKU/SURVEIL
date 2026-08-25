@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 
 from . import config as _config
+from .seclists_remote import CACHE_DIR as _SECLISTS_DOWNLOAD_CACHE
 
 # Point this at your own wordlist directory (a SecLists checkout, a
 # company-internal list, whatever) to have it searched first, ahead of the
@@ -27,6 +28,15 @@ _SEARCH_ROOTS = [
     Path.home() / "wordlists",
     Path.home() / "SecLists",
     Path.home() / ".local/share/wordlists",
+    # Files individually downloaded via the "Browse SecLists (GitHub)"
+    # picker (surveil/seclists_remote.py) land in a "seclists" subdirectory
+    # here — registering the *parent* (not CACHE_DIR itself) means a
+    # downloaded file's relative path starts with "seclists/...", which
+    # _category_for() below already special-cases into "SecLists/<folder>"
+    # the same way a full local SecLists checkout would group, so a
+    # downloaded file is immediately picked up by the ordinary local
+    # discovery/grouping too, not just the remote-browse dialog.
+    _SECLISTS_DOWNLOAD_CACHE.parent,
 ]
 
 # Small wordlists shipped with surveil itself, so ffuf/gobuster have a

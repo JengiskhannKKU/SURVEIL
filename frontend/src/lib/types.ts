@@ -89,6 +89,27 @@ export interface GroupedWordlists {
   groups: WordlistGroup[];
 }
 
+export interface RemoteWordlistInfo {
+  label: string;
+  path: string;
+  size: number;
+  downloaded: boolean;
+}
+
+export interface RemoteWordlistGroup {
+  category: string;
+  recommended: boolean;
+  total: number;
+  truncated: boolean;
+  wordlists: RemoteWordlistInfo[];
+}
+
+export interface RemoteGroupedWordlists {
+  recommended_category: string | null;
+  recommended_category_label: string | null;
+  groups: RemoteWordlistGroup[];
+}
+
 export interface AppConfig {
   wordlist_dir: string | null;
   wordlist_dir_env: string | null;

@@ -6,6 +6,113 @@ was verified, and what the next agent should pick up.
 
 ---
 
+## 2026-08-25 (4) — Browse & selectively download individual SecLists wordlists
+
+**Done (user request: "implement wordlists that won't download all
+wordlists in seclist but user can select any wordlists at
+https://github.com/danielmiessler/SecLists.git only target wordlists
+file for run the script and create the structure wordlists in own
+project" — i.e. no full `git clone` of the ~1GB SecLists repo; browse it
+remotely and download only the one file actually picked):**
+- New `surveil/seclists_remote.py`:
+  - `list_remote_wordlists()` — one GitHub API call
+    (`GET /repos/danielmiessler/SecLists/git/trees/master?recursive=1`)
+    listing every file in the repo (6000+ `.txt` files as of this
+    session), cached to disk for 24h at `~/.surveil/wordlists/
+    seclists_tree_cache.json` — unauthenticated GitHub API calls are
+    rate-limited to 60/hour, and the tree barely changes hour to hour,
+    so there's no reason to refetch on every dialog open.
+  - `download_wordlist(path)` — fetches exactly that one file's raw
+    content (`raw.githubusercontent.com/.../master/<path>`) and saves it
+    under `~/.surveil/wordlists/seclists/<path>`, mirroring the repo's
+    own directory structure. No-ops (returns the existing path) if
+    already downloaded. Rejects absolute paths / `..` segments — *path*
+    ultimately comes from a request a tester could hand-edit.
+  - No new Python dependency — uses stdlib `urllib.request` for both
+    calls rather than adding `requests`.
+  - Registered the download cache dir's *parent* as a
+    `surveil/wordlists.py` search root (specifically the parent, not the
+    `seclists/` dir itself, so `_category_for()`'s existing "seclists/
+    <Discovery|Passwords|...>" special-case groups a downloaded file the
+    same way a full local SecLists checkout would) — a file downloaded
+    via the new remote-browse tab is then immediately visible under the
+    existing **Local** tab too, no separate code path needed for that.
+- Backend (`backend/routers/tools.py`): two new endpoints.
+  - `GET /api/tools/wordlists/remote/browse?item_id=...&q=...` — grouped
+    remote listing (same shape as the existing local `/wordlists/
+    grouped`), *q* filters by substring, *item_id* flags the
+    recommended-for-this-test category. Caps each category to 40 entries
+    when unfiltered (SecLists' own `Fuzzing` folder alone has 4600+
+    files — no reason to ship all of them over the wire before a tester
+    has even searched) with a `truncated`/`total` flag so the UI can say
+    "showing first 40 of 4642 — search to narrow" instead of silently
+    cutting off; a committed search returns every match, uncapped.
+  - `POST /api/tools/wordlists/remote/download` — downloads (or reuses
+    the cache) and returns the local path.
+  - Both wrap `seclists_remote`'s new `RemoteFetchError` into a clean
+    HTTP 502 with a message, instead of a raw traceback, if GitHub is
+    unreachable/rate-limited.
+- Frontend: `WordlistPickerDialog.tsx` restructured into two `Tabs` —
+  **Local** (the existing picker, unchanged behavior) and **SecLists
+  (GitHub)** (new). The GitHub tab reuses the same card-grid/collapse/
+  Enter-to-search UI patterns as Local for consistency, plus: a cloud
+  icon per card (outline = not yet downloaded, filled/"done" = already
+  cached) and a spinner in place of the icon while a download is in
+  flight; clicking any card downloads-then-selects in one action
+  (idempotent — clicking an already-downloaded card just selects
+  immediately, no re-download); a `truncated` notice per category when
+  the backend capped results. New types (`RemoteWordlistInfo`,
+  `RemoteWordlistGroup`, `RemoteGroupedWordlists`) and `api.
+  browseRemoteWordlists()`/`api.downloadRemoteWordlist()` added
+  alongside the existing local-wordlist equivalents.
+
+**Verified:**
+- `list_remote_wordlists()` against the real GitHub API: 6042 real
+  files, correctly grouped into the repo's actual top-level folders
+  (`Fuzzing` 4642, `Passwords` 707, `Discovery` 415, `Miscellaneous` 241,
+  `Usernames` 14, `Pattern-Matching` 9, `Ai` 8, `Payloads` 5,
+  `Web-Shells` 1).
+- `download_wordlist("Discovery/Web-Content/common.txt")` against the
+  real repo: fetched exactly that one 38.5KB file (confirmed real
+  wordlist content), confirmed `is_downloaded()` flips to `True`
+  afterward, confirmed it then appears under `discover_wordlists_
+  grouped()`'s `SecLists/Discovery` group alongside the bundled
+  wordlists — proving the local-discovery integration works, not just
+  the download itself.
+- `npx tsc --noEmit`, `eslint`, `next build` all clean.
+- Full browser E2E via a throwaway Playwright script (deleted after
+  use): opened the Run Tool dialog for "Enumerate Admin Interfaces" →
+  ffuf → Select wordlist → switched to the "SecLists (GitHub)" tab →
+  confirmed the "downloads only the single file" caption and real
+  category cards (`Discovery` 2 matches, `Passwords` 1 match) rendered
+  → searched "common.txt", pressed Enter, confirmed it narrowed to the
+  real matches (`OBEX_common.txt`, `Discovery/Web-Content/common.txt`)
+  → clicked the `Discovery/Web-Content/common.txt` card → confirmed the
+  Run Tool dialog's button updated to "Wordlist: common.txt" and the
+  command field's `-w` flag now pointed at `~/.surveil/wordlists/
+  seclists/Discovery/Web-Content/common.txt` → confirmed via `find` on
+  disk that **only that one file** exists under the cache dir, nothing
+  else. Zero console errors throughout.
+
+**Next steps for the next agent:**
+1. The 24h tree cache is a single flat file, not per-query — fine for
+   one local user, would need real caching (Redis, etc.) if this app
+   ever serves multiple concurrent users hitting GitHub's API
+   independently.
+2. No download-progress indication beyond a spinner — fine for the
+   small (KB-to-low-MB) individual files SecLists actually has, would
+   need a real progress bar if this pattern got reused for something
+   with much larger individual files.
+3. GitHub's unauthenticated rate limit (60 req/hour) applies to the
+   tree-listing call only (raw file downloads via
+   raw.githubusercontent.com aren't API-rate-limited the same way) — the
+   24h cache keeps this comfortably under the limit for normal use, but
+   there's no user-visible message distinguishing "rate limited" from
+   "GitHub unreachable" if it ever does trip; both currently surface as
+   the same generic 502 message.
+
+---
+
 ## 2026-08-25 (3) — Fix: dnsx "command not found" (shell-wrapped tool, PATH not inherited)
 
 **Done (user pasted a real failure): `/bin/sh: dnsx: command not found`

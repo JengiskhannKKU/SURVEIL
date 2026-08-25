@@ -5,6 +5,7 @@ import type {
   EngagementSummary,
   Finding,
   GroupedWordlists,
+  RemoteGroupedWordlists,
   Severity,
   ToolInfo,
   WordlistInfo,
@@ -129,6 +130,23 @@ export const api = {
     request<GroupedWordlists>(
       `/api/tools/wordlists/grouped${itemId ? `?item_id=${encodeURIComponent(itemId)}` : ""}`
     ),
+
+  browseRemoteWordlists: (itemId?: string, q?: string) =>
+    request<RemoteGroupedWordlists>(
+      `/api/tools/wordlists/remote/browse?` +
+        [
+          itemId ? `item_id=${encodeURIComponent(itemId)}` : "",
+          q ? `q=${encodeURIComponent(q)}` : "",
+        ]
+          .filter(Boolean)
+          .join("&")
+    ),
+
+  downloadRemoteWordlist: (path: string) =>
+    request<{ path: string }>("/api/tools/wordlists/remote/download", {
+      method: "POST",
+      body: JSON.stringify({ path }),
+    }),
 
   addFinding: (
     engId: string,
