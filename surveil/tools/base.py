@@ -29,10 +29,15 @@ def base_url(target: str) -> str:
       results, indistinguishable from a real empty scan.
     - A bare hostname defaults to https://, still the more common case for
       a real domain.
+    - *target* may also carry a path suffix (e.g. "192.168.2.11/admin" — the
+      web UI's "run a tool against this discovered directory" feature
+      appends one) — the hostname is isolated before the port/path is
+      stripped off for the IPv4 check, so an IP target with a path still
+      correctly defaults to http://.
     """
     if "://" in target:
         return target
-    host = target.split(":")[0]
+    host = target.split("/")[0].split(":")[0]
     scheme = "http" if _IPV4_RE.match(host) else "https"
     return f"{scheme}://{target}"
 

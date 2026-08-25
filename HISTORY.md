@@ -6,6 +6,92 @@ was verified, and what the next agent should pick up.
 
 ---
 
+## 2026-08-25 (8) — Discovered-path tree view + run-a-tool-at-this-path
+
+**Done (user request, clarified via AskUserQuestion into "show
+ffuf/gobuster/katana's discovered paths as an expandable tree instead
+of a flat log, and let me run a tool against a specific discovered
+path"):**
+- `frontend/src/lib/pathTree.ts`: `parseDiscoveredPaths(output, toolName)`
+  extracts discovered directory/file paths from raw tool output, handling
+  4 distinct formats in one pass — ffuf's own mock-output style
+  (`| URL | https://target/admin`, including stripping a trailing
+  ` -> https://target/admin/` redirect), gobuster's
+  (`/admin (Status: 301) ...`), a bare absolute URL alone on a line
+  (katana, or real ffuf `-v`), and real ffuf's `-s` (silent) bare-path-only
+  lines (gated to `toolName === "ffuf"` specifically, since a bare line
+  with no other marker is too ambiguous to assume for any other tool's
+  output). `buildPathTree(paths)` turns the flat list into a nested tree.
+- `frontend/src/components/DirectoryTree.tsx`: recursive collapsible tree
+  (hand-rolled, no new dependency) — folder/file icons, click to
+  expand/collapse, and a hover-revealed ▶ run icon per node.
+- `ItemDetail.tsx`: a **Raw / Tree** `ToggleButtonGroup` appears above
+  the Tool Output panel only when the active tab's output actually has
+  parseable paths (computed via `useMemo`, falls back to Raw
+  automatically if you switch to a tab that doesn't, e.g. an `nmap`
+  result — a stale "Tree" selection doesn't leave the panel blank).
+  Clicking a node's run icon opens the existing `RunToolDialog` with
+  the *target* overridden to `${engagementTarget}${nodePath}` (e.g.
+  `192.168.2.11/admin`), so ffuf/gobuster's own `-u .../FUZZ`
+  construction naturally becomes a recursive fuzz under that discovered
+  directory. `RunToolDialog` now also shows a `Target: ...` caption
+  under its title so this is visible, not just implicit in the command
+  preview.
+- **Bug caught and fixed while building this**: `surveil/tools/base.py`'s
+  `base_url()` isolated the hostname for its IPv4-vs-hostname scheme
+  check via `target.split(":")[0]` — correct for a bare host or
+  `host:port`, but a target with an appended path (`192.168.2.11/admin`,
+  exactly what this feature produces) has no colon, so the *whole*
+  `"192.168.2.11/admin"` string failed the IPv4 regex and incorrectly
+  fell through to `https://`. Fixed to isolate the hostname via
+  `target.split("/")[0].split(":")[0]` first. This would have silently
+  broken every IP-target engagement's "run at this discovered path"
+  clicks (connection refused on the wrong scheme) without ever
+  surfacing as an error the tester could easily place.
+
+**Verified:**
+- Unit-style check of the parsing regexes (as plain JS, run directly in
+  Node) against the *real* mock output text from `ffuf_tool.py`,
+  `gobuster_tool.py`, and `katana_tool.py`: 9/16/27 paths respectively,
+  all correct, no duplicates, no redirect-artifact paths.
+- `base_url()` fix verified directly: `base_url("192.168.2.11/admin")`
+  now returns `http://192.168.2.11/admin` (was `https://...`);
+  `base_url("192.168.2.11:8080/admin")` and `base_url("example.com/
+  admin")` also checked. Re-ran `build_command()` for `ffuf`, `gobuster`,
+  `nikto`, `nuclei`, `katana`, `nmap` against an IP target to confirm no
+  regression from the change.
+- `npx tsc --noEmit`, `eslint`, `next build` all clean.
+- Full browser E2E via throwaway Playwright scripts (deleted after use):
+  injected real `FfufTool.mock_output()` text directly into a checklist
+  item's `tool_outputs` (bypassing an actual scan for deterministic
+  content), confirmed the Raw/Tree toggle appears, confirmed Tree view
+  renders the correct nested structure (`.git` as an expandable folder
+  containing `HEAD`, everything else as flat files, alphabetically
+  sorted) via screenshot. Separately, against an **IP-target** ("192.168.
+  2.11") engagement specifically to exercise the `base_url()` fix:
+  clicked the `admin` node's run icon, confirmed the dialog's `Target:`
+  caption read `192.168.2.11/admin` and the generated command was
+  `ffuf -u http://192.168.2.11/admin/FUZZ ...` — correct `http://`, not
+  the `https://` this would have produced pre-fix. Zero console errors
+  in both runs.
+
+**Next steps for the next agent:**
+1. The tree is rebuilt from scratch on every render via `useMemo` keyed
+   on `(activeOutput, item.tool_outputs)` — fine for the hundreds-of-paths
+   scale ffuf/gobuster/katana actually produce, would need memoizing
+   differently (or virtualizing the tree) if some future tool's output
+   had tens of thousands of discovered paths.
+2. The "run at this path" override only makes sense for URL-based tools
+   (ffuf, gobuster, and to a lesser extent katana/nuclei/httpx) — nothing
+   currently stops a tester from clicking a tree node's run icon and then
+   picking `nmap` from the Tool dropdown, which would try to port-scan a
+   hostname like `192.168.2.11/admin` (nonsensical). Not fixed here since
+   the tester picks the tool explicitly in the same dialog and the
+   `Target:` caption makes the override visible before they hit Run —
+   worth revisiting if this causes real confusion in practice.
+
+---
+
 ## 2026-08-25 (7) — New tools, new WSTG coverage, more wordlist categories
 
 **Done (user request: "can you add other strategies or tools" —

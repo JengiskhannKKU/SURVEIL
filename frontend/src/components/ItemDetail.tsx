@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Box from "@mui/material/Box";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
@@ -8,6 +8,8 @@ import Button from "@mui/material/Button";
 import Tabs from "@mui/material/Tabs";
 import Tab from "@mui/material/Tab";
 import Link from "@mui/material/Link";
+import ToggleButton from "@mui/material/ToggleButton";
+import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
 import { motion } from "framer-motion";
 import { api } from "@/lib/api";
 import { StatusBadge } from "@/components/Badge";
@@ -15,6 +17,8 @@ import { FindingsPanel } from "@/components/FindingsPanel";
 import { RunToolDialog } from "@/components/RunToolDialog";
 import { ChecklistItemDialog } from "@/components/ChecklistItemDialog";
 import { HighlightedOutput } from "@/components/HighlightedOutput";
+import { DirectoryTree } from "@/components/DirectoryTree";
+import { parseDiscoveredPaths, buildPathTree } from "@/lib/pathTree";
 import { useToast } from "@/lib/toast";
 import type { ChecklistItem, ToolInfo } from "@/lib/types";
 
@@ -44,6 +48,23 @@ export function ItemDetail({
     Object.keys(item.tool_outputs)[0] ?? null
   );
   const [busyAction, setBusyAction] = useState<"markDone" | "skip" | "reset" | null>(null);
+  const [outputView, setOutputView] = useState<"raw" | "tree">("raw");
+  const [runAtPath, setRunAtPath] = useState<string | null>(null);
+
+  const discoveredTree = useMemo(() => {
+    if (!activeOutput) return null;
+    const paths = parseDiscoveredPaths(item.tool_outputs[activeOutput] ?? "", activeOutput);
+    return paths.length > 0 ? buildPathTree(paths) : null;
+  }, [activeOutput, item.tool_outputs]);
+  // Falls back to raw whenever the active output has no parseable tree —
+  // switching tabs away from a ffuf/gobuster/katana result to e.g. an nmap
+  // one shouldn't leave a stale "tree" selection rendering nothing.
+  const effectiveOutputView = discoveredTree ? outputView : "raw";
+
+  function runToolAt(path: string) {
+    setRunAtPath(path);
+    setShowRun(true);
+  }
 
   async function saveNotes() {
     if (notes === item.notes) return;
@@ -138,7 +159,13 @@ export function ItemDetail({
 
           <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap mb={3}>
             {hasRunnableTools && (
-              <Button variant="contained" onClick={() => setShowRun(true)}>
+              <Button
+                variant="contained"
+                onClick={() => {
+                  setRunAtPath(null);
+                  setShowRun(true);
+                }}
+              >
                 Run tool
               </Button>
             )}
@@ -159,9 +186,23 @@ export function ItemDetail({
 
           {Object.keys(item.tool_outputs).length > 0 && (
             <Box mb={3}>
-              <Typography variant="subtitle2" fontWeight={700} mb={1}>
-                Tool output
-              </Typography>
+              <Stack direction="row" alignItems="center" justifyContent="space-between" mb={1}>
+                <Typography variant="subtitle2" fontWeight={700}>
+                  Tool output
+                </Typography>
+                {discoveredTree && (
+                  <ToggleButtonGroup
+                    size="small"
+                    exclusive
+                    value={outputView}
+                    onChange={(_, v) => v && setOutputView(v)}
+                    sx={{ "& .MuiToggleButton-root": { px: 1.25, py: 0.25, fontSize: 11, textTransform: "none" } }}
+                  >
+                    <ToggleButton value="raw">Raw</ToggleButton>
+                    <ToggleButton value="tree">Tree</ToggleButton>
+                  </ToggleButtonGroup>
+                )}
+              </Stack>
               <Tabs
                 value={activeOutput}
                 onChange={(_, v) => setActiveOutput(v)}
@@ -172,7 +213,7 @@ export function ItemDetail({
                   <Tab key={t} value={t} label={t} sx={{ fontSize: 12 }} />
                 ))}
               </Tabs>
-              {activeOutput && (
+              {activeOutput && effectiveOutputView === "raw" && (
                 <Box
                   component="pre"
                   sx={{
@@ -191,6 +232,19 @@ export function ItemDetail({
                   }}
                 >
                   <HighlightedOutput text={item.tool_outputs[activeOutput]} />
+                </Box>
+              )}
+              {activeOutput && effectiveOutputView === "tree" && discoveredTree && (
+                <Box
+                  sx={{
+                    borderRadius: 1,
+                    bgcolor: "#000",
+                    border: "1px solid rgba(255,255,255,0.08)",
+                    px: 1,
+                    py: 0.5,
+                  }}
+                >
+                  <DirectoryTree root={discoveredTree} onRunHere={runToolAt} />
                 </Box>
               )}
             </Box>
@@ -237,10 +291,13 @@ export function ItemDetail({
       {showRun && (
         <RunToolDialog
           engagementId={engagementId}
-          target={target}
+          target={runAtPath ? `${target}${runAtPath}` : target}
           item={item}
           allTools={allTools}
-          onClose={() => setShowRun(false)}
+          onClose={() => {
+            setShowRun(false);
+            setRunAtPath(null);
+          }}
           onDone={(updated) => {
             onChange(updated);
             setActiveOutput(Object.keys(updated.tool_outputs).slice(-1)[0] ?? null);

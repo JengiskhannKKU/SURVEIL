@@ -176,19 +176,30 @@ export function RunToolDialog({
   return (
     <Dialog open onClose={onClose} fullWidth maxWidth="md">
       <DialogTitle sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-        Run tool — {item.id}
-        {running && (
-          <Stack direction="row" spacing={0.75} alignItems="center">
-            <motion.div
-              animate={{ opacity: [1, 0.3, 1] }}
-              transition={{ duration: 1.2, repeat: Infinity }}
-              style={{ width: 7, height: 7, borderRadius: "50%", backgroundColor: "#f59e0b" }}
-            />
-            <Typography variant="caption" sx={{ color: "#f59e0b", fontWeight: 600 }}>
-              running
-            </Typography>
-          </Stack>
-        )}
+        <Box>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+            Run tool — {item.id}
+            {running && (
+              <Stack direction="row" spacing={0.75} alignItems="center">
+                <motion.div
+                  animate={{ opacity: [1, 0.3, 1] }}
+                  transition={{ duration: 1.2, repeat: Infinity }}
+                  style={{ width: 7, height: 7, borderRadius: "50%", backgroundColor: "#f59e0b" }}
+                />
+                <Typography variant="caption" sx={{ color: "#f59e0b", fontWeight: 600 }}>
+                  running
+                </Typography>
+              </Stack>
+            )}
+          </Box>
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            sx={{ fontFamily: "var(--font-geist-mono)" }}
+          >
+            Target: {target}
+          </Typography>
+        </Box>
       </DialogTitle>
       <DialogContent>
         <Stack direction="row" spacing={2} flexWrap="wrap" useFlexGap alignItems="center" mb={2} mt={2}>

@@ -308,6 +308,8 @@ Pressing `R` on a checklist item opens the Run Tool dialog:
 
 Raw tool output streams into the Tool Output panel live as it runs (and replays the same way when you reselect a completed item), with line-level highlighting: HTTP status codes color-coded by class (2xx green, 3xx yellow, 4xx/5xx red), nuclei-style `[severity]` tags colored to match the findings table, URLs, CVE IDs, and `[+]`/`[-]`/`⚠` markers picked out, and the `SIMULATED` banner bolded so it's obvious when you're looking at demo data rather than a real scan. See `surveil/output_formatter.py`.
 
+**Tree view** — for a completed `ffuf`/`gobuster`/`katana` run, a **Raw / Tree** toggle appears above the output panel (only when the output actually has parseable discovered paths). Tree view renders the discovered directories/files as an expandable folder tree instead of a flat log — hover any node for a ▶ **run** icon that opens the Run Tool dialog re-targeted at exactly that path (e.g. clicking `admin` on a target of `192.168.2.11` opens the dialog with `Target: 192.168.2.11/admin`, so a follow-up `ffuf` run fuzzes recursively under `/admin/FUZZ`). Parsing logic lives in `frontend/src/lib/pathTree.ts`; the tree component is `frontend/src/components/DirectoryTree.tsx`.
+
 ---
 
 ## Checklist Coverage
