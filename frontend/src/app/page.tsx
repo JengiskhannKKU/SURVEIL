@@ -77,6 +77,17 @@ export default function LandingPage() {
       <Container maxWidth="md" sx={{ py: { xs: 8, sm: 12 } }}>
         <Stack alignItems="center" textAlign="center" spacing={2} mb={{ xs: 8, sm: 10 }}>
           <FadeIn>
+            <Box
+              component="img"
+              src="/logo.svg"
+              alt="surveil"
+              width={88}
+              height={88}
+              sx={{ filter: `drop-shadow(0 0 16px ${GREEN}77) drop-shadow(0 0 40px ${GREEN}33)` }}
+            />
+          </FadeIn>
+
+          <FadeIn delay={0.04}>
             <Typography
               sx={{
                 fontFamily: "var(--font-geist-mono)",
@@ -185,7 +196,7 @@ export default function LandingPage() {
           </FadeIn>
         </Stack>
 
-        <Box
+        {/* <Box
           sx={{
             display: "grid",
             gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" },
@@ -209,7 +220,7 @@ export default function LandingPage() {
               </Paper>
             </FadeIn>
           ))}
-        </Box>
+        </Box> */}
 
         <FadeIn delay={0.75}>
           <Typography

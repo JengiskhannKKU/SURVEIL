@@ -6,6 +6,62 @@ was verified, and what the next agent should pick up.
 
 ---
 
+## 2026-08-27 (26) — Dashboard card layout + logo on the landing page
+
+**Done (user request: "At the dashboard can you change the layout to
+cards component, and on landing can you add the logo"):**
+- `frontend/src/app/engagements/page.tsx` (the "Dashboard" nav link,
+  the engagement list): replaced the `<Table>` row list with a
+  responsive card grid (1 col mobile, 2 tablet, 3 desktop) — new
+  `EngagementCard` component per engagement showing name, ID, target,
+  progress bar, findings count + severity chips (crit/high), created
+  date, and a delete icon; whole card is a `Link` to the engagement.
+  Widened the page from `maxWidth="md"` to `"lg"` so 3 columns have
+  room. Removed the now-unused `Table`/`TableBody`/`TableCell`/
+  `TableHead`/`TableRow` imports.
+  - Also fixed a stray, badly-indented `<Box component="img"
+    src="/logo.svg">` insertion already sitting in this file's header
+    (found while reading the file — looked like a leftover
+    linter/partial-edit artifact, not wired into any layout) by
+    properly integrating it next to the "Engagements" title, matching
+    the treatment already used in `NavBar.tsx`.
+  - Found and deleted a stray test engagement (`__amasstest`,
+    `356b0583`) left over from this session's earlier amass-v5
+    debugging — a real cleanup miss, not part of this feature.
+- `frontend/src/app/page.tsx` (the landing page): added the same
+  `logo.svg` above the `[ SURVEIL ]` bracket text, sized larger (88px)
+  with a two-layer teal glow (`drop-shadow`) matching the big
+  "SURVEIL" heading's own glow treatment right below it, in its own
+  `FadeIn` so it animates in first.
+
+**Verified:**
+- `npx tsc --noEmit` clean. `eslint` clean on both edited files (two
+  pre-existing warnings in `page.tsx` — unused `Paper` import and
+  `FEATURES` array — predate this change, tied to an already-commented-
+  out features section; left alone, out of scope).
+- `next build` succeeds.
+- Full browser E2E: landing page screenshot confirms the logo renders
+  correctly above the wordmark with visible glow. Dashboard screenshot
+  confirms the card grid renders correctly with real engagement data
+  (4 real engagements after cleaning up the stray test one). Confirmed
+  by direct interaction: hovering a card shows the teal glow/border
+  (screenshot-verified), clicking a card navigates to
+  `/engagements/<id>` correctly, and the existing search-by-name/target
+  filter still works against the new card grid. Zero console errors
+  throughout.
+
+**Next steps for the next agent:**
+1. The commented-out `FEATURES` grid on the landing page (four feature
+   cards — OWASP WSTG, tools, live streaming, CVSS reporting) predates
+   this session and is still disabled; its copy is also stale (says
+   "20 structured Information Gathering & Configuration Management
+   items" and "16 integrated tools" — both long out of date, 97 items
+   and 23 tools now). Not touched here since it's off and out of scope,
+   but worth either updating and re-enabling or deleting outright next
+   time someone's in this file.
+
+---
+
 ## 2026-08-27 (25) — Background tool runs: persisted status, duplicate-run guard, live sidebar
 
 **Done (user request: "when running tools then click close it not

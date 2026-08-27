@@ -10,11 +10,6 @@ import Typography from "@mui/material/Typography";
 import Button from "@mui/material/Button";
 import TextField from "@mui/material/TextField";
 import Paper from "@mui/material/Paper";
-import Table from "@mui/material/Table";
-import TableBody from "@mui/material/TableBody";
-import TableCell from "@mui/material/TableCell";
-import TableHead from "@mui/material/TableHead";
-import TableRow from "@mui/material/TableRow";
 import Chip from "@mui/material/Chip";
 import Skeleton from "@mui/material/Skeleton";
 import Dialog from "@mui/material/Dialog";
@@ -47,6 +42,110 @@ function StatCard({ label, value, color, delay }: { label: string; value: string
         <Typography variant="caption" color="text.secondary">
           {label}
         </Typography>
+      </Paper>
+    </motion.div>
+  );
+}
+
+function EngagementCard({
+  engagement,
+  onDelete,
+  delay,
+}: {
+  engagement: EngagementSummary;
+  onDelete: () => void;
+  delay: number;
+}) {
+  const [done, total] = engagement.progress.split("/").map(Number);
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.25, delay }}
+      style={{ height: "100%" }}
+    >
+      <Paper
+        component={Link}
+        href={`/engagements/${engagement.id}`}
+        sx={{
+          display: "flex",
+          flexDirection: "column",
+          height: "100%",
+          p: 2.5,
+          textDecoration: "none",
+          color: "inherit",
+          transition: "border-color 0.15s, box-shadow 0.15s, transform 0.15s",
+          "&:hover": {
+            borderColor: "primary.main",
+            boxShadow: "0 0 0 1px rgba(94,234,212,0.35), 0 0 20px rgba(94,234,212,0.13)",
+            transform: "translateY(-2px)",
+          },
+        }}
+      >
+        <Stack direction="row" justifyContent="space-between" alignItems="flex-start" mb={1.5} spacing={1}>
+          <Box minWidth={0}>
+            <Typography variant="subtitle1" fontWeight={700} noWrap>
+              {engagement.name}
+            </Typography>
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{ fontFamily: "var(--font-geist-mono)" }}
+            >
+              {engagement.id}
+            </Typography>
+          </Box>
+          <IconButton
+            size="small"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onDelete();
+            }}
+            sx={{ color: "text.secondary", flexShrink: 0, "&:hover": { color: "#ef4444" } }}
+          >
+            <DeleteOutlineIcon fontSize="small" />
+          </IconButton>
+        </Stack>
+
+        <Typography
+          variant="body2"
+          color="text.secondary"
+          noWrap
+          mb={2}
+          sx={{ fontFamily: "var(--font-geist-mono)" }}
+        >
+          {engagement.target}
+        </Typography>
+
+        <Box mb={2} mt="auto">
+          <ProgressBar done={done || 0} total={total || 0} />
+        </Box>
+
+        <Stack direction="row" justifyContent="space-between" alignItems="center">
+          <Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap" useFlexGap>
+            <Typography variant="body2">
+              {engagement.findings} finding{engagement.findings === 1 ? "" : "s"}
+            </Typography>
+            {engagement.critical > 0 && (
+              <Chip
+                size="small"
+                label={`${engagement.critical} crit`}
+                sx={{ bgcolor: "#dc2626", color: "#fff", height: 20, fontSize: 11 }}
+              />
+            )}
+            {engagement.high > 0 && (
+              <Chip
+                size="small"
+                label={`${engagement.high} high`}
+                sx={{ bgcolor: "#f97316", color: "#fff", height: 20, fontSize: 11 }}
+              />
+            )}
+          </Stack>
+          <Typography variant="caption" color="text.disabled" flexShrink={0}>
+            {engagement.created_at}
+          </Typography>
+        </Stack>
       </Paper>
     </motion.div>
   );
@@ -129,7 +228,7 @@ export default function EngagementsPage() {
   const loading = engagements === null;
 
   return (
-    <Container maxWidth="md" sx={{ py: 6, flex: 1 }}>
+    <Container maxWidth="lg" sx={{ py: 6, flex: 1 }}>
       <Stack direction="row" justifyContent="space-between" alignItems="flex-start" mb={4}>
         <Box>
           <Typography
@@ -140,9 +239,19 @@ export default function EngagementsPage() {
           >
             ← surveil
           </Typography>
-          <Typography variant="h5" fontWeight={700}>
-            Engagements
-          </Typography>
+          <Stack direction="row" alignItems="center" spacing={1}>
+            <Box
+              component="img"
+              src="/logo.svg"
+              alt=""
+              width={26}
+              height={26}
+              sx={{ filter: "drop-shadow(0 0 4px rgba(94,234,212,0.5))" }}
+            />
+            <Typography variant="h5" fontWeight={700}>
+              Engagements
+            </Typography>
+          </Stack>
         </Box>
         <Button variant="contained" startIcon={<AddIcon />} onClick={() => setShowForm(true)}>
           New Engagement
@@ -253,95 +362,39 @@ export default function EngagementsPage() {
           </Typography>
         </Paper>
       ) : (
-        <Paper sx={{ overflow: "hidden" }}>
-          <Table size="small">
-            <TableHead>
-              <TableRow>
-                <TableCell>Name</TableCell>
-                <TableCell>Target</TableCell>
-                <TableCell>Progress</TableCell>
-                <TableCell>Findings</TableCell>
-                <TableCell>Created</TableCell>
-                <TableCell />
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {loading ? (
-                Array.from({ length: 3 }).map((_, i) => (
-                  <TableRow key={i}>
-                    {Array.from({ length: 6 }).map((__, j) => (
-                      <TableCell key={j}>
-                        <Skeleton variant="text" width={j === 5 ? 20 : 90} />
-                      </TableCell>
-                    ))}
-                  </TableRow>
-                ))
-              ) : filtered.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={6} align="center" sx={{ color: "text.secondary", py: 3 }}>
+        <Box
+          sx={{
+            display: "grid",
+            gridTemplateColumns: { xs: "1fr", sm: "repeat(2, 1fr)", md: "repeat(3, 1fr)" },
+            gap: 2,
+          }}
+        >
+          {loading
+            ? Array.from({ length: 6 }).map((_, i) => (
+                <Paper key={i} sx={{ p: 2.5 }}>
+                  <Skeleton variant="text" width="65%" height={28} />
+                  <Skeleton variant="text" width="40%" sx={{ mb: 2 }} />
+                  <Skeleton variant="rounded" height={6} sx={{ mb: 2, borderRadius: 3 }} />
+                  <Skeleton variant="text" width="45%" />
+                </Paper>
+              ))
+            : filtered.length === 0 ? (
+                <Box sx={{ gridColumn: "1 / -1" }}>
+                  <Typography color="text.secondary" textAlign="center" py={4}>
                     No engagements match &ldquo;{query}&rdquo;.
-                  </TableCell>
-                </TableRow>
+                  </Typography>
+                </Box>
               ) : (
-                filtered.map((e, i) => {
-                  const [done, total] = e.progress.split("/").map(Number);
-                  return (
-                    <motion.tr
-                      key={e.id}
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      transition={{ duration: 0.2, delay: Math.min(i * 0.03, 0.3) }}
-                      style={{ display: "table-row" }}
-                      className="row-hover"
-                    >
-                      <TableCell>
-                        <Typography
-                          component={Link}
-                          href={`/engagements/${e.id}`}
-                          variant="body2"
-                          fontWeight={600}
-                          sx={{ color: "text.primary", textDecoration: "none", "&:hover": { color: "primary.light" } }}
-                        >
-                          {e.name}
-                        </Typography>
-                        <br />
-                        <Typography variant="caption" color="text.secondary">
-                          {e.id}
-                        </Typography>
-                      </TableCell>
-                      <TableCell sx={{ color: "text.secondary" }}>{e.target}</TableCell>
-                      <TableCell>
-                        <ProgressBar done={done || 0} total={total || 0} />
-                      </TableCell>
-                      <TableCell>
-                        <Stack direction="row" spacing={0.75} alignItems="center">
-                          <Typography variant="body2">{e.findings}</Typography>
-                          {e.critical > 0 && (
-                            <Chip
-                              size="small"
-                              label={`${e.critical} crit`}
-                              sx={{ bgcolor: "#dc2626", color: "#fff", height: 20, fontSize: 11 }}
-                            />
-                          )}
-                        </Stack>
-                      </TableCell>
-                      <TableCell sx={{ color: "text.secondary" }}>{e.created_at}</TableCell>
-                      <TableCell align="right">
-                        <IconButton
-                          size="small"
-                          onClick={() => handleDelete(e.id, e.name)}
-                          sx={{ color: "text.secondary", "&:hover": { color: "#ef4444" } }}
-                        >
-                          <DeleteOutlineIcon fontSize="small" />
-                        </IconButton>
-                      </TableCell>
-                    </motion.tr>
-                  );
-                })
+                filtered.map((e, i) => (
+                  <EngagementCard
+                    key={e.id}
+                    engagement={e}
+                    onDelete={() => handleDelete(e.id, e.name)}
+                    delay={Math.min(i * 0.04, 0.3)}
+                  />
+                ))
               )}
-            </TableBody>
-          </Table>
-        </Paper>
+        </Box>
       )}
     </Container>
   );
