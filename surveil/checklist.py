@@ -312,11 +312,14 @@ def build_checklist() -> list[ChecklistItem]:
             description=(
                 "Crawl and manually browse the application to document all functional "
                 "workflows, authentication-state transitions, and business logic paths. "
-                "Screenshot every distinct page state."
+                "Screenshot every distinct page state. The official WSTG methodology "
+                "names OWASP ZAP's spider explicitly for this — zap's baseline scan "
+                "(spider + passive rules, no active attacks) covers that directly, "
+                "alongside katana's lighter/faster crawl and gowitness's screenshots."
             ),
             category="Information Gathering",
             category_code="INFO",
-            tools=["katana", "gowitness"],
+            tools=["katana", "gowitness", "zap"],
             owasp_ref="WSTG-INFO-07",
             cwe_ids=["CWE-200"],
         ),

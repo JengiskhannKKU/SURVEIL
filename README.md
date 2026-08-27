@@ -11,7 +11,7 @@
 <p align="center">
   <img alt="Python 3.9+" src="https://img.shields.io/badge/python-3.9%2B-5eead4?style=flat-square&labelColor=0a0d0d">
   <img alt="OWASP WSTG v4.2" src="https://img.shields.io/badge/OWASP%20WSTG-v4.2%20%C2%B7%2097%20items-5eead4?style=flat-square&labelColor=0a0d0d">
-  <img alt="23 tools wrapped" src="https://img.shields.io/badge/tools%20wrapped-23-5eead4?style=flat-square&labelColor=0a0d0d">
+  <img alt="24 tools wrapped" src="https://img.shields.io/badge/tools%20wrapped-24-5eead4?style=flat-square&labelColor=0a0d0d">
   <img alt="Offline-first" src="https://img.shields.io/badge/offline--first-yes-5eead4?style=flat-square&labelColor=0a0d0d">
   <img alt="CLI · TUI · Web" src="https://img.shields.io/badge/interfaces-CLI%20%C2%B7%20TUI%20%C2%B7%20Web-5eead4?style=flat-square&labelColor=0a0d0d">
 </p>
@@ -88,9 +88,9 @@ Full details: [Run with Docker](#run-with-docker).
 
 | Layer | What it does |
 |---|---|
-| **Tool Orchestration** | Wraps 23 tools via subprocess — `nmap`, `httpx`, `whatweb`, `wafw00f`, `subfinder`, `nuclei`, `arjun`, `dnsx`, `gowitness`, `wpscan`, `amass`, `ffuf`, `gobuster`, `katana`, `nikto`, `testssl`, `sqlmap`, `hydra`, `naabu`, `dalfox`, `commix`, `curl`, `wget` (see `TOOL_REGISTRY` in `surveil/tools/__init__.py`). Falls back to realistic simulated output when a tool isn't installed (demo mode). Every tool supports a **Fast** and a **Full** command variant, and its exact command line is editable before running. |
+| **Tool Orchestration** | Wraps 24 tools via subprocess — `nmap`, `httpx`, `whatweb`, `wafw00f`, `subfinder`, `nuclei`, `arjun`, `dnsx`, `gowitness`, `wpscan`, `amass`, `ffuf`, `gobuster`, `katana`, `nikto`, `testssl`, `sqlmap`, `hydra`, `naabu`, `dalfox`, `commix`, `curl`, `wget`, `zap` (see `TOOL_REGISTRY` in `surveil/tools/__init__.py`). Falls back to realistic simulated output when a tool isn't installed (demo mode). Every tool supports a **Fast** and a **Full** command variant, and its exact command line is editable before running. |
 | **Checklist & State Engine** | The full OWASP WSTG v4.2 table of contents — all 12 sections, 97 items — with status tracking, a Textual TUI, JSON persistence, and a saved-engagement picker. |
-| **Auto-Finding Extraction** | `surveil/findings_extractor.py` parses raw output from 16 of the 23 tools into `Finding` objects (auto CVSS scoring, OWASP/CWE mapping) flagged `verified=False` — a starting point to confirm or dismiss, not a blank checklist. |
+| **Auto-Finding Extraction** | `surveil/findings_extractor.py` parses raw output from 17 of the 24 tools into `Finding` objects (auto CVSS scoring, OWASP/CWE mapping) flagged `verified=False` — a starting point to confirm or dismiss, not a blank checklist. |
 | **Reporting Engine** | CVSS v3.1 base score calculator, OWASP/CWE metadata, Markdown and `.docx` export, plus an in-app **View Report** panel (web app) that renders the same Markdown report live instead of only downloading it. |
 
 ---
@@ -397,17 +397,29 @@ With 97 checklist items, the full item ↔ tool mapping is best read directly fr
 | `ffuf` | Directory/file brute-forcing | INFO-04, CONF-01/04/05/09, IDNT-04/05, ATHN-04, ATHZ-01/04, INPV-04/11 |
 | `gobuster` | Directory brute-forcing | CONF-04, CONF-05 |
 | `katana` | Web crawling & endpoint discovery | INFO-04/05/06/07, CLNT-01/02/06/11 |
+| `zap` | OWASP ZAP baseline scan (spider + passive rules, via Docker) | INFO-07 |
 | `gowitness` | Screenshot capture of web pages | INFO-04 |
 | `wpscan` | WordPress-specific vulnerability scanning | INFO-08 |
 | `nikto` | Web server vulnerability scanning | CONF-02, CONF-09, ERRH-01 |
 | `testssl` | TLS/SSL configuration analysis | CONF-07, ATHN-01, CRYP-01/03, SESS-09 |
 | `hydra` | Brute-force login testing | ATHN-02, ATHN-03 |
 
-Auto-finding extraction (`surveil/findings_extractor.py`) covers 16 of the 23 tools: `nmap`, `httpx`, `whatweb`, `nuclei`, `wafw00f`, `subfinder`, `nikto`, `sqlmap`, `hydra`, `wpscan`, `dnsx`, `ffuf`, `gobuster`, `naabu`, `dalfox`, `commix`. The remaining 5 (`amass`, `arjun`, `gowitness`, `katana`, `testssl`) store and show their output but don't auto-parse it into findings yet — `testssl`'s output in particular is fixed-width columnar text that needs a different parsing approach than the line/regex matching the others use. `curl`/`wget` are deliberately not in either bucket — they're general-purpose manual-inspection tools, not something with a fixed "finding shape" to extract.
+Auto-finding extraction (`surveil/findings_extractor.py`) covers 17 of the 24 tools: `nmap`, `httpx`, `whatweb`, `nuclei`, `wafw00f`, `subfinder`, `nikto`, `sqlmap`, `hydra`, `wpscan`, `dnsx`, `ffuf`, `gobuster`, `naabu`, `dalfox`, `commix`, `zap`. The remaining 5 (`amass`, `arjun`, `gowitness`, `katana`, `testssl`) store and show their output but don't auto-parse it into findings yet — `testssl`'s output in particular is fixed-width columnar text that needs a different parsing approach than the line/regex matching the others use. `curl`/`wget` are deliberately not in either bucket — they're general-purpose manual-inspection tools, not something with a fixed "finding shape" to extract.
+
+> **`zap` is architecturally different from every other wrapped tool** —
+> it runs via `docker run zaproxy/zap-stable zap-baseline.py`, not a
+> local binary. First run pulls a ~1.2GB image; every run pays a JVM
+> boot on top of the actual scan, and its output tends to arrive in one
+> large burst near the end rather than streaming line-by-line. Needs a
+> working Docker daemon on the machine running the backend — separate
+> from surveil's own Docker setup, if you're running surveil itself in
+> Docker too (Docker-in-Docker isn't set up for this; run the backend
+> outside Docker, or give its container access to the host's Docker
+> socket, if you want `zap` available there).
 
 ### Installing the tool binaries
 
-None of the 23 tools are required — each falls back to simulated demo output when its binary isn't found. To get real output, install what you need with:
+None of the 24 tools are required — each falls back to simulated demo output when its binary isn't found. To get real output, install what you need with:
 
 ```bash
 ./install-tools.sh

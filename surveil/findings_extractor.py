@@ -921,6 +921,57 @@ def extract_gobuster(item_id: str, output: str) -> list[Finding]:
 
 
 # ---------------------------------------------------------------------------
+# zap (zap-baseline.py) findings
+# ---------------------------------------------------------------------------
+
+def extract_zap(item_id: str, output: str) -> list[Finding]:
+    """Extract findings from zap-baseline.py output.
+
+    A confirmed alert is a `WARN-NEW: <title> [<rule-id>] x <count>` or
+    `FAIL-NEW: <title> [<rule-id>] x <count>` line, followed by tab-indented
+    lines listing the affected URLs — zap-baseline.py's own real reporting
+    format, confirmed against a live run (not guessed from docs).
+    """
+    findings: list[Finding] = []
+    alert_re = re.compile(r"^(WARN-NEW|FAIL-NEW):\s*(.+?)\s*\[(\d+)\]\s*x\s*(\d+)")
+
+    lines = output.splitlines()
+    for i, raw_line in enumerate(lines):
+        m = alert_re.match(raw_line.strip())
+        if not m:
+            continue
+        level, title, rule_id, count = m.groups()
+
+        affected: list[str] = []
+        for follow in lines[i + 1:]:
+            if not follow.startswith(("\t", "    ")):
+                break
+            affected.append(follow.strip())
+
+        # zap-baseline.py's own two-tier pass/fail threshold (FAIL is what
+        # would break a CI pipeline without -I) — not ZAP's separate
+        # internal Low/Medium/High risk rating, which isn't in this
+        # short-format output at all.
+        severity = Severity.HIGH if level == "FAIL-NEW" else Severity.MEDIUM
+        findings.append(_make_finding(
+            item_id=item_id,
+            title=title,
+            severity=severity,
+            description=(
+                f"ZAP's passive scan flagged '{title}' (rule {rule_id}) on "
+                f"{count} URL(s)."
+            ),
+            evidence="\n".join(affected[:5]) or title,
+            owasp_category="WSTG-INFO-07",
+            cwe_id="CWE-200",
+            tool="zap",
+            remediation=f"Review ZAP rule {rule_id} ('{title}') and address it for the affected URL(s).",
+        ))
+
+    return findings
+
+
+# ---------------------------------------------------------------------------
 # Dispatcher: tool name → extractor
 # ---------------------------------------------------------------------------
 
@@ -941,6 +992,7 @@ EXTRACTORS: dict[str, callable] = {
     "naabu":     extract_naabu,
     "dalfox":    extract_dalfox,
     "commix":    extract_commix,
+    "zap":       extract_zap,
 }
 
 

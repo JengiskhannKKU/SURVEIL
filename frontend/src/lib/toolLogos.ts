@@ -34,6 +34,9 @@ export const TOOL_LOGOS: Record<string, ToolLogoMeta> = {
   naabu:     { label: "NB", color: "#0891b2" },
   dalfox:    { label: "DF", color: "#db2777" },
   commix:    { label: "CX", color: "#65a30d" },
+  curl:      { label: "CU", color: "#7c3aed" },
+  wget:      { label: "WG", color: "#0d9488" },
+  zap:       { label: "ZP", color: "#f59e0b" },
 };
 
 export function toolLogo(name: string): ToolLogoMeta {

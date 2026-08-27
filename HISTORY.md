@@ -6,6 +6,81 @@ was verified, and what the next agent should pick up.
 
 ---
 
+## 2026-08-27 (31) — OWASP ZAP integration (Docker-based), mapped to WSTG-INFO-07
+
+**Done (user question: "wstg-info-07 it use spider ZAP, in my project
+can integrate?" — an exploratory question, confirmed the approach and
+tradeoff with the user via AskUserQuestion before building):**
+- New `surveil/tools/zap_tool.py` — wraps ZAP's own official automation
+  script, `zap-baseline.py` (spider + passive scan rules, **no active
+  attacks**), via `docker run --rm -t zaproxy/zap-stable
+  zap-baseline.py -t <url> -m <mins> -I`. Architecturally different
+  from every other tool wrapped here: `binary = "docker"`, the actual
+  scanner runs inside a container ZAP ships and maintains, not a local
+  install. `-I` forces exit 0 even when the passive scan finds WARN/FAIL
+  alerts — without it, a scan that successfully found real issues would
+  report a nonzero exit code, which surveil's own status tracking would
+  misread as "the tool run failed" rather than "ran fine, found things."
+  Fast = `-m 1` (1-minute spider budget), Full = `-m 5`.
+- `run_help()` overridden: the inherited default would run `docker -h`
+  (since `binary` is `"docker"`, not the actual tool) and show Docker's
+  own help instead of `zap-baseline.py`'s — now runs `docker run --rm
+  zaproxy/zap-stable zap-baseline.py -h` instead, the right target.
+- `surveil/checklist.py`: added to `WSTG-INFO-07`'s tools alongside
+  `katana`/`gowitness` — the real WSTG-INFO-07 methodology names ZAP's
+  spider explicitly (confirmed against the real page in an earlier
+  audit this session, entry 27).
+- New `extract_zap()` in `surveil/findings_extractor.py` — parses
+  `WARN-NEW`/`FAIL-NEW` alert blocks (`<title> [<rule-id>] x <count>`
+  followed by tab-indented affected URLs), zap-baseline.py's own real
+  reporting format. `FAIL-NEW` → HIGH, `WARN-NEW` → MEDIUM (its own
+  pass/fail threshold, not ZAP's separate internal risk rating, which
+  isn't in this short-format output at all).
+- `frontend/src/lib/toolLogos.ts`: added a `zap` badge, and — found
+  while in this file — `curl`/`wget` had been missing their own badge
+  entries since they were added (falling back to a generic gray
+  monogram), fixed alongside.
+
+**Verified:**
+- Ran the real `zaproxy/zap-stable` image (confirmed size: 1.16GB
+  content / 3.6GB on disk, not the "few hundred MB" first guessed —
+  corrected in the description before committing) against
+  `scanme.nmap.org` (an nmap.org-authorized test target) through the
+  actual `surveil.tools.base.run_tool()` code path: exit code 0 (the
+  `-I` flag confirmed working), 10 real `WARN-NEW` alerts found,
+  completed in 46s.
+- Ran `extract_zap()` against that **real captured output** (not just
+  the mock) — correctly extracted all 10 real findings at the expected
+  severities.
+- Confirmed via the real `--help` output (fetched through the backend's
+  `/api/tools/zap/help` endpoint) that every flag used in
+  `build_command()` (`-t`, `-m`, `-I`) is real and correctly spelled.
+- Full browser E2E: Tools catalog shows the zap card with correct logo/
+  description/example/install status; Run Tool dialog's Tool dropdown
+  correctly lists `zap` for WSTG-INFO-07 with the real command preview;
+  Help button shows the real `zap-baseline.py` usage text fetched live.
+  Zero console errors. Test engagement deleted after use.
+- `npx tsc --noEmit` clean; `python3 -c "from surveil.checklist import
+  build_checklist; ..."` import-time validation passes (24 tools, 17
+  extractors registered).
+
+**Next steps for the next agent:**
+1. `zap`'s output arrives mostly buffered in one large burst near the
+   end rather than streaming line-by-line (confirmed against a real
+   run) — this is the JVM inside ZAP's own container buffering its
+   output, not something `PYTHONUNBUFFERED` (entry 30) can fix since
+   ZAP isn't Python. Not pursued further; documented as a known
+   limitation in the tool's own description rather than silently
+   left unexplained.
+2. If surveil's own backend is ever run *inside* Docker (see
+   `docker-compose.yml`), `zap` won't be available there unless that
+   container is given access to the host's Docker socket — Docker-in-
+   Docker wasn't set up for this feature. Documented as a callout in
+   `README.md`'s Tool Wrappers section rather than solved; the CLI/
+   local-Python and `./run.sh` backend paths aren't affected.
+
+---
+
 ## 2026-08-27 (30) — Fix: arjun `[TIMEOUT]` against a real target, plus a broader live-streaming bug
 
 **Done (user report: `arjun -u http://192.168.2.15 --stable -t 10 ->
