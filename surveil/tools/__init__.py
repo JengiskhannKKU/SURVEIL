@@ -21,6 +21,8 @@ from .hydra_tool import HydraTool
 from .naabu_tool import NaabuTool
 from .dalfox_tool import DalfoxTool
 from .commix_tool import CommixTool
+from .curl_tool import CurlTool
+from .wget_tool import WgetTool
 
 TOOL_REGISTRY: dict[str, type] = {
     "nmap":      NmapTool,
@@ -44,6 +46,8 @@ TOOL_REGISTRY: dict[str, type] = {
     "naabu":     NaabuTool,
     "dalfox":    DalfoxTool,
     "commix":    CommixTool,
+    "curl":      CurlTool,
+    "wget":      WgetTool,
 }
 
 __all__ = [
@@ -55,5 +59,6 @@ __all__ = [
     "FfufTool", "GobusterTool", "KatanaTool",
     "NiktoTool", "TestsslTool", "SqlmapTool", "HydraTool",
     "NaabuTool", "DalfoxTool", "CommixTool",
+    "CurlTool", "WgetTool",
     "TOOL_REGISTRY",
 ]

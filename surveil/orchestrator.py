@@ -5,6 +5,7 @@ import time
 from datetime import datetime
 from typing import Callable, Optional
 
+from .checklist import apply_tool_overrides
 from .findings_extractor import extract_findings
 from .models import ChecklistItem, Engagement, Status
 from .tools import TOOL_REGISTRY
@@ -34,7 +35,11 @@ class Orchestrator:
         - Records elapsed time.
         - If *custom_command* is given, it replaces the tool's default
           command line and always executes for real (see BaseTool.run).
-        - Otherwise *fast* selects the tool's fast vs. full command variant.
+        - Otherwise the tool's Fast/Full command is used, with this item's
+          recommended wordlist category / nuclei tags / curl-wget override
+          swapped in via apply_tool_overrides() — the same swap the Run
+          Tool dialog's preview applies, so it actually takes effect on a
+          real run instead of only affecting the previewed text.
         """
         tool_cls = TOOL_REGISTRY.get(tool_name)
         if tool_cls is None:
@@ -44,7 +49,14 @@ class Orchestrator:
         item.started_at = item.started_at or datetime.now()
 
         tool = tool_cls(self.engagement.target)
-        result = tool.run(on_line=on_line, override_command=custom_command, fast=fast)
+        default_command = None
+        if custom_command is None:
+            default_command = apply_tool_overrides(
+                tool_name, item.id, tool.build_command(fast=fast), uses_wordlist=tool_cls.uses_wordlist
+            )
+        result = tool.run(
+            on_line=on_line, override_command=custom_command, default_command=default_command, fast=fast
+        )
 
         item.tool_outputs[tool_name] = result.output
         item.time_elapsed_seconds = (

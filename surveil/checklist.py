@@ -90,6 +90,110 @@ NUCLEI_TAGS: dict[str, str] = {
     "WSTG-APIT-01": "graphql",              # Testing GraphQL
 }
 
+# Same swap pattern as NUCLEI_TAGS, for curl: CurlTool's own
+# build_command() default (-sS -I, headers only) is a fine generic
+# "what does this endpoint send back" check, but several tests need
+# specific flags/headers to actually be about what they're named for —
+# -X OPTIONS for the HTTP-methods test, a spoofed Origin/Host header for
+# CORS/host-header-injection tests, etc. Items not listed here keep the
+# generic default. Values are the curl args between "curl" and the URL
+# (the URL itself is appended by the backend).
+CURL_ARGS: dict[str, list[str]] = {
+    "WSTG-CONF-06": ["-sS", "-i", "-X", "OPTIONS"],                              # Test HTTP Methods
+    "WSTG-CLNT-07": ["-sS", "-i", "-H", "Origin: https://evil-test.example"],    # CORS
+    "WSTG-INPV-17": ["-sS", "-i", "-H", "Host: evil-test.example"],              # Host Header Injection
+}
+
+# Path appended after the target for a curl/wget check that's about a
+# specific well-known file rather than the bare site root (e.g. RIA
+# cross domain policy files, robots.txt, a dangling .git directory).
+CURL_PATH_SUFFIX: dict[str, str] = {
+    "WSTG-CONF-08": "/crossdomain.xml",     # Test RIA Cross Domain Policy
+}
+WGET_PATH_SUFFIX: dict[str, str] = {
+    "WSTG-INFO-03": "/robots.txt",          # Review Webserver Metafiles
+    "WSTG-CONF-08": "/crossdomain.xml",     # Test RIA Cross Domain Policy
+    "WSTG-CONF-09": "/.git/HEAD",           # Test File Permission
+}
+
+
+def _swap_wordlist_flag(command: list[str], new_path: str) -> list[str]:
+    """Replace the value following a `-w` flag in *command*, if present."""
+    cmd = list(command)
+    for i, tok in enumerate(cmd):
+        if tok == "-w" and i + 1 < len(cmd):
+            cmd[i + 1] = new_path
+            break
+    return cmd
+
+
+def _swap_nuclei_tags(command: list[str], tags: str) -> list[str]:
+    """Replace the value following a `-tags` flag, if present."""
+    cmd = list(command)
+    for i, tok in enumerate(cmd):
+        if tok == "-tags" and i + 1 < len(cmd):
+            cmd[i + 1] = tags
+            break
+    return cmd
+
+
+def _apply_curl_override(command: list[str], item_id: str) -> list[str]:
+    """Swap in this test's CURL_ARGS/CURL_PATH_SUFFIX override, if any.
+
+    *command* is always ["curl", ...flags..., url] (CurlTool.build_command()
+    puts the URL last), so the override either replaces the flags (args)
+    or appends a path onto the URL (suffix), or both.
+    """
+    args = CURL_ARGS.get(item_id)
+    suffix = CURL_PATH_SUFFIX.get(item_id, "")
+    if not args and not suffix:
+        return command
+    flags = args if args else command[1:-1]
+    url = command[-1] + suffix
+    return ["curl", *flags, url]
+
+
+def _apply_wget_override(command: list[str], item_id: str) -> list[str]:
+    """Swap in this test's WGET_PATH_SUFFIX override, if any."""
+    suffix = WGET_PATH_SUFFIX.get(item_id, "")
+    if not suffix:
+        return command
+    return [*command[:-1], command[-1] + suffix]
+
+
+def apply_tool_overrides(
+    tool_name: str, item_id: str, command: list[str], *, uses_wordlist: bool
+) -> list[str]:
+    """Swap this checklist item's recommended wordlist category / nuclei
+    tags / curl-wget path+flags into *command*, if any of those apply.
+
+    Shared by the Run Tool dialog's command-preview endpoint AND the real
+    execution path (surveil.orchestrator.Orchestrator.run_tool) — the
+    recommendation has to be applied in both places, not just the preview,
+    or a tester who runs a tool without first editing the (already correct-
+    looking) previewed command gets the tool's plain generic default
+    instead of what was actually recommended for this specific test. That
+    was a real bug: WORDLIST_CATEGORY/NUCLEI_TAGS previously only affected
+    the text shown in the dialog, not what actually executed, unless the
+    tester happened to edit the command field first.
+    """
+    cmd = list(command)
+    if uses_wordlist:
+        category = WORDLIST_CATEGORY.get(item_id)
+        if category:
+            from .wordlists import recommend_wordlist  # local import: avoid a hard module-load coupling to wordlists.py for callers that never hit this branch
+            cmd = _swap_wordlist_flag(cmd, recommend_wordlist(category))
+    if tool_name == "nuclei":
+        tags = NUCLEI_TAGS.get(item_id)
+        if tags:
+            cmd = _swap_nuclei_tags(cmd, tags)
+    elif tool_name == "curl":
+        cmd = _apply_curl_override(cmd, item_id)
+    elif tool_name == "wget":
+        cmd = _apply_wget_override(cmd, item_id)
+    return cmd
+
+
 # Human-readable label per category, shown in the Run Tool dialog's
 # "recommended for this test" hint.
 CATEGORY_LABELS: dict[str, str] = {
@@ -138,7 +242,7 @@ def build_checklist() -> list[ChecklistItem]:
             ),
             category="Information Gathering",
             category_code="INFO",
-            tools=["nmap", "httpx", "whatweb"],
+            tools=["nmap", "httpx", "whatweb", "curl"],
             owasp_ref="WSTG-INFO-02",
             cwe_ids=["CWE-200"],
             references=["https://owasp.org/www-project-web-security-testing-guide/v42/4-Web_Application_Security_Testing/01-Information_Gathering/02-Fingerprint_Web_Server"],
@@ -153,7 +257,7 @@ def build_checklist() -> list[ChecklistItem]:
             ),
             category="Information Gathering",
             category_code="INFO",
-            tools=["httpx", "ffuf"],
+            tools=["httpx", "ffuf", "wget"],
             owasp_ref="WSTG-INFO-03",
             cwe_ids=["CWE-200"],
         ),
@@ -283,7 +387,7 @@ def build_checklist() -> list[ChecklistItem]:
             ),
             category="Configuration Management",
             category_code="CONF",
-            tools=["nikto", "nuclei", "httpx"],
+            tools=["nikto", "nuclei", "httpx", "curl"],
             owasp_ref="WSTG-CONF-02",
             cwe_ids=["CWE-16", "CWE-209", "CWE-693"],
         ),
@@ -339,7 +443,7 @@ def build_checklist() -> list[ChecklistItem]:
             ),
             category="Configuration Management",
             category_code="CONF",
-            tools=["nmap", "httpx", "nuclei"],
+            tools=["nmap", "httpx", "nuclei", "curl"],
             owasp_ref="WSTG-CONF-06",
             cwe_ids=["CWE-16", "CWE-749"],
         ),
@@ -353,7 +457,7 @@ def build_checklist() -> list[ChecklistItem]:
             ),
             category="Configuration Management",
             category_code="CONF",
-            tools=["testssl", "httpx", "nuclei"],
+            tools=["testssl", "httpx", "nuclei", "curl"],
             owasp_ref="WSTG-CONF-07",
             cwe_ids=["CWE-319", "CWE-326"],
         ),
@@ -368,7 +472,7 @@ def build_checklist() -> list[ChecklistItem]:
             ),
             category="Configuration Management",
             category_code="CONF",
-            tools=["httpx"],
+            tools=["httpx", "curl", "wget"],
             owasp_ref="WSTG-CONF-08",
             cwe_ids=["CWE-942"],
         ),
@@ -382,7 +486,7 @@ def build_checklist() -> list[ChecklistItem]:
             ),
             category="Configuration Management",
             category_code="CONF",
-            tools=["ffuf", "nikto"],
+            tools=["ffuf", "nikto", "wget"],
             owasp_ref="WSTG-CONF-09",
             cwe_ids=["CWE-732"],
         ),
@@ -503,7 +607,7 @@ def build_checklist() -> list[ChecklistItem]:
             ),
             category="Authentication",
             category_code="ATHN",
-            tools=["testssl", "httpx"],
+            tools=["testssl", "httpx", "curl"],
             owasp_ref="WSTG-ATHN-01",
             cwe_ids=["CWE-319"],
         ),
@@ -574,7 +678,7 @@ def build_checklist() -> list[ChecklistItem]:
             ),
             category="Authentication",
             category_code="ATHN",
-            tools=["httpx"],
+            tools=["httpx", "curl"],
             owasp_ref="WSTG-ATHN-06",
             cwe_ids=["CWE-525"],
         ),
@@ -709,7 +813,7 @@ def build_checklist() -> list[ChecklistItem]:
             ),
             category="Session Management",
             category_code="SESS",
-            tools=["httpx"],
+            tools=["httpx", "curl"],
             owasp_ref="WSTG-SESS-01",
             cwe_ids=["CWE-330"],
         ),
@@ -723,7 +827,7 @@ def build_checklist() -> list[ChecklistItem]:
             ),
             category="Session Management",
             category_code="SESS",
-            tools=["httpx"],
+            tools=["httpx", "curl"],
             owasp_ref="WSTG-SESS-02",
             cwe_ids=["CWE-614", "CWE-1004"],
         ),
@@ -1070,7 +1174,7 @@ def build_checklist() -> list[ChecklistItem]:
             ),
             category="Input Validation",
             category_code="INPV",
-            tools=["nuclei", "httpx"],
+            tools=["nuclei", "httpx", "curl"],
             owasp_ref="WSTG-INPV-17",
             cwe_ids=["CWE-644"],
         ),
@@ -1117,7 +1221,7 @@ def build_checklist() -> list[ChecklistItem]:
             ),
             category="Error Handling",
             category_code="ERRH",
-            tools=["nikto", "nuclei"],
+            tools=["nikto", "nuclei", "curl"],
             owasp_ref="WSTG-ERRH-01",
             cwe_ids=["CWE-209"],
         ),
@@ -1131,7 +1235,7 @@ def build_checklist() -> list[ChecklistItem]:
             ),
             category="Error Handling",
             category_code="ERRH",
-            tools=["nuclei"],
+            tools=["nuclei", "curl"],
             owasp_ref="WSTG-ERRH-02",
             cwe_ids=["CWE-209", "CWE-200"],
         ),
@@ -1429,7 +1533,7 @@ def build_checklist() -> list[ChecklistItem]:
             ),
             category="Client-side Testing",
             category_code="CLNT",
-            tools=["httpx", "nuclei"],
+            tools=["httpx", "nuclei", "curl"],
             owasp_ref="WSTG-CLNT-07",
             cwe_ids=["CWE-346"],
         ),
@@ -1458,7 +1562,7 @@ def build_checklist() -> list[ChecklistItem]:
             ),
             category="Client-side Testing",
             category_code="CLNT",
-            tools=["httpx", "nuclei"],
+            tools=["httpx", "nuclei", "curl"],
             owasp_ref="WSTG-CLNT-09",
             cwe_ids=["CWE-1021"],
         ),
@@ -1546,9 +1650,10 @@ def _validate_tool_references() -> None:
     while) as soon as this module loads, instead of only noticing when a
     tester's Run Tool dropdown for that item is quietly missing an entry.
 
-    Also catches the NUCLEI_TAGS-specific version of the same mistake: a
-    typo'd item ID, or a tag override for an item whose `tools` doesn't
-    even include nuclei (so the override could never actually apply).
+    Also catches the per-tool-override version of the same mistake (used
+    by NUCLEI_TAGS, CURL_ARGS, CURL_PATH_SUFFIX, WGET_PATH_SUFFIX): a
+    typo'd item ID, or an override for an item whose `tools` doesn't even
+    include the tool being overridden (so it could never actually apply).
     """
     from .tools import TOOL_REGISTRY  # local import: tools/ has no reason to import checklist.py, but avoid any load-order assumption
 
@@ -1562,15 +1667,22 @@ def _validate_tool_references() -> None:
                 f"check TOOL_REGISTRY in surveil/tools/__init__.py"
             )
 
-    for item_id in NUCLEI_TAGS:
-        item = items_by_id.get(item_id)
-        if item is None:
-            raise AssertionError(f"NUCLEI_TAGS references unknown checklist item {item_id!r}")
-        if "nuclei" not in item.tools:
-            raise AssertionError(
-                f"NUCLEI_TAGS overrides tags for {item_id}, but its tools list "
-                f"{item.tools} doesn't include 'nuclei' — the override can never apply"
-            )
+    def _check_override(overrides: dict, required_tool: str, dict_name: str) -> None:
+        for item_id in overrides:
+            item = items_by_id.get(item_id)
+            if item is None:
+                raise AssertionError(f"{dict_name} references unknown checklist item {item_id!r}")
+            if required_tool not in item.tools:
+                raise AssertionError(
+                    f"{dict_name} overrides {required_tool} for {item_id}, but its tools "
+                    f"list {item.tools} doesn't include {required_tool!r} — the override "
+                    f"can never apply"
+                )
+
+    _check_override(NUCLEI_TAGS, "nuclei", "NUCLEI_TAGS")
+    _check_override(CURL_ARGS, "curl", "CURL_ARGS")
+    _check_override(CURL_PATH_SUFFIX, "curl", "CURL_PATH_SUFFIX")
+    _check_override(WGET_PATH_SUFFIX, "wget", "WGET_PATH_SUFFIX")
 
 
 _validate_tool_references()

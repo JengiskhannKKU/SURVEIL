@@ -41,6 +41,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         wafw00f \
         sqlmap \
         hydra \
+        curl \
+        wget \
         perl \
         libjson-perl \
         libxml-writer-perl \

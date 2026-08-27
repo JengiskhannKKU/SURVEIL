@@ -297,6 +297,7 @@ class BaseTool(ABC):
         self,
         on_line: Callable[[str], None] | None = None,
         override_command: list[str] | None = None,
+        default_command: list[str] | None = None,
         fast: bool = False,
     ) -> ToolResult:
         """Run the tool.
@@ -304,8 +305,18 @@ class BaseTool(ABC):
         If *override_command* is given (e.g. a tester-edited command line),
         it always executes for real — a missing binary surfaces as a real
         error rather than silently falling back to simulated output, since
-        the tester explicitly chose that command. Otherwise *fast* selects
-        which built-in command variant (fast vs. full) to run.
+        the tester explicitly chose that command.
+
+        Otherwise *default_command* is used if given — this is the plain
+        Fast/Full command with the checklist item's own recommendation
+        already swapped in (see surveil.checklist.apply_tool_overrides,
+        called by Orchestrator.run_tool before this), so e.g. nuclei
+        actually gets the item-specific -tags value on a real run and not
+        just in the preview text. Unlike *override_command*, it still
+        respects the simulated-fallback-when-not-installed behavior below
+        — it's a smarter default, not an explicit tester override. Falls
+        back to *fast*/self.build_command() when neither is given (plain
+        CLI/TUI callers with no checklist item context).
         """
         start = time.monotonic()
         if override_command is None and not self.is_available():
@@ -314,15 +325,21 @@ class BaseTool(ABC):
             if on_line:
                 for line in output.splitlines():
                     on_line(line)
+            shown_command = default_command if default_command is not None else self.build_command(fast=fast)
             return ToolResult(
                 tool=self.name,
-                command=" ".join(self.build_command(fast=fast)),
+                command=" ".join(shown_command),
                 output=output,
                 exit_code=0,
                 elapsed_seconds=elapsed,
                 simulated=True,
             )
-        cmd = override_command if override_command is not None else self.build_command(fast=fast)
+        if override_command is not None:
+            cmd = override_command
+        elif default_command is not None:
+            cmd = default_command
+        else:
+            cmd = self.build_command(fast=fast)
         # A tester-edited or scan-mode command may be more thorough than the
         # plain default, so use the "full" timeout ceiling for it rather
         # than whatever *fast* happens to be set to.
