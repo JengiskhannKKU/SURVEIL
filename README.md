@@ -34,9 +34,9 @@ surveil is a terminal-native tool that brings together web application enumerati
 └────────────────┴────────────────────┴───────────────────────┘
 ```
 
-- **Tool Orchestration Layer** — wraps 18 tools via subprocess: `nmap`, `httpx`, `whatweb`, `wafw00f`, `subfinder`, `nuclei`, `arjun`, `dnsx`, `gowitness`, `wpscan`, `amass`, `ffuf`, `gobuster`, `katana`, `nikto`, `testssl`, `sqlmap`, `hydra` (see `TOOL_REGISTRY` in `surveil/tools/__init__.py`). Falls back to realistic simulated output when a tool is not installed (demo mode). Each tool supports a **Fast** and a **Full** command variant, and its exact command line is editable before running.
+- **Tool Orchestration Layer** — wraps 21 tools via subprocess: `nmap`, `httpx`, `whatweb`, `wafw00f`, `subfinder`, `nuclei`, `arjun`, `dnsx`, `gowitness`, `wpscan`, `amass`, `ffuf`, `gobuster`, `katana`, `nikto`, `testssl`, `sqlmap`, `hydra`, `naabu`, `dalfox`, `commix` (see `TOOL_REGISTRY` in `surveil/tools/__init__.py`). Falls back to realistic simulated output when a tool is not installed (demo mode). Each tool supports a **Fast** and a **Full** command variant, and its exact command line is editable before running.
 - **Checklist & State Engine** — the full OWASP WSTG v4.2 table of contents, all 12 sections (97 items) with status tracking, Textual TUI, JSON persistence, and a saved-engagement picker.
-- **Auto-Finding Extraction** (`surveil/findings_extractor.py`) — parses raw output from 13 of the 18 tools (`nmap`, `httpx`, `whatweb`, `nuclei`, `wafw00f`, `subfinder`, `nikto`, `sqlmap`, `hydra`, `wpscan`, `dnsx`, `ffuf`, `gobuster`) into `Finding` objects (auto CVSS scoring, OWASP/CWE mapping) flagged `verified=False`, so a tester gets a starting point to confirm or dismiss rather than a blank checklist.
+- **Auto-Finding Extraction** (`surveil/findings_extractor.py`) — parses raw output from 16 of the 21 tools (`nmap`, `httpx`, `whatweb`, `nuclei`, `wafw00f`, `subfinder`, `nikto`, `sqlmap`, `hydra`, `wpscan`, `dnsx`, `ffuf`, `gobuster`, `naabu`, `dalfox`, `commix`) into `Finding` objects (auto CVSS scoring, OWASP/CWE mapping) flagged `verified=False`, so a tester gets a starting point to confirm or dismiss rather than a blank checklist.
 - **Reporting Engine** — CVSS v3.1 base score calculator, OWASP/CWE metadata, Markdown and .docx export, plus an in-app **View Report** panel (web app) that renders the same Markdown report live instead of only downloading it.
 
 ---
@@ -321,7 +321,7 @@ CLI Reference below.
 ### Tools catalog (help/reference)
 
 The wrench icon in the nav bar (next to Settings) opens a full reference
-of all 18 tools — logo, description, a copyable example command, install
+of all 21 tools — logo, description, a copyable example command, install
 status, and (for a not-installed tool) the same install commands the
 Run Tool dialog shows — in one searchable grid, independent of any
 specific checklist item. `frontend/src/components/ToolsCatalog.tsx`.
@@ -331,7 +331,7 @@ specific checklist item. `frontend/src/components/ToolsCatalog.tsx`.
 Pressing `R` on a checklist item opens the Run Tool dialog — the **Run tool** button itself shows an `R` badge as a visible hint. The shortcut is skipped while focus is inside a text field (including the item's own Notes textarea), so typing "r" while taking notes never accidentally pops the dialog open (`frontend/src/components/ItemDetail.tsx`).
 
 Next to **Run tool** sits a page-level **Help** button — opens a dialog listing every tool mapped to this test (logo, install status, description) with an **Options** button per tool that shows that tool's full real `--help` output, so you can see what your options are across all the tools for this test before committing to one (`frontend/src/components/ItemToolsHelpDialog.tsx`). This is separate from the Run Tool dialog's own **Help** button below, which is scoped to whichever single tool is currently selected there.
-- **Tool logo + description in the picker itself** — the Tool dropdown shows a small colored monogram badge per tool (`frontend/src/lib/toolLogos.ts` — a fixed color/2-letter badge per tool, not a real project logo/wordmark, since pulling in 18 external brand image assets isn't worth it for a local tool) plus a one-line description and install status for every option, not just the one currently selected — so you can see what each tool does while picking, not only after.
+- **Tool logo + description in the picker itself** — the Tool dropdown shows a small colored monogram badge per tool (`frontend/src/lib/toolLogos.ts` — a fixed color/2-letter badge per tool, not a real project logo/wordmark, since pulling in 21 external brand image assets isn't worth it for a local tool) plus a one-line description and install status for every option, not just the one currently selected — so you can see what each tool does while picking, not only after.
 - **Guide** — a one-line description of what the tool does plus an example invocation, shown above the command field and updated as you change the selected tool.
 - **Help button** — next to Run, opens a dialog showing the selected tool's real `--help` output straight from the installed binary (e.g. `nmap -h`, `sqlmap -hh`) — not a hand-maintained flag summary, so it never drifts from whatever version is actually installed. Falls back to the description/example/install-hints if the tool isn't installed. Backend: `GET /api/tools/{tool_name}/help` (`BaseTool.run_help()` in `surveil/tools/base.py`, cached per tool). Frontend: `frontend/src/components/ToolHelpDialog.tsx`.
 - **Fast / Full scan switch** — Fast uses a quicker, narrower-scope command (fewer ports/templates/threads, shorter timeouts, or the tool's own `--fast`-style flag); Full (the default) is the thorough variant. Toggling it updates the command preview live.
@@ -394,7 +394,7 @@ docstring at the top of `surveil/checklist.py`.
 
 ## Tool Wrappers
 
-Each wrapper tries the real binary first. If not installed, it returns realistic simulated output so the demo always works. All 18 are registered in `TOOL_REGISTRY` (`surveil/tools/__init__.py`) and invokable from both the CLI and TUI. Every wrapper also carries a `description` and `example` (shown as the guide in the TUI's Run Tool dialog) and a Fast/Full `build_command(fast=...)` variant.
+Each wrapper tries the real binary first. If not installed, it returns realistic simulated output so the demo always works. All 21 are registered in `TOOL_REGISTRY` (`surveil/tools/__init__.py`) and invokable from both the CLI and TUI. Every wrapper also carries a `description` and `example` (shown as the guide in the TUI's Run Tool dialog) and a Fast/Full `build_command(fast=...)` variant.
 
 With 97 checklist items now (see above), the full item↔tool mapping is best read directly from each `ChecklistItem`'s `tools=[...]` in `surveil/checklist.py` rather than kept in sync by hand here — the table below is a representative sample per tool, not exhaustive.
 
@@ -418,18 +418,22 @@ With 97 checklist items now (see above), the full item↔tool mapping is best re
 | `katana` | Web crawling & endpoint discovery | INFO-04/05/06/07, CLNT-01/02/06/11 |
 | `nikto` | Web server vulnerability scanning | CONF-02, CONF-09, ERRH-01 |
 | `testssl` | TLS/SSL configuration analysis | CONF-07, ATHN-01, CRYP-01/03, SESS-09 |
+| `naabu` | Fast SYN-based port discovery (pairs with nmap) | CONF-01 |
+| `dalfox` | Reflected/DOM XSS fuzzing, browser-verified | INPV-01 |
+| `commix` | Automated OS command injection testing | INPV-12 |
 
-Auto-finding extraction (`surveil/findings_extractor.py`) covers 13 of the
-18 tools: `nmap`, `httpx`, `whatweb`, `nuclei`, `wafw00f`, `subfinder`,
-`nikto`, `sqlmap`, `hydra`, `wpscan`, `dnsx`, `ffuf`, `gobuster`. The
-remaining 5 (`amass`, `arjun`, `gowitness`, `katana`, `testssl`) store and
-show their output but don't auto-parse it into findings yet — `testssl`'s
-output in particular is fixed-width columnar text that needs a different
-parsing approach than the line/regex matching the others use.
+Auto-finding extraction (`surveil/findings_extractor.py`) covers 16 of the
+21 tools: `nmap`, `httpx`, `whatweb`, `nuclei`, `wafw00f`, `subfinder`,
+`nikto`, `sqlmap`, `hydra`, `wpscan`, `dnsx`, `ffuf`, `gobuster`, `naabu`,
+`dalfox`, `commix`. The remaining 5 (`amass`, `arjun`, `gowitness`,
+`katana`, `testssl`) store and show their output but don't auto-parse it
+into findings yet — `testssl`'s output in particular is fixed-width
+columnar text that needs a different parsing approach than the line/regex
+matching the others use.
 
 ### Installing the tool binaries
 
-None of the 18 tools are required — each falls back to simulated demo
+None of the 21 tools are required — each falls back to simulated demo
 output when its binary isn't found. To get real output, install what you
 need with:
 

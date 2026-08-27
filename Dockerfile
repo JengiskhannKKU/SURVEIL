@@ -3,6 +3,12 @@
 # ---- Stage 1: build Go-based enumeration tools ----
 FROM golang:1.26-bookworm AS gotools
 
+# libpcap-dev: naabu's SYN-scan mode links against libpcap at build time
+# (CGO) — without it the build either fails or silently falls back to a
+# slower plain-connect scan.
+RUN apt-get update && apt-get install -y --no-install-recommends libpcap-dev \
+    && rm -rf /var/lib/apt/lists/*
+
 ENV GOPATH=/root/go
 RUN go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest \
     && go install -v github.com/projectdiscovery/httpx/cmd/httpx@latest \
@@ -12,7 +18,9 @@ RUN go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest 
     && go install -v github.com/sensepost/gowitness@latest \
     && go install -v github.com/owasp-amass/amass/v4/...@master \
     && go install -v github.com/ffuf/ffuf/v2@latest \
-    && go install -v github.com/OJ/gobuster/v3@latest
+    && go install -v github.com/OJ/gobuster/v3@latest \
+    && go install -v github.com/projectdiscovery/naabu/v2/cmd/naabu@latest \
+    && go install -v github.com/hahwul/dalfox/v2@latest
 
 # ---- Stage 2: runtime image ----
 FROM python:3.11-slim-bookworm
@@ -62,6 +70,8 @@ COPY --from=gotools /root/go/bin/gowitness /usr/local/bin/gowitness
 COPY --from=gotools /root/go/bin/amass /usr/local/bin/amass
 COPY --from=gotools /root/go/bin/ffuf /usr/local/bin/ffuf
 COPY --from=gotools /root/go/bin/gobuster /usr/local/bin/gobuster
+COPY --from=gotools /root/go/bin/naabu /usr/local/bin/naabu
+COPY --from=gotools /root/go/bin/dalfox /usr/local/bin/dalfox
 
 # wpscan (Ruby gem) and arjun (Python tool, installed in an isolated venv via pipx).
 RUN gem install wpscan --no-document \
@@ -71,6 +81,11 @@ RUN gem install wpscan --no-document \
 # testssl.sh — plain shell script, no build step required.
 RUN git clone --depth 1 https://github.com/testssl/testssl.sh.git /opt/testssl.sh \
     && ln -s /opt/testssl.sh/testssl.sh /usr/local/bin/testssl.sh
+
+# commix — not packaged for Debian; install from source, same pattern as nikto.
+RUN git clone --depth 1 https://github.com/commixproject/commix.git /opt/commix \
+    && printf '#!/bin/sh\nexec python3 /opt/commix/commix.py "$@"\n' > /usr/local/bin/commix \
+    && chmod +x /usr/local/bin/commix
 
 WORKDIR /app
 COPY pyproject.toml README.md ./

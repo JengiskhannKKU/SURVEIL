@@ -18,6 +18,9 @@ from .nikto_tool import NiktoTool
 from .testssl_tool import TestsslTool
 from .sqlmap_tool import SqlmapTool
 from .hydra_tool import HydraTool
+from .naabu_tool import NaabuTool
+from .dalfox_tool import DalfoxTool
+from .commix_tool import CommixTool
 
 TOOL_REGISTRY: dict[str, type] = {
     "nmap":      NmapTool,
@@ -38,6 +41,9 @@ TOOL_REGISTRY: dict[str, type] = {
     "testssl":   TestsslTool,
     "sqlmap":    SqlmapTool,
     "hydra":     HydraTool,
+    "naabu":     NaabuTool,
+    "dalfox":    DalfoxTool,
+    "commix":    CommixTool,
 }
 
 __all__ = [
@@ -48,5 +54,6 @@ __all__ = [
     "WpscanTool", "AmassTool",
     "FfufTool", "GobusterTool", "KatanaTool",
     "NiktoTool", "TestsslTool", "SqlmapTool", "HydraTool",
+    "NaabuTool", "DalfoxTool", "CommixTool",
     "TOOL_REGISTRY",
 ]

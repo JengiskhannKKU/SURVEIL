@@ -723,6 +723,137 @@ def extract_dnsx(item_id: str, output: str) -> list[Finding]:
 
 
 # ---------------------------------------------------------------------------
+# naabu findings
+# ---------------------------------------------------------------------------
+
+# Ports whose mere exposure is itself worth flagging — databases, caches,
+# and management interfaces that should almost never be internet-facing.
+# (port, title, severity, cwe)
+_INTERESTING_PORTS: tuple[tuple[int, str, Severity, str], ...] = (
+    (23,    "Telnet Service Exposed (Unencrypted)", Severity.HIGH, "CWE-319"),
+    (3306,  "MySQL Database Port Exposed", Severity.HIGH, "CWE-16"),
+    (5432,  "PostgreSQL Database Port Exposed", Severity.HIGH, "CWE-16"),
+    (6379,  "Redis Port Exposed (Often Unauthenticated)", Severity.HIGH, "CWE-306"),
+    (27017, "MongoDB Port Exposed", Severity.HIGH, "CWE-16"),
+    (9200,  "Elasticsearch Port Exposed", Severity.HIGH, "CWE-16"),
+    (2375,  "Docker API Exposed (Unauthenticated)", Severity.CRITICAL, "CWE-306"),
+    (5900,  "VNC Port Exposed", Severity.HIGH, "CWE-16"),
+    (3389,  "RDP Port Exposed", Severity.MEDIUM, "CWE-16"),
+    (21,    "FTP Service Exposed", Severity.MEDIUM, "CWE-16"),
+)
+
+
+def extract_naabu(item_id: str, output: str) -> list[Finding]:
+    """Extract findings from naabu output (real -silent mode prints one bare
+    'host:port' line per open port — nothing else)."""
+    findings: list[Finding] = []
+    ports = {int(p) for p in re.findall(r":(\d+)\s*$", output, re.MULTILINE)}
+
+    for port, title, severity, cwe in _INTERESTING_PORTS:
+        if port not in ports:
+            continue
+        findings.append(_make_finding(
+            item_id=item_id,
+            title=title,
+            severity=severity,
+            description=f"Port {port} is open and reachable — {title.lower()}.",
+            evidence=_grep_context(output, f":{port}", context=0),
+            owasp_category="WSTG-CONF-01",
+            cwe_id=cwe,
+            tool="naabu",
+            remediation=f"Firewall port {port} from the internet, or bind the service to localhost/an internal network only.",
+        ))
+
+    return findings
+
+
+# ---------------------------------------------------------------------------
+# dalfox findings
+# ---------------------------------------------------------------------------
+
+def extract_dalfox(item_id: str, output: str) -> list[Finding]:
+    """Extract findings from dalfox output.
+
+    A confirmed hit is reported as a `[POC][METHOD]` block followed by
+    `URL:`/`Param:`/`Type:` lines — dalfox's own real reporting format for
+    a verified (not just reflected-looking) XSS.
+    """
+    findings: list[Finding] = []
+
+    poc_re = re.compile(
+        r"\[POC\]\[(\w+)\][^\n]*\n\s*URL:\s*(\S+)\n\s*Param:\s*(\S+)\n\s*Type:\s*(\S+)"
+    )
+    for method, url, param, xss_type in poc_re.findall(output):
+        findings.append(_make_finding(
+            item_id=item_id,
+            title=f"{xss_type} XSS in '{param}' Parameter",
+            # Overridden by cvss_vector below (a typical reflected-XSS
+            # vector scores 6.1/MEDIUM) — this argument is just the
+            # pre-CVSS fallback, kept accurate rather than misleading.
+            severity=Severity.MEDIUM,
+            description=(
+                f"dalfox confirmed a {xss_type.lower()} XSS vector via the '{param}' "
+                f"{method} parameter, verified against a real browser context "
+                f"(not just a raw string reflection)."
+            ),
+            evidence=url,
+            owasp_category="WSTG-INPV-01",
+            cwe_id="CWE-79",
+            cvss_vector=COMMON_VECTORS["reflected_xss"],
+            tool="dalfox",
+            remediation=(
+                "Context-appropriately encode/escape this parameter wherever it's "
+                "reflected into the response, and add a Content-Security-Policy as "
+                "defense in depth."
+            ),
+        ))
+
+    return findings
+
+
+# ---------------------------------------------------------------------------
+# commix findings
+# ---------------------------------------------------------------------------
+
+def extract_commix(item_id: str, output: str) -> list[Finding]:
+    """Extract findings from commix output.
+
+    commix announces a confirmed injection with a line naming the vulnerable
+    parameter and technique, e.g. "The (GET) 'host' parameter is vulnerable
+    via the classic injection technique."
+    """
+    findings: list[Finding] = []
+
+    vuln_re = re.compile(
+        r"The \((\w+)\)\s*'(\w+)'\s*parameter is vulnerable via the (.+?) technique",
+        re.IGNORECASE,
+    )
+    for method, param, technique in vuln_re.findall(output):
+        findings.append(_make_finding(
+            item_id=item_id,
+            title=f"OS Command Injection in '{param}' ({method}) Parameter",
+            severity=Severity.CRITICAL,
+            description=(
+                f"commix confirmed OS command injection in the '{param}' {method} "
+                f"parameter via the {technique} technique — arbitrary shell commands "
+                f"can be executed on the server."
+            ),
+            evidence=_grep_context(output, param, context=1),
+            owasp_category="WSTG-INPV-12",
+            cwe_id="CWE-78",
+            cvss_vector=COMMON_VECTORS["command_injection"],
+            tool="commix",
+            remediation=(
+                "Never pass user input to a shell/OS command. Use a language-native "
+                "API instead of shelling out; if unavoidable, use strict allow-listing "
+                "and a non-shell exec call (no string concatenation into a shell)."
+            ),
+        ))
+
+    return findings
+
+
+# ---------------------------------------------------------------------------
 # ffuf / gobuster findings — both discover directories/files by brute
 # force; share the same "does this path look sensitive" heuristic.
 # ---------------------------------------------------------------------------
@@ -807,6 +938,9 @@ EXTRACTORS: dict[str, callable] = {
     "dnsx":      extract_dnsx,
     "ffuf":      extract_ffuf,
     "gobuster":  extract_gobuster,
+    "naabu":     extract_naabu,
+    "dalfox":    extract_dalfox,
+    "commix":    extract_commix,
 }
 
 

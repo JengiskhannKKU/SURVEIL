@@ -6,6 +6,104 @@ was verified, and what the next agent should pick up.
 
 ---
 
+## 2026-08-27 (20) — Three new tools: naabu, dalfox, commix
+
+**Done (user request: "can you implement by add other tools for pentest
+more complete"):**
+- Audited every checklist item's `tools=[...]` mapping (script dump of
+  all 97 items) to find genuine gaps rather than guessing — the three
+  additions below each fill a specific one instead of duplicating a
+  tool the checklist already had:
+  - **naabu** (`surveil/tools/naabu_tool.py`) — ProjectDiscovery's fast
+    SYN-based port scanner. Mapped alongside `nmap` on WSTG-CONF-01
+    (Network Infrastructure Configuration) as a fast pre-scan pass;
+    nmap remains the tool for banner/version detail on whatever naabu
+    finds open. Fast mode: top 100 ports. Full: all 65535 (`-p -`).
+  - **dalfox** (`surveil/tools/dalfox_tool.py`) — reflected/DOM XSS
+    fuzzer that confirms each hit in a real browser context instead of
+    just flagging a raw string reflection (fewer false positives than
+    nuclei's generic XSS templates). Mapped alongside `nuclei` on
+    WSTG-INPV-01 (Reflected XSS) only — deliberately **not** added to
+    WSTG-INPV-02 (Stored XSS), since dalfox's URL-fuzzing approach
+    can't do the submit-then-revisit workflow stored XSS actually needs.
+  - **commix** (`surveil/tools/commix_tool.py`) — automated OS command
+    injection tester (parameter + crawled-form fuzzing, `--batch` so it
+    never blocks on a prompt). Mapped alongside `nuclei` on
+    WSTG-INPV-12 (Command Injection).
+- New `findings_extractor.py` extractors for all three: `extract_naabu`
+  (flags exposure of a curated list of sensitive ports — DB/cache/
+  Docker-API/RDP/VNC/Telnet/FTP — not every open port, same
+  "only the interesting ones" pattern as `_flag_interesting_paths` for
+  ffuf/gobuster), `extract_dalfox` (parses its `[POC]`/`URL:`/`Param:`/
+  `Type:` block), `extract_commix` (parses its "parameter is vulnerable
+  via the ... technique" confirmation line). Two new `COMMON_VECTORS`
+  entries in `scoring.py`: `command_injection` (10.0/CRITICAL) and
+  `reflected_xss` (6.1/MEDIUM — the standard real-world CVSS for a
+  typical reflected XSS, not guessed).
+- `Dockerfile`: `naabu` and `dalfox` are Go tools, added to the
+  existing `go install` batch in the build stage (`naabu` additionally
+  needs `libpcap-dev` at build time for its SYN-scan mode — added to
+  that stage only, not the runtime image). `commix` isn't packaged for
+  Debian, so it's git-cloned like `nikto`/`testssl.sh` with a tiny
+  `/usr/local/bin/commix` shell shim that execs `commix.py` — same
+  pattern as those two, not a new one.
+- 21 tools now registered (was 18).
+
+**Verified:**
+- Import-time `_validate_tool_references()` guard (catches a checklist
+  item pointing at an unregistered tool name) passes clean.
+- Ran each new tool's `build_command()` (fast + full) and
+  `mock_output()` through its extractor directly: naabu flags MySQL +
+  Redis from its mock port list, dalfox extracts both mock XSS POCs at
+  the correct CVSS-computed MEDIUM severity, commix extracts its mock
+  command-injection confirmation at CRITICAL. All correct.
+- Hit the real running backend (`/api/tools`, `/api/tools/{name}/command`)
+  — all three appear, correct default command per tool, `available:
+  false` (accurate — none installed on this dev machine).
+- Confirmed via a **freshly created** engagement (not an old one) that
+  WSTG-CONF-01/INPV-01/INPV-12 now default to naabu/dalfox/commix
+  respectively in the Run Tool dialog, and all three show correctly in
+  the Tools catalog (logo, description, example, install hints — both
+  `apt` and `git` hints render for commix). Confirmed via a **pre-existing**
+  engagement that its checklist items correctly keep their old tool
+  list — checklist items snapshot `build_checklist()` at creation time
+  and never resync, so this is expected, not a regression. Zero console
+  errors. Test engagement deleted after use.
+- `npx tsc --noEmit` clean. The only frontend change needed was adding
+  3 entries to `frontend/src/lib/toolLogos.ts` (distinct badge colors —
+  the Tools catalog/Run Tool dialog already render whatever `/api/tools`
+  returns, so they picked up the new tools with no other UI changes;
+  without the new entries they'd have shown a plain gray fallback badge).
+- Full Docker build of the image with all three new tools included —
+  **passed clean**. Ran the built image directly (`docker run --rm
+  --entrypoint sh surveil:tooltest -c "..."`) and confirmed `naabu
+  -version`, `dalfox version`, and `commix --version` all execute for
+  real, and `BaseTool.is_available()` returns `True` for all three from
+  inside the container. Test image removed after verification
+  (`docker rmi`). `libpcap-dev` in the Go build stage was in fact needed
+  for naabu's build to succeed with SYN-scan support.
+
+**Next steps for the next agent:**
+1. Real-machine verification of the new tools' actual output format
+   (as opposed to the hand-authored mock output) hasn't happened — the
+   extractors are built against documented/typical output shapes for
+   each tool, not a captured real run. Worth a real run against a
+   deliberately vulnerable target (DVWA, WebGoat) to confirm the regexes
+   actually match.
+2. Other real gaps noticed during the audit but not filled this round
+   (all currently `tools=[]`, correctly manual-only per WSTG, or a
+   deliberate scope call — not oversights): WSTG-BUSL-* (business logic
+   flaws — inherently un-automatable), WSTG-SESS-03/06/07/08 (session
+   fixation/CSRF/hijacking/timeout — mostly workflow-driven), and a few
+   WSTG-CLNT items. A JWT-specific tool (e.g. jwt_tool) for
+   WSTG-SESS-05's token-weakness testing was considered and deferred —
+   it needs an actual captured token as input, not just a target URL,
+   which doesn't fit this app's "run a tool against a target" model
+   without more plumbing (a way to feed it a token from a previous
+   tool's output).
+
+---
+
 ## 2026-08-25 (19) — Help button on the item detail page itself, next to Run tool
 
 **Done (user request: "add help button next from run tool button for

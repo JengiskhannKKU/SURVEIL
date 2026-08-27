@@ -31,6 +31,9 @@ export const TOOL_LOGOS: Record<string, ToolLogoMeta> = {
   wafw00f:   { label: "WF", color: "#6366f1" },
   whatweb:   { label: "WW", color: "#84cc16" },
   wpscan:    { label: "WP", color: "#2563eb" },
+  naabu:     { label: "NB", color: "#0891b2" },
+  dalfox:    { label: "DF", color: "#db2777" },
+  commix:    { label: "CX", color: "#65a30d" },
 };
 
 export function toolLogo(name: string): ToolLogoMeta {
