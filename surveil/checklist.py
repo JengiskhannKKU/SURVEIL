@@ -62,6 +62,7 @@ WORDLIST_CATEGORY: dict[str, str] = {
 # WORDLIST_CATEGORY above. Items not listed here keep nuclei's own
 # built-in default, because that default already suits them.
 NUCLEI_TAGS: dict[str, str] = {
+    "WSTG-INFO-05": "exposure,token",       # Review Webpage Content for Info Leakage
     "WSTG-CONF-05": "exposure,panel",       # Enumerate Admin Interfaces
     "WSTG-CONF-10": "takeover",             # Test for Subdomain Takeover
     "WSTG-CONF-11": "exposure,misconfig",   # Test Cloud Storage
@@ -281,11 +282,13 @@ def build_checklist() -> list[ChecklistItem]:
             description=(
                 "Analyse HTML source, inline JavaScript, and asset comments for sensitive "
                 "data: hardcoded credentials, internal IP addresses, API keys, developer "
-                "comments, or staging/debug endpoints."
+                "comments, or staging/debug endpoints. katana/httpx crawl and fetch the "
+                "content for manual review; nuclei's exposure/token templates additionally "
+                "flag common leaked-secret patterns (API keys, tokens) automatically."
             ),
             category="Information Gathering",
             category_code="INFO",
-            tools=["katana", "httpx"],
+            tools=["katana", "httpx", "nuclei"],
             owasp_ref="WSTG-INFO-05",
             cwe_ids=["CWE-200", "CWE-312"],
         ),
@@ -337,7 +340,12 @@ def build_checklist() -> list[ChecklistItem]:
             description=(
                 "Confirm the specific application, version, and installed plugins/themes "
                 "using cookies, URL patterns, file hashes, and HTTP headers. "
-                "Cross-reference with nuclei fingerprint templates."
+                "Cross-reference with nuclei fingerprint templates. Note: the official "
+                "WSTG v4.2 guide merged this item's methodology into WSTG-INFO-08 "
+                "(Fingerprint Web Application Framework) — kept here as its own item "
+                "since app/plugin-specific version fingerprinting is a meaningfully "
+                "different check from framework-level fingerprinting, but expect real "
+                "overlap in what the two find."
             ),
             category="Information Gathering",
             category_code="INFO",

@@ -6,6 +6,81 @@ was verified, and what the next agent should pick up.
 
 ---
 
+## 2026-08-27 (27) — Audit: Information Gathering (INFO-01…10) against the real WSTG v4.2 methodology
+
+**Done (user request: pasted the full official WSTG-INFO-03 methodology
+page and asked whether "each owasp wstg, each only information
+gathering 10 checklist that the tools complete... and the result can
+following the objectives on that checklist"):**
+- Pulled the actual official methodology for all 10 Information
+  Gathering items directly from the OWASP source (`gh api` to list the
+  real files in `OWASP/www-project-web-security-testing-guide`, then
+  fetched each `.md`'s real "Test Objectives"/"How to Test"/"Tools"
+  sections) and compared them one by one against `surveil/checklist.py`'s
+  current `tools=[...]`/description for INFO-01 through INFO-10, rather
+  than going from memory or assumption.
+- **Real finding, not previously known:** WSTG v4.2 officially **merged
+  WSTG-INFO-09 into WSTG-INFO-08** — INFO-09's real page is now just a
+  one-line redirect stub ("This content has been merged into...").
+  Didn't delete the item (would renumber/break existing 97-item
+  engagements' saved data) — added an honest note to its description
+  citing this, so a tester isn't confused about why INFO-08 and INFO-09
+  overlap so much.
+- **Real gap, fixed:** WSTG-INFO-05 ("Review Webpage Content for
+  Information Leakage") explicitly calls for finding hardcoded API
+  keys/tokens/credentials in HTML/JS — `nuclei` wasn't mapped to this
+  item at all, despite already being wrapped and despite having a
+  template category built exactly for this. Confirmed real coverage
+  before adding it (not assumed): `nuclei -tl -tags exposure,token`
+  actually lists real templates from the installed template set.
+  Added `nuclei` to INFO-05's tools with a `NUCLEI_TAGS` override for
+  `exposure,token` (same swap-by-item-id pattern as every other
+  `NUCLEI_TAGS` entry).
+- The other 8 items (INFO-01/02/03/04/06/07/08/10) were checked
+  against their real "How to Test"/"Tools" sections and found to
+  already match reasonably well — e.g. INFO-01's real methodology is
+  entirely manual search-engine dorking (Google/Shodan operators),
+  which no CLI tool can automate; the existing `subfinder`/`amass`
+  mapping already carries an honest disclaimer about this rather than
+  overclaiming coverage. No changes made where the existing mapping
+  was already a reasonable, honest fit — this was a targeted fix for
+  the two real gaps found, not a wholesale rewrite.
+
+**Verified:**
+- `python3 -c "from surveil.checklist import build_checklist; ..."` —
+  import-time tool-reference validator (including the `NUCLEI_TAGS`
+  cross-check) passes clean with the new entry.
+- Hit the real running backend: `GET /api/tools/nuclei/command?...
+  item_id=WSTG-INFO-05` returns `-tags exposure,token` in the preview.
+- Confirmed via direct `Orchestrator.run_tool()` call that the **real
+  executed** command (not just the preview) carries the same tags —
+  this reuses the `apply_tool_overrides()` fix from entry 23, so the
+  override actually reaches execution rather than only showing up
+  cosmetically.
+- `npx tsc --noEmit` clean (no frontend changes — descriptions/tools
+  render from the API dynamically).
+
+**Next steps for the next agent:**
+1. Only Information Gathering (INFO-01…10) was audited this round —
+   the same real-methodology-vs-implementation comparison hasn't been
+   done for the other 11 WSTG sections (CONF, IDNT, ATHN, ATHZ, SESS,
+   INPV, ERRH, CRYP, BUSL, CLNT, APIT) in this pass. Worth repeating
+   the same process (`gh api` to list real files, fetch, diff against
+   `checklist.py`) since INFO turned up two genuine, previously-unknown
+   gaps despite already having gone through multiple "audit tool
+   correctness" passes earlier in this project's history — there may
+   be more like the INFO-09 merge or the INFO-05 nuclei gap elsewhere.
+2. Not pursued (out of scope for a "fix real gaps" pass, would be a
+   bigger feature): WSTG-INFO-03's real methodology covers multiple
+   metafiles (robots.txt, sitemap.xml, security.txt, humans.txt,
+   `.well-known/` variants) but the `wget` override only fetches
+   `/robots.txt` by default (one path per run, by design — see
+   `WGET_PATH_SUFFIX`). ffuf's paired "metafiles" wordlist category
+   fuzzes for the others, so coverage exists, just split across two
+   tools/runs rather than one command hitting all of them.
+
+---
+
 ## 2026-08-27 (26) — Dashboard card layout + logo on the landing page
 
 **Done (user request: "At the dashboard can you change the layout to
