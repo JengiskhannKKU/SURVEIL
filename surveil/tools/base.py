@@ -233,6 +233,18 @@ class BaseTool(ABC):
     def get_timeout(self, fast: bool = False) -> int:
         return self.timeout_seconds
 
+    def postprocess_output(self, output: str, exit_code: int) -> str:
+        """Optionally annotate a *real* run's output before it's stored.
+
+        Called only after an actual subprocess run (never for the
+        simulated-fallback path). Default is a no-op; override when a
+        tool's own error output is technically accurate but not
+        self-explanatory (e.g. amass v5's cryptic engine-connection
+        error — see AmassTool) and a short added note would save the
+        tester a trip to that tool's docs.
+        """
+        return output
+
     def run_help(self) -> str:
         """Return this tool's real --help output, straight from the binary.
 
@@ -320,7 +332,15 @@ class BaseTool(ABC):
         # PATH lookup won't find it there on its own.
         resolved = resolve_binary(cmd[0])
         exec_cmd = [resolved, *cmd[1:]] if resolved else cmd
-        exit_code, output = run_tool(exec_cmd, timeout=timeout, on_line=on_line)
+        exit_code, raw_output = run_tool(exec_cmd, timeout=timeout, on_line=on_line)
+        output = self.postprocess_output(raw_output, exit_code)
+        if on_line and output != raw_output:
+            # postprocess_output appended something after the live stream
+            # already finished — push just the new lines so a tester
+            # watching in real time sees it too, not only on replay.
+            for line in output[len(raw_output):].splitlines():
+                if line.strip():
+                    on_line(line)
         elapsed = time.monotonic() - start
         return ToolResult(
             tool=self.name,

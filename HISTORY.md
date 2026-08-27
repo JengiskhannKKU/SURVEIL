@@ -6,6 +6,76 @@ was verified, and what the next agent should pick up.
 
 ---
 
+## 2026-08-27 (22) — Fix: cryptic "Amass engine did not respond" error
+
+**Done (user report: "at install command can you add label OS for tell
+user should use what script to install" [entry 21] was followed by the
+user hitting: "The Amass engine did not respond: the Amass engine did
+not respond within the timeout period"):**
+- Root-caused for real, not guessed: OWASP Amass rewrote its CLI
+  between v4 and v5 into a client/server split. `amass enum` (and even
+  `amass enum -h`!) now unconditionally tries to reach a separately
+  running `amass engine` process (default `http://127.0.0.1:4000`) and
+  fails with exactly this message if it can't — this is **not** a slow
+  scan timing out, it fails almost immediately (confirmed: `amass -h`
+  alone reproduces it). Confirmed via `amass -version` this dev machine
+  has v5.1.1 (current `brew`/`apt` release) while this app's own
+  Dockerfile installs v4 (`go install .../amass/v4/...@master` — the
+  `/v4/` module path pins the old single-shot CLI), so Docker users
+  never hit this but a local `brew install amass` user always will.
+  Also found the specific reason no engine could ever be reached on
+  this machine: an unrelated process already has port 4000 bound
+  (`lsof -i :4000`) — confirmed, left untouched (not surveil's to kill).
+- `surveil/tools/base.py`: new `BaseTool.postprocess_output(output,
+  exit_code) -> str` hook, called in `run()` after a *real* (non-
+  simulated) run, default no-op. Deliberately not a blanket "clean up
+  every tool's error output" mechanism — just an extension point for
+  the rare case where a tool's real output is accurate but genuinely
+  inscrutable. Also pushes any appended lines through the existing
+  `on_line` live-stream callback (checked: `output != raw_output`) so a
+  tester watching the run live sees the note too, not just on replay.
+- `surveil/tools/amass_tool.py`: overrides it — detects `"did not
+  respond"` + `"engine"` in real output and appends a clear explanation
+  + three concrete fixes (start `amass engine` yourself; install v4 via
+  `go install .../amass/v4/...@master`, added as a new `install_hints`
+  entry; or just use `subfinder`, already paired on the same checklist
+  item, which needs no engine). `description` also gained a short
+  heads-up about this so it's visible before a tester even runs it.
+
+**Verified:**
+- Reproduced the exact real error directly against real amass v5 on
+  this machine (`AmassTool(...).run(fast=True)`) — confirmed the note
+  gets appended to `ToolResult.output` and that it also arrives via the
+  live `on_line` stream (not just the final saved result).
+- Full browser E2E against a real (temporary) engagement: ran amass for
+  real via the actual Run Tool dialog, confirmed the guide box shows
+  the new description heads-up before running, confirmed the note is
+  present in the saved tool output afterward (`/api/engagements/.../
+  ...` dump). One run took longer than expected to finish (amass v5
+  apparently holds some local lock/state across back-to-back
+  invocations against the same target) but it did complete correctly
+  and save the right output — a real quirk of amass v5 itself, not a
+  regression in `run_tool()`'s subprocess-timeout enforcement (already
+  covered by the existing 90s/660s ceiling either way). Test engagement
+  deleted after use.
+- `python3 -c "from surveil.checklist import build_checklist; ..."` —
+  import-time tool-reference validator still passes with the new
+  `install_hints` entry.
+
+**Next steps for the next agent:**
+1. If amass v5 support is ever worth doing properly (auto-managing a
+   background `amass engine` process for the tool's lifetime, picking a
+   free port, tearing it down after), that's a real architecture change
+   — `BaseTool.run()` currently assumes one subprocess per run. Not
+   attempted here; the fix in this entry makes the *failure* clear
+   rather than attempting to make v5 actually work standalone.
+2. `postprocess_output()` is a new, currently single-use extension
+   point — fine to leave unused elsewhere, but worth remembering it
+   exists if another tool's real (not simulated) error output is ever
+   reported as similarly confusing.
+
+---
+
 ## 2026-08-27 (21) — OS label on each install-command chip
 
 **Done (user request: "at install command can you add label OS for
