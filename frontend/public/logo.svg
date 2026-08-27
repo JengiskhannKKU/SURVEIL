@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <title>surveil</title>
+  <defs>
+    <linearGradient id="sweep" x1="100" y1="100" x2="150" y2="45" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#5eead4" stop-opacity="0.9"/>
+      <stop offset="100%" stop-color="#5eead4" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="0" y="0" width="200" height="200" fill="#000000"/>
+
+  <g fill="none" stroke="#5eead4" stroke-width="4.5" stroke-linecap="round">
+    <!-- radar arcs, top -->
+    <path d="M15,96 Q100,8 185,96"/>
+    <path d="M33,90 Q100,28 167,90"/>
+    <path d="M53,80 Q100,50 147,80"/>
+
+    <!-- radar arcs, bottom -->
+    <path d="M20,106 Q100,180 180,106"/>
+    <path d="M40,108 Q100,158 160,108"/>
+
+    <!-- crosshair tick marks -->
+    <path d="M100,8 L100,15"/>
+    <path d="M100,20 L100,26"/>
+    <path d="M100,174 L100,180"/>
+    <path d="M100,185 L100,192"/>
+    <path d="M8,100 L15,100"/>
+    <path d="M20,100 L26,100"/>
+    <path d="M174,100 L180,100"/>
+    <path d="M185,100 L192,100"/>
+
+    <!-- crosshair spine -->
+    <path d="M100,36 L100,164"/>
+
+    <!-- eye lens -->
+    <path d="M22,100 Q100,42 178,100 Q100,158 22,100 Z"/>
+
+    <!-- iris + pupil rings -->
+    <circle cx="100" cy="100" r="27"/>
+    <circle cx="100" cy="100" r="13"/>
+  </g>
+
+  <!-- radar sweep beam -->
+  <line x1="100" y1="100" x2="150" y2="45" stroke="url(#sweep)" stroke-width="5" stroke-linecap="round"/>
+</svg>

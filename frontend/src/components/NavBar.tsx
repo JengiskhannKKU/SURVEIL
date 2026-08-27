@@ -20,21 +20,37 @@ export function NavBar() {
   return (
     <AppBar position="static" elevation={0}>
       <Toolbar sx={{ maxWidth: 1200, width: "100%", mx: "auto", px: { xs: 2, sm: 3 } }}>
-        <Typography
+        <Box
           component={Link}
           href="/"
           sx={{
-            fontFamily: "var(--font-geist-mono)",
-            fontWeight: 700,
-            letterSpacing: 3,
-            fontSize: 14,
-            color: "text.primary",
+            display: "flex",
+            alignItems: "center",
+            gap: 1,
             textDecoration: "none",
             flexShrink: 0,
           }}
         >
-          [ SURVEIL ]
-        </Typography>
+          <Box
+            component="img"
+            src="/logo.svg"
+            alt=""
+            width={22}
+            height={22}
+            sx={{ filter: "drop-shadow(0 0 4px rgba(94,234,212,0.5))" }}
+          />
+          <Typography
+            sx={{
+              fontFamily: "var(--font-geist-mono)",
+              fontWeight: 700,
+              letterSpacing: 3,
+              fontSize: 14,
+              color: "text.primary",
+            }}
+          >
+            [ SURVEIL ]
+          </Typography>
+        </Box>
         <Box flex={1} />
         <Button
           component={Link}

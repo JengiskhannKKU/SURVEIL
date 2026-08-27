@@ -6,6 +6,121 @@ was verified, and what the next agent should pick up.
 
 ---
 
+## 2026-08-27 (23) — curl/wget as basic tools + fixed a real "recommendation never executes" bug
+
+**Done (user request: "can you add basic tools or basic command bash
+such wget script,, curl scripts or anything each wstg"):**
+- New `surveil/tools/curl_tool.py` / `wget_tool.py` — lightweight,
+  almost-always-already-installed alternatives to the heavier wrappers,
+  for a quick manual header/existence check. Mapped onto ~18 checklist
+  items chosen for genuine fit, not padding: HTTP methods (`curl -X
+  OPTIONS`), CORS/Host-header spoofing (`curl -H`), RIA cross-domain
+  policy and robots.txt/`.git/HEAD` existence (`wget`), cookie
+  attributes, error handling, clickjacking headers, and a few more —
+  see `CURL_ARGS`/`CURL_PATH_SUFFIX`/`WGET_PATH_SUFFIX` in
+  `surveil/checklist.py`. Deliberately skipped items where the generic
+  command wouldn't add real value over what nmap/testssl/nuclei already
+  do (e.g. `WSTG-CRYP-01`, TLS auditing — testssl already owns that).
+- **Found and fixed a real pre-existing bug while wiring in the
+  per-item overrides**: `NUCLEI_TAGS`/`WORDLIST_CATEGORY` (and now
+  `CURL_ARGS`) only ever affected the *previewed* command text in the
+  Run Tool dialog — the actual subprocess that runs on an unedited
+  "Run" click ignored the checklist item entirely and used the tool's
+  plain generic default. Root cause: `item_id` never reached
+  `Orchestrator.run_tool()`'s real-execution path, only the preview
+  endpoint. Confirmed directly: `nuclei` on the SSRF checklist item
+  was really running its generic misconfig scan, not SSRF templates,
+  every time — unless the tester happened to edit the command box.
+  Fixed by extracting the swap logic into one shared
+  `surveil.checklist.apply_tool_overrides()`, called from both the
+  preview endpoint and `Orchestrator.run_tool()`. `BaseTool.run()`
+  gained a `default_command` parameter, distinct from the existing
+  `override_command` (tester-edited, always-real) — `default_command`
+  is the item-aware default and still respects the simulated-fallback-
+  when-not-installed behavior, unlike `override_command`.
+
+**Verified:**
+- Import-time `_validate_tool_references()` (extended to also check
+  `CURL_ARGS`/`CURL_PATH_SUFFIX`/`WGET_PATH_SUFFIX`) passes clean.
+- Direct `Orchestrator.run_tool()` calls confirmed the *real executed*
+  command (not just the preview) now reflects the override: `curl` on
+  `WSTG-CONF-06` really runs `-X OPTIONS`; `nuclei` on `WSTG-INPV-19`
+  really runs `-tags ssrf` — both previously silent regressions now
+  fixed. Confirmed the simulated-fallback path still works and now
+  shows the *item-aware* command even in simulated mode (nice side
+  effect, not just a fix).
+- Full browser E2E: opened WSTG-CONF-06, selected curl, clicked Run
+  *without editing anything* — confirmed a real HTTP/2 405 response
+  came back (the correct result for an actual `OPTIONS` request against
+  that real target), proving the override reached the real subprocess
+  through the actual UI, not just a unit test.
+- `npx tsc --noEmit` clean (no frontend changes needed — same reasoning
+  as prior tool additions).
+
+**Next steps for the next agent:**
+1. `README.md`'s tool table/ASCII diagram and the Docker section's
+   binary count/list are now stale again (still say counts from before
+   this session's additions) — worth a dedicated pass rather than the
+   spot-fixes made here under time pressure (a logo/favicon request
+   interrupted this work mid-stream).
+2. `Dockerfile` now installs `curl`/`wget` via apt (not guaranteed in
+   the `python:3.11-slim-bookworm` base) — not yet verified with a full
+   `docker build` the way tools 18-20 were in an earlier entry; worth
+   doing before relying on it.
+
+---
+
+## 2026-08-27 (24) — Project logo + favicon
+
+**Done (user request: "use this picture for logo on this project, and
+change it to favicon also", attaching a teal eye/radar-scope image):**
+- No tool in this environment can save a pasted conversation image
+  straight to disk, so the image was recreated as a hand-authored SVG
+  instead — actually the better outcome for a logo/favicon (vector,
+  scales cleanly from 16px to any size, tiny file, no external asset
+  dependency) rather than a worse one born of the limitation. Matched
+  its exact motif (eye lens, iris/pupil rings, radar arcs above/below,
+  crosshair with corner tick marks, a radar-sweep beam) and its color
+  in the app's own theme teal (`#5eead4`, `GREEN` in
+  `frontend/src/lib/theme.ts`) rather than eyeballing a color match —
+  so it now reads as this app's own mark, not a copy of an external one.
+  Source: `frontend/public/logo.svg`.
+- Wired into the Next.js App Router's icon conventions: `frontend/src/
+  app/icon.svg` (modern browsers, SVG favicon), `favicon.ico` (legacy
+  fallback, generated as a real multi-resolution 16/32/48px `.ico` via
+  Pillow — rendered from the SVG via a throwaway Playwright HTML-wrapper
+  script since neither `rsvg-convert` nor ImageMagick's `convert` exist
+  on this machine, then packed into one `.ico` with `PIL.Image.save
+  (format="ICO", sizes=[...])`), and `apple-icon.png` (180×180, iOS
+  home-screen icon). All three are Next.js special-file names — no
+  metadata config needed, confirmed via the generated `<link rel=
+  icon/apple-touch-icon>` tags on a real page load.
+- Added the same SVG next to the `[ SURVEIL ]` wordmark in
+  `frontend/src/components/NavBar.tsx` (22px, subtle teal drop-shadow
+  matching the app's terminal-glow aesthetic) and at the top of
+  `README.md`.
+
+**Verified:**
+- `npx tsc --noEmit`, `eslint`, `next build` all clean; build output
+  confirms Next.js registered `/icon.svg` and `/apple-icon.png` as
+  routes.
+- Full browser E2E: `GET /icon.svg`, `/favicon.ico`, `/apple-icon.png`
+  all return 200; the page's actual `<link rel="icon">` /
+  `apple-touch-icon` tags point at the right generated URLs. Screenshot
+  of the nav bar confirms the logo renders correctly next to the
+  wordmark. Zero console errors. Throwaway render script and PNG
+  intermediates deleted after use.
+
+**Next steps for the next agent:**
+1. If the user ever provides the source image as an actual file (not a
+   pasted conversation attachment), it could replace `logo.svg` with a
+   closer pixel-for-pixel trace, or be used to derive an even more
+   detailed icon — the current version is a faithful but hand-authored
+   recreation of the described image, not a 1:1 trace of the original
+   pixels.
+
+---
+
 ## 2026-08-27 (22) — Fix: cryptic "Amass engine did not respond" error
 
 **Done (user report: "at install command can you add label OS for tell

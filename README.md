@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="frontend/public/logo.svg" alt="surveil logo" width="96" height="96">
+</p>
+
 # surveil
 
 **Deterministic, OWASP WSTG checklist-driven web application penetration testing.**
