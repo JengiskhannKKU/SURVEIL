@@ -2,7 +2,7 @@
   <img src="frontend/public/logo.svg" alt="surveil" width="128" height="128">
 </p>
 
-<h1 align="center">surveil</h1>
+<h1 align="center">SURVEIL</h1>
 
 <p align="center">
   <strong>Deterministic, OWASP WSTG checklist-driven web application penetration testing.</strong>
