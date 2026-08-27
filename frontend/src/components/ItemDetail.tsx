@@ -23,8 +23,16 @@ import { PrettyOutput } from "@/components/PrettyOutput";
 import { ItemToolsHelpDialog } from "@/components/ItemToolsHelpDialog";
 import { parseDiscoveredPaths, buildPathTree } from "@/lib/pathTree";
 import { detectAndFormat } from "@/lib/prettyFormat";
+import type { PrettyKind } from "@/lib/prettyFormat";
 import { useToast } from "@/lib/toast";
 import type { ChecklistItem, ToolInfo } from "@/lib/types";
+
+const PRETTY_KIND_LABEL: Record<PrettyKind, string> = {
+  json: "JSON",
+  html: "HTML",
+  xml: "XML",
+  javascript: "JS",
+};
 
 export function ItemDetail({
   engagementId,
@@ -291,7 +299,7 @@ export function ItemDetail({
                     {discoveredTree && <ToggleButton value="tree">Tree</ToggleButton>}
                     {prettyResult && (
                       <ToggleButton value="pretty">
-                        Pretty {prettyResult.kind === "json" ? "JSON" : "HTML"}
+                        Pretty {PRETTY_KIND_LABEL[prettyResult.kind]}
                       </ToggleButton>
                     )}
                   </ToggleButtonGroup>

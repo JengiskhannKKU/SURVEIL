@@ -6,6 +6,78 @@ was verified, and what the next agent should pick up.
 
 ---
 
+## 2026-08-27 (29) — Pretty-format toggle: added XML and JavaScript
+
+**Done (user follow-up: "did you add other languages? such as python,
+javascript, typescript or anything? for prettier format" — answer at
+the time was no, only JSON/HTML; this entry adds two of them for
+real):**
+- `frontend/src/lib/prettyFormat.ts`: reworked detection to check the
+  output's own `Content-Type` response header first (from curl -i/
+  wget -S's header block) — far more reliable than guessing from the
+  bytes, and it's already sitting right there in the tool's own
+  output. `application/xml`/`text/xml`/`*+xml` → xml,
+  `application/javascript`/`text/javascript`/`application/
+  x-javascript`/`application/ecmascript` → javascript, plus the
+  existing json/html mappings. Content-sniffing (the original
+  approach) is now the fallback for output with no header block at
+  all (e.g. `wget -O -` without `-S`) — JS sniffing in particular
+  requires **two or more** distinct JS-specific signals (function
+  declarations, arrow functions, `const`/`let`/`var` assignment,
+  `import ... from`, `console.log`, DOM API calls) together before
+  tagging something as JS, specifically to avoid a plain log line that
+  happens to contain the word "function" getting misdetected —
+  verified this guard directly (see below).
+- XML reuses the existing HTML tag-reflow-and-indent formatter
+  (renamed `formatMarkup`, took a `treatAllAsPaired` flag since XML
+  has no void-tag list the way HTML does) rather than writing a
+  second near-identical indenter.
+- New `formatJavaScript()`: a string-literal-aware reflow (tracks
+  whether it's inside `"`/`'`/`` ` `` so a `;` or `{` inside a string
+  doesn't split the line) that breaks a minified/single-line script
+  into one statement per line and indents by brace depth. Not a real
+  parser/AST formatter — good enough to make a fetched `.js` file
+  reviewable, which is literally what WSTG-INFO-05 calls for
+  ("Gather JavaScript files and review the JS code").
+- `frontend/src/components/PrettyOutput.tsx`: added `renderJsLine`
+  (keywords/strings/comments/numbers/punctuation each colored, same
+  token-regex-per-line approach as the existing JSON/HTML renderers)
+  and widened the tag/attribute-name character classes in the markup
+  renderer (now `[\w:.-]`) so namespaced XML tags like `<xhtml:link>`
+  and `xmlns:xhtml=` highlight correctly, not just plain HTML tags.
+  Renamed `renderHtmlLine` → `renderMarkupLine` since it's now shared
+  by both "html" and "xml" kinds via a `RENDERERS` lookup table.
+- Python/TypeScript were considered and **not** added: this app's tool
+  output realistically never contains raw Python source (no wrapped
+  tool emits it), and TypeScript is never served over HTTP as `.ts` —
+  browsers/servers only ever deliver compiled JS, so a `curl`/`wget`
+  fetch of "TypeScript" is indistinguishable from plain JavaScript at
+  the network level. Both would be speculative additions with no real
+  trigger in this app, unlike JSON/HTML/XML/JS which all come from
+  genuine curl/wget response bodies.
+
+**Verified:**
+- `npx tsc --noEmit`, `eslint` clean.
+- Standalone logic test (5 cases): sitemap.xml-shaped output with
+  `Content-Type: application/xml` → correctly detected as `xml`; a
+  `.js` file with `Content-Type: application/javascript` → correctly
+  detected as `javascript`; bare JS with no header block (multiple
+  signals) → still detected via sniffing; a plain scan log →
+  correctly returns no match; a log line that happens to contain the
+  word "function" once → correctly does **not** false-positive as JS
+  (confirms the "≥2 signals" guard actually holds).
+- Full browser E2E against a real engagement: ran `curl` for real
+  against `https://httpbin.org/xml` — confirmed "Pretty XML" appears
+  and renders the declaration/comments/tags/attributes correctly
+  colored and indented. Ran `curl` again against a real, genuinely
+  minified file, `https://code.jquery.com/jquery-3.7.1.slim.min.js`
+  (detected via its real `Content-Type: application/javascript`
+  header) — confirmed "Pretty JS" appears and reflows the single
+  massive minified line into indented, syntax-highlighted statements.
+  Zero console errors in both runs. Test engagement deleted after use.
+
+---
+
 ## 2026-08-27 (28) — Raw / Pretty JSON / Pretty HTML toggle on tool output
 
 **Done (user request: "on the result can you add button can show raw
