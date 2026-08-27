@@ -3,10 +3,12 @@ from __future__ import annotations
 
 import asyncio
 import threading
+from datetime import datetime
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from surveil import state
+from surveil.models import Status
 from surveil.orchestrator import Orchestrator
 
 router = APIRouter()
@@ -43,6 +45,31 @@ async def run_tool_ws(websocket: WebSocket, eng_id: str, item_id: str) -> None:
         await websocket.send_json({"type": "error", "message": "Missing 'tool' in start message"})
         await websocket.close()
         return
+
+    # A run started from this item keeps executing server-side even after
+    # the tester closes the Run Tool dialog (the worker thread below isn't
+    # tied to this WebSocket's lifetime) — so if they reopen the dialog and
+    # hit Run again before the first one finishes, refuse rather than
+    # silently starting a second overlapping subprocess that would race the
+    # first on item.tool_outputs/findings and corrupt either result.
+    if item.status == Status.RUNNING:
+        await websocket.send_json({
+            "type": "error",
+            "message": f"{item.id} already has a tool running in the background — "
+                       "wait for it to finish (the checklist sidebar shows its progress) "
+                       "before starting another.",
+        })
+        await websocket.close()
+        return
+
+    # Persisted immediately, before the (possibly slow) subprocess even
+    # starts — so a tester who closes this dialog and navigates elsewhere
+    # still sees "running" reflected in the checklist on their next fetch,
+    # instead of the item looking exactly like it did before they clicked
+    # Run (indistinguishable from "nothing happened").
+    item.status = Status.RUNNING
+    item.started_at = item.started_at or datetime.now()
+    state.save(engagement)
 
     loop = asyncio.get_event_loop()
     queue: asyncio.Queue = asyncio.Queue()

@@ -184,7 +184,7 @@ export function ItemDetail({
           )}
 
           <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap mb={3}>
-            {hasRunnableTools && (
+            {hasRunnableTools && item.status !== "running" && (
               <Button
                 variant="contained"
                 onClick={() => {
@@ -211,6 +211,29 @@ export function ItemDetail({
                 }
               >
                 Run tool
+              </Button>
+            )}
+            {hasRunnableTools && item.status === "running" && (
+              <Button
+                variant="contained"
+                onClick={() => {
+                  setRunAtPath(null);
+                  setShowRun(true);
+                }}
+                sx={{
+                  bgcolor: "#f59e0b",
+                  color: "#000",
+                  "&:hover": { bgcolor: "#d97706" },
+                }}
+                startIcon={
+                  <motion.div
+                    animate={{ opacity: [1, 0.3, 1] }}
+                    transition={{ duration: 1.1, repeat: Infinity }}
+                    style={{ width: 7, height: 7, borderRadius: "50%", backgroundColor: "#000" }}
+                  />
+                }
+              >
+                Running in background…
               </Button>
             )}
             {hasRunnableTools && (
@@ -355,6 +378,9 @@ export function ItemDetail({
           onDone={(updated) => {
             onChange(updated);
             setActiveOutput(Object.keys(updated.tool_outputs).slice(-1)[0] ?? null);
+          }}
+          onStart={() => {
+            if (item.status !== "running") onChange({ ...item, status: "running" });
           }}
         />
       )}

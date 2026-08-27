@@ -6,6 +6,93 @@ was verified, and what the next agent should pick up.
 
 ---
 
+## 2026-08-27 (25) — Background tool runs: persisted status, duplicate-run guard, live sidebar
+
+**Done (user request: "when running tools then click close it not
+running that tools, can you implement it can running behind
+background and when back to that checklists it can show progress
+running tools status at checklists bar also"):**
+- Root-caused first, not assumed: confirmed directly (raw WebSocket
+  client, closing mid-scan) that a tool run **already** keeps executing
+  server-side after the Run Tool dialog/WebSocket is closed — the
+  worker is a daemon thread independent of the WS connection. The real
+  bug was that nothing *showed* this: `item.status` only ever flipped
+  to `RUNNING` in memory, never persisted to disk until the run
+  finished, so a closed dialog left the checklist looking exactly like
+  nothing had happened, and reopening the dialog to run again could
+  silently start a **second overlapping run** racing the first on the
+  same `tool_outputs`/findings.
+- `backend/ws.py`: persists `status=RUNNING` (+ `started_at`) to disk
+  immediately, before the subprocess even starts — not just at the end
+  — so any other request/page load sees it right away. Added a
+  duplicate-run guard: a second start request for an item already
+  `RUNNING` is rejected with a clear message instead of silently racing.
+- `frontend/src/components/RunToolDialog.tsx`: new `onStart` callback,
+  fired on the first real "line" back from the server (proof the
+  backend accepted the run, not just requested it) — lets the parent
+  optimistically flip local state to "running" immediately, since the
+  backend's own status write alone doesn't reach an already-open
+  browser tab's React state without either this or a refetch. Also
+  shows an inline warning + disables Run when opened for an item that's
+  already running in the background (from a previous dialog session),
+  instead of only surfacing the backend's rejection after the fact.
+- `frontend/src/components/Checklist.tsx`: the sidebar's per-item status
+  icon now pulses (framer-motion) for `status === "running"` — it
+  already rendered a distinct icon/color for that status, just
+  statically, easy to miss.
+- `frontend/src/components/ItemDetail.tsx`: **Run tool** button becomes
+  an amber "Running in background…" pill (still clickable — opens the
+  dialog's new warning state) while the item is running.
+- `frontend/src/app/engagements/[id]/page.tsx`: polls (3s) and re-fetches
+  the engagement while any item is `running`, so status flips from
+  running → done on its own if the tester is just sitting on the page
+  (covers e.g. two tabs, or the item that was optimistically flagged
+  running by `onStart` eventually needing the real final state). Added
+  an "N running in background" pulsing header indicator alongside the
+  progress/severity bars.
+
+**Verified:**
+- Backend, directly: opened a raw WebSocket, started a real `nmap` scan
+  on `WSTG-CONF-01`/`scanme.nmap.org` (an nmap.org-authorized scan
+  target), read 2 lines, closed the connection — confirmed via polling
+  the REST API over the next ~20s that the item transitioned to `done`
+  with the real nmap output saved, proving the backend was never the
+  actual problem.
+  - Confirmed `status=running` is visible via a **separate** connection
+    while a run is genuinely still in progress (not just after the
+    fact).
+  - Confirmed a duplicate start attempt on the same item while the
+    first is still running gets rejected with the new error message,
+    not silently accepted.
+- `npx tsc --noEmit`, `eslint`, `next build` all clean.
+- Full browser E2E end-to-end: started a real nmap run, closed the
+  dialog after 2.5s — confirmed the header immediately showed "1
+  running in background" and the item's button changed to "Running in
+  background…" **without any navigation or manual refresh** (this only
+  passed after adding the `onStart` optimistic-update fix — the first
+  pass caught exactly the staleness bug being fixed). Navigated away
+  and back — confirmed the running state persisted across a fresh page
+  load (the actual backend persistence fix). Reopened the Run Tool
+  dialog on the still-running item — confirmed the new warning banner
+  and disabled Run button. Left the page open and polled — confirmed it
+  auto-updated to "Done" with the real finding, with zero manual
+  interaction. Zero console errors throughout. Test engagement deleted
+  after use.
+
+**Next steps for the next agent:**
+1. The Run Tool dialog doesn't reconnect to a run's *live* output if
+   reopened while it's still going (it shows the warning banner, not a
+   resumed stream) — the backend has no run-registry/pub-sub a new
+   WebSocket could subscribe to. Worth building if testers want to
+   watch a long scan's progress after closing and reopening the dialog,
+   not just know that it's running.
+2. Polling is timer-based (3s), not push-based — fine for this app's
+   scale (one tester, one engagement open at a time) but would need a
+   real pub/sub (or Server-Sent Events) to scale to multiple
+   simultaneous viewers of the same engagement.
+
+---
+
 ## 2026-08-27 (23) — curl/wget as basic tools + fixed a real "recommendation never executes" bug
 
 **Done (user request: "can you add basic tools or basic command bash

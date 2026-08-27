@@ -2,6 +2,7 @@
 
 import { use, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { motion } from "framer-motion";
 import Box from "@mui/material/Box";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
@@ -105,6 +106,24 @@ export default function EngagementPage({
     return () => window.removeEventListener("keydown", handler);
   }, [jumpToNextPending]);
 
+  // A tool that's still running keeps executing server-side even after this
+  // page (or the Run Tool dialog) is closed/navigated away from — poll while
+  // anything is running so the checklist sidebar's status flips from
+  // "running" to "done" on its own once it finishes, instead of only ever
+  // updating when a Run Tool dialog happens to be open to receive it live.
+  const anyRunning = useMemo(
+    () => engagement?.checklist_items.some((i) => i.status === "running") ?? false,
+    [engagement]
+  );
+
+  useEffect(() => {
+    if (!anyRunning) return;
+    const interval = setInterval(() => {
+      api.getEngagement(id).then(setEngagement).catch(() => {});
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [anyRunning, id]);
+
   const sev = useMemo(
     () => severityCounts(engagement?.checklist_items.flatMap((i) => i.findings) ?? []),
     [engagement]
@@ -112,6 +131,10 @@ export default function EngagementPage({
   const done = useMemo(
     () =>
       engagement?.checklist_items.filter((i) => ["done", "skipped"].includes(i.status)).length ?? 0,
+    [engagement]
+  );
+  const runningCount = useMemo(
+    () => engagement?.checklist_items.filter((i) => i.status === "running").length ?? 0,
     [engagement]
   );
   const categories = useMemo(
@@ -163,9 +186,21 @@ export default function EngagementPage({
             <Typography variant="caption" color="text.secondary" display="block" mb={1}>
               {engagement.target}
             </Typography>
-            <Stack direction="row" spacing={3} flexWrap="wrap" useFlexGap>
+            <Stack direction="row" spacing={3} flexWrap="wrap" useFlexGap alignItems="center">
               <ProgressBar done={done} total={engagement.checklist_items.length} />
               <SeverityBar counts={sev} />
+              {runningCount > 0 && (
+                <Stack direction="row" spacing={0.75} alignItems="center">
+                  <motion.div
+                    animate={{ opacity: [1, 0.3, 1] }}
+                    transition={{ duration: 1.2, repeat: Infinity }}
+                    style={{ width: 7, height: 7, borderRadius: "50%", backgroundColor: "#f59e0b" }}
+                  />
+                  <Typography variant="caption" sx={{ color: "#f59e0b", fontWeight: 600 }}>
+                    {runningCount} running in background
+                  </Typography>
+                </Stack>
+              )}
             </Stack>
           </Box>
           <Stack direction="row" spacing={1}>

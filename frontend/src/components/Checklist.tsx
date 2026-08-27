@@ -214,9 +214,23 @@ export function Checklist({
                                   </Typography>
                                 </Box>
                                 <Stack alignItems="flex-end" spacing={0.5} flexShrink={0}>
-                                  <Typography sx={{ color: STATUS_COLOR[item.status], fontSize: 14, lineHeight: 1 }}>
-                                    {STATUS_ICON[item.status]}
-                                  </Typography>
+                                  {item.status === "running" ? (
+                                    <motion.div
+                                      animate={{ opacity: [1, 0.35, 1] }}
+                                      transition={{ duration: 1.1, repeat: Infinity }}
+                                      style={{
+                                        color: STATUS_COLOR.running,
+                                        fontSize: 14,
+                                        lineHeight: 1,
+                                      }}
+                                    >
+                                      {STATUS_ICON.running}
+                                    </motion.div>
+                                  ) : (
+                                    <Typography sx={{ color: STATUS_COLOR[item.status], fontSize: 14, lineHeight: 1 }}>
+                                      {STATUS_ICON[item.status]}
+                                    </Typography>
+                                  )}
                                   {item.findings.length > 0 && (
                                     <Chip
                                       size="small"

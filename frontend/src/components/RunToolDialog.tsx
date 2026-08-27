@@ -38,6 +38,7 @@ export function RunToolDialog({
   allTools,
   onClose,
   onDone,
+  onStart,
 }: {
   engagementId: string;
   target: string;
@@ -45,6 +46,13 @@ export function RunToolDialog({
   allTools: ToolInfo[];
   onClose: () => void;
   onDone: (updated: ChecklistItem) => void;
+  // Fired the moment a run actually starts (the backend has accepted it and
+  // is executing), so the caller can optimistically flip this item's local
+  // status to "running" — the run keeps going server-side even if this
+  // dialog is closed before onDone ever fires, and without this the
+  // checklist sidebar/header would have no way to know that happened until
+  // a full page reload re-fetches the engagement from scratch.
+  onStart?: () => void;
 }) {
   const toast = useToast();
   const availableTools = useMemo(
@@ -72,6 +80,15 @@ export function RunToolDialog({
   const tool = availableTools.find((t) => t.name === toolName);
   const hasModes = Object.keys(tool?.modes ?? {}).length > 0;
   const wordlistName = wordlistPath ? wordlistPath.split("/").pop() : "tool default";
+
+  // item.status === "running" but this dialog's own `running` is still
+  // false means a run was started earlier (possibly from a Run Tool
+  // dialog that's since been closed) and is still executing server-side —
+  // it keeps going in the background regardless of whether any dialog is
+  // open to watch it. Starting a second one now would just be rejected by
+  // the backend, so head that off with a clear explanation instead of a
+  // raw error after the fact.
+  const alreadyRunningElsewhere = item.status === "running" && !running && !finished;
 
   // Switching tools resets the mode to "full" so a stale mode key from a
   // previous tool (e.g. nmap's "udp") never leaks into one without it.
@@ -132,6 +149,7 @@ export function RunToolDialog({
     setError("");
     setFinished(false);
     setRunning(true);
+    let startNotified = false;
 
     const ws = new WebSocket(
       `${WS_BASE}/ws/engagements/${engagementId}/items/${item.id}/run`
@@ -158,6 +176,15 @@ export function RunToolDialog({
     ws.onmessage = (event) => {
       const msg = JSON.parse(event.data) as WsMessage;
       if (msg.type === "line") {
+        // The first real line back from the server is proof the backend
+        // accepted this run (a rejection — e.g. already running — arrives
+        // as an "error" message instead, with no "line" ever sent) and is
+        // now executing, so it's safe to tell the parent to reflect
+        // "running" locally.
+        if (!startNotified) {
+          startNotified = true;
+          onStart?.();
+        }
         setLines((prev) => [...prev, msg.data]);
       } else if (msg.type === "done") {
         setRunning(false);
@@ -208,6 +235,13 @@ export function RunToolDialog({
         </Box>
       </DialogTitle>
       <DialogContent>
+        {alreadyRunningElsewhere && (
+          <Alert severity="warning" sx={{ mt: 2, mb: 1 }}>
+            A tool is already running on {item.id} in the background — started earlier and still
+            going even though no dialog was open to watch it. Its result will land here (and in
+            the checklist sidebar) once it finishes; starting another run now would be rejected.
+          </Alert>
+        )}
         <Stack direction="row" spacing={2} flexWrap="wrap" useFlexGap alignItems="center" mb={2} mt={2}>
           <TextField
             select
@@ -383,7 +417,11 @@ export function RunToolDialog({
               Help
             </Button>
           )}
-          <Button variant="contained" onClick={run} disabled={running || !toolName}>
+          <Button
+            variant="contained"
+            onClick={run}
+            disabled={running || !toolName || alreadyRunningElsewhere}
+          >
             {running ? "Running…" : "Run"}
           </Button>
         </Box>
