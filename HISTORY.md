@@ -56,6 +56,16 @@ such wget script,, curl scripts or anything each wstg"):**
   through the actual UI, not just a unit test.
 - `npx tsc --noEmit` clean (no frontend changes needed — same reasoning
   as prior tool additions).
+- Full Docker build (after the logo/favicon work below interrupted this
+  entry — closed the loop once that was done): **passed clean**. Ran
+  the built image directly and confirmed `curl`/`wget` both resolve and
+  report available (`apt install curl wget` did the job — not
+  guaranteed present in the `python:3.11-slim-bookworm` base, and
+  wasn't), and confirmed a *real* override-applying run inside the
+  container: `curl` on `WSTG-CONF-06` executed `-X OPTIONS` for real
+  and got back an actual `HTTP/2 405` from the network — the
+  Orchestrator fix above verified inside the shipped image, not just
+  locally. Test image removed after use (`docker rmi`).
 
 **Next steps for the next agent:**
 1. `README.md`'s tool table/ASCII diagram and the Docker section's
@@ -63,10 +73,6 @@ such wget script,, curl scripts or anything each wstg"):**
    this session's additions) — worth a dedicated pass rather than the
    spot-fixes made here under time pressure (a logo/favicon request
    interrupted this work mid-stream).
-2. `Dockerfile` now installs `curl`/`wget` via apt (not guaranteed in
-   the `python:3.11-slim-bookworm` base) — not yet verified with a full
-   `docker build` the way tools 18-20 were in an earlier entry; worth
-   doing before relying on it.
 
 ---
 
