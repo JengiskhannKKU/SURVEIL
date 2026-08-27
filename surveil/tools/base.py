@@ -106,8 +106,21 @@ def _subprocess_env() -> dict[str, str]:
     default). Prepending the same extra dirs to the subprocess's PATH here
     fixes that case and any other shell-wrapped tool the same way, without
     needing to parse/rewrite each such command string individually.
+
+    Also sets PYTHONUNBUFFERED=1: several wrapped tools are themselves
+    Python (arjun, sqlmap, wafw00f, commix) and Python fully block-buffers
+    stdout by default whenever it isn't a real terminal — which a
+    subprocess pipe never is. Confirmed directly against arjun: piping a
+    real --stable run through `timeout 8s` produced zero output at all
+    without this env var, vs. 8 lines with it. Without this, "live"
+    streaming for these tools wasn't actually live — nothing arrived until
+    the process exited, and a run killed by our own timeout lost its
+    output entirely instead of showing whatever had run so far. Harmless
+    for every non-Python tool here (nmap/nikto/testssl.sh/Go binaries/etc.)
+    — they don't read this env var at all.
     """
     env = dict(os.environ)
+    env["PYTHONUNBUFFERED"] = "1"
     extra = [str(d) for d in _extra_bin_dirs() if d.is_dir()]
     if extra:
         env["PATH"] = os.pathsep.join(extra) + os.pathsep + env.get("PATH", "")

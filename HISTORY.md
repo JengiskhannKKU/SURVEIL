@@ -6,6 +6,88 @@ was verified, and what the next agent should pick up.
 
 ---
 
+## 2026-08-27 (30) — Fix: arjun `[TIMEOUT]` against a real target, plus a broader live-streaming bug
+
+**Done (user report: `arjun -u http://192.168.2.15 --stable -t 10 ->
+[TIMEOUT]`):**
+- Root-caused against arjun's real installed source (not assumed):
+  `--stable` **silently forces arjun's own thread count to 1**
+  regardless of any `-t` flag — confirmed directly in
+  `arjun/__main__.py`: `if mem.var['stable'] or mem.var['delay']:
+  mem.var['threads'] = 1`. So the `-t 10` in the reported command was
+  never doing anything; combined with arjun's default ~26k-word
+  wordlist (confirmed: `wc -l db/large.txt` → 25889) run fully
+  single-threaded against a real host, the old blanket 180s
+  (`BaseTool.timeout_seconds` default) was never going to be enough —
+  this is a genuinely slow tool by design when run this way, not a
+  hang or a broken command.
+- `surveil/tools/arjun_tool.py`: full-mode timeout raised to 900s
+  (`timeout_seconds = 900`, applied via `get_timeout()`). Also fixed
+  Fast mode, which had a real, separate bug: it still scanned the
+  full ~26k-word list (only upping thread count), unlike every other
+  tool's Fast variant in this codebase (narrower scope, not just more
+  parallelism) — now uses arjun's own bundled `small` wordlist
+  (confirmed: 835 words vs. large's 25889), genuinely fast. Dropped
+  the misleading `-t 10` from the full command since arjun ignores it
+  under `--stable` anyway. `mock_output()` corrected to match real
+  default behavior too (GET-only — arjun's own `-m` defaults to GET
+  and neither command variant adds `-m POST`; the old mock's `[POST]`
+  section was never accurate).
+- **Bigger fix found along the way**: confirmed arjun's stdout is
+  **fully block-buffered when not a TTY** (a subprocess pipe never
+  is) — `timeout 8s` on a real `--stable` run produced **zero** output
+  without `PYTHONUNBUFFERED=1`, vs. 8 real lines *within the same 8s*
+  with it. This meant arjun's "live" output streaming was never
+  actually live — nothing arrived until the process exited on its
+  own, and a run killed by our own timeout (the exact scenario a
+  tester hits) lost 100% of its output instead of showing whatever
+  had run so far. `surveil/tools/base.py`'s `_subprocess_env()` now
+  sets `PYTHONUNBUFFERED=1` for every tool subprocess — fixes this for
+  arjun and any other Python-based wrapped tool (sqlmap, wafw00f,
+  commix), harmless no-op for every non-Python tool (nmap, Go
+  binaries, etc.), since they don't read that env var at all.
+
+**Verified:**
+- Read arjun's actual installed source to confirm the `--stable` →
+  `threads=1` behavior and the real wordlist sizes, rather than
+  guessing.
+- Direct real-tool test (not simulated): ran real arjun against
+  `scanme.nmap.org` (nmap.org's authorized test target) with the new
+  Fast command (`-w small -t 20`) — completed in well under the new
+  90s Fast timeout. Ran the new Full command (`--stable`, no `-t`) —
+  confirmed via raw shell (`timeout 8s`, redirected to a file) that it
+  produces zero bytes without `PYTHONUNBUFFERED=1` and real progress
+  lines with it.
+- Confirmed the fix through the **actual application code path**, not
+  just raw shell: called `surveil.tools.base.run_tool()` directly with
+  the real arjun `--stable` command and a live `on_line` callback —
+  7 real lines arrived within 0.2 seconds of starting. Confirmed
+  separately that a timed-out/killed run still preserves and returns
+  whatever output arrived before the kill (previously this would have
+  been empty).
+- Confirmed `wafw00f` (another Python-based wrapped tool) still runs
+  and produces correct output with the new env var set — the global
+  change doesn't break anything already working.
+- `python3 -c "from surveil.checklist import build_checklist; ..."` —
+  import-time validation passes clean. Hit the live backend's preview
+  endpoint with the exact target from the report (`192.168.2.15`) and
+  confirmed both Fast and Full commands build correctly.
+
+**Next steps for the next agent:**
+1. `PYTHONUNBUFFERED=1` is now set globally for all tool subprocesses.
+   If a future Python-based tool wrapper is added, its live output
+   should stream correctly out of the box — no per-tool env var
+   needed, this was intentionally fixed at the shared `_subprocess_env()`
+   level specifically so it wouldn't need repeating.
+2. Even with the raised 900s Full-mode timeout, arjun's `--stable`
+   mode is inherently slow (single-threaded, ~26k words) — a
+   tester in a real hurry should reach for Fast mode (now genuinely
+   fast) rather than waiting out Full mode, or hand-edit the command
+   to add `-w medium` (10984 words) as a middle ground between the two
+   bundled sizes.
+
+---
+
 ## 2026-08-27 (29) — Pretty-format toggle: added XML and JavaScript
 
 **Done (user follow-up: "did you add other languages? such as python,
