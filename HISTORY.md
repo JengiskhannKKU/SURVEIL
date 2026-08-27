@@ -6,6 +6,72 @@ was verified, and what the next agent should pick up.
 
 ---
 
+## 2026-08-27 (28) — Raw / Pretty JSON / Pretty HTML toggle on tool output
+
+**Done (user request: "on the result can you add button can show raw
+logs, and prettier format such as prettier json, html, ..."):**
+- New `frontend/src/lib/prettyFormat.ts` — zero-dependency detector +
+  formatter. Splits an HTTP-response-shaped output (curl -i / wget -S:
+  header block, blank line, body — detected by the first line matching
+  `HTTP/...` or a `Header: value` pattern) into headers + body, then
+  tries the body as JSON (`JSON.parse` + `JSON.stringify(..., null,
+  2)`) and falls back to a minimal HTML indenter (reflows a blob onto
+  one tag per line, indents by nesting depth via open/close tracking —
+  not a real parser, just enough to make a dumped page readable).
+  Returns `null` (no toggle shown) when the output is neither — most
+  tool output is plain text logs, and forcing a formatter on those
+  would be noise, not a feature.
+- New `frontend/src/components/PrettyOutput.tsx` — regex-token
+  syntax highlighter for the two supported kinds (JSON: keys/strings/
+  numbers/booleans/punctuation each colored; HTML: tag names/attribute
+  names/attribute values/comments each colored), matching the existing
+  `HighlightedOutput.tsx`'s token-regex-per-line pattern rather than
+  introducing a different approach.
+- `frontend/src/components/ItemDetail.tsx`: the Tool Output panel's
+  existing Raw/Tree toggle (for ffuf/gobuster/katana discovered-path
+  results) is now a three-way Raw/Tree/Pretty toggle — "Pretty" only
+  appears when `detectAndFormat()` actually finds JSON or HTML in the
+  active tab's output, labeled with which one ("Pretty JSON" / "Pretty
+  HTML") so it's clear what's about to render. Falls back to Raw
+  whenever the currently active tab has neither, same guard the
+  existing Tree toggle already had.
+
+**Verified:**
+- `npx tsc --noEmit`, `eslint` clean on all three files.
+- Standalone logic test (4 cases): curl -i output with a JSON body →
+  correctly split headers from body and pretty-printed just the body;
+  plain nmap output → correctly returns `null` (no false-positive
+  toggle); curl -i output with an HTML body → detected as HTML; bare
+  JSON with no header block → still detected and formatted.
+- Full browser E2E against a real engagement: ran `curl` for real
+  against `https://httpbin.org/json`, confirmed the "Pretty JSON"
+  toggle appears and renders syntax-highlighted, correctly-indented
+  JSON (keys teal, strings amber, numbers highlighted) with the HTTP
+  headers left as plain text above it. Ran `curl` again against
+  `https://httpbin.org/html`, confirmed "Pretty HTML" appears and
+  renders properly nested/indented, syntax-highlighted markup (tag
+  names bold teal). Zero console errors both times. Test engagement
+  deleted after use.
+
+**Next steps for the next agent:**
+1. Only wired into `ItemDetail.tsx`'s persisted Tool Output panel (the
+   "result" a tester reviews after a run finishes) — deliberately not
+   added to `RunToolDialog.tsx`'s live-streaming output panel, since
+   reformatting a JSON/HTML body mid-stream (before the closing
+   brace/tag has even arrived) doesn't make sense for a formatter that
+   needs the whole body to parse. If that's ever wanted, it would need
+   to wait for the "done" message before attempting it, not run on
+   every streamed line.
+2. The HTML indenter is intentionally minimal (regex-based reflow +
+   depth counting, not a real HTML/DOM parser) — it'll misindent on
+   genuinely malformed markup (unclosed tags, tags split across what
+   it thinks are boundaries) since it doesn't validate structure, only
+   assumes it's roughly well-formed. Good enough for "make a wall of
+   minified HTML readable," not a substitute for a real parser if that
+   ever becomes necessary.
+
+---
+
 ## 2026-08-27 (27) — Audit: Information Gathering (INFO-01…10) against the real WSTG v4.2 methodology
 
 **Done (user request: pasted the full official WSTG-INFO-03 methodology

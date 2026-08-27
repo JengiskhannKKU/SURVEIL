@@ -19,8 +19,10 @@ import { RunToolDialog } from "@/components/RunToolDialog";
 import { ChecklistItemDialog } from "@/components/ChecklistItemDialog";
 import { HighlightedOutput } from "@/components/HighlightedOutput";
 import { DirectoryTree } from "@/components/DirectoryTree";
+import { PrettyOutput } from "@/components/PrettyOutput";
 import { ItemToolsHelpDialog } from "@/components/ItemToolsHelpDialog";
 import { parseDiscoveredPaths, buildPathTree } from "@/lib/pathTree";
+import { detectAndFormat } from "@/lib/prettyFormat";
 import { useToast } from "@/lib/toast";
 import type { ChecklistItem, ToolInfo } from "@/lib/types";
 
@@ -51,7 +53,7 @@ export function ItemDetail({
     Object.keys(item.tool_outputs)[0] ?? null
   );
   const [busyAction, setBusyAction] = useState<"markDone" | "skip" | "reset" | null>(null);
-  const [outputView, setOutputView] = useState<"raw" | "tree">("raw");
+  const [outputView, setOutputView] = useState<"raw" | "tree" | "pretty">("raw");
   const [runAtPath, setRunAtPath] = useState<string | null>(null);
 
   const discoveredTree = useMemo(() => {
@@ -59,10 +61,20 @@ export function ItemDetail({
     const paths = parseDiscoveredPaths(item.tool_outputs[activeOutput] ?? "", activeOutput);
     return paths.length > 0 ? buildPathTree(paths) : null;
   }, [activeOutput, item.tool_outputs]);
-  // Falls back to raw whenever the active output has no parseable tree —
-  // switching tabs away from a ffuf/gobuster/katana result to e.g. an nmap
-  // one shouldn't leave a stale "tree" selection rendering nothing.
-  const effectiveOutputView = discoveredTree ? outputView : "raw";
+  // Detects embedded JSON/HTML in the active tab's output (e.g. a curl/wget
+  // response body) and offers a reformatted, syntax-highlighted view of it.
+  const prettyResult = useMemo(() => {
+    if (!activeOutput) return null;
+    return detectAndFormat(item.tool_outputs[activeOutput] ?? "");
+  }, [activeOutput, item.tool_outputs]);
+  // Falls back to raw whenever the active output has no parseable tree/JSON/
+  // HTML for the currently selected view — switching tabs away from a
+  // ffuf/gobuster/katana result (tree) or a curl/wget response (pretty) to
+  // e.g. an nmap one shouldn't leave a stale selection rendering nothing.
+  const effectiveOutputView =
+    (outputView === "tree" && discoveredTree) || (outputView === "pretty" && prettyResult)
+      ? outputView
+      : "raw";
 
   function runToolAt(path: string) {
     setRunAtPath(path);
@@ -267,7 +279,7 @@ export function ItemDetail({
                 <Typography variant="subtitle2" fontWeight={700}>
                   Tool output
                 </Typography>
-                {discoveredTree && (
+                {(discoveredTree || prettyResult) && (
                   <ToggleButtonGroup
                     size="small"
                     exclusive
@@ -276,7 +288,12 @@ export function ItemDetail({
                     sx={{ "& .MuiToggleButton-root": { px: 1.25, py: 0.25, fontSize: 11, textTransform: "none" } }}
                   >
                     <ToggleButton value="raw">Raw</ToggleButton>
-                    <ToggleButton value="tree">Tree</ToggleButton>
+                    {discoveredTree && <ToggleButton value="tree">Tree</ToggleButton>}
+                    {prettyResult && (
+                      <ToggleButton value="pretty">
+                        Pretty {prettyResult.kind === "json" ? "JSON" : "HTML"}
+                      </ToggleButton>
+                    )}
                   </ToggleButtonGroup>
                 )}
               </Stack>
@@ -322,6 +339,28 @@ export function ItemDetail({
                   }}
                 >
                   <DirectoryTree root={discoveredTree} onRunHere={runToolAt} />
+                </Box>
+              )}
+              {activeOutput && effectiveOutputView === "pretty" && prettyResult && (
+                <Box
+                  component="pre"
+                  sx={{
+                    m: 0,
+                    maxHeight: 480,
+                    overflow: "auto",
+                    borderRadius: 1,
+                    bgcolor: "#000",
+                    border: "1px solid rgba(255,255,255,0.08)",
+                    px: 1.5,
+                    py: 1,
+                    fontFamily: "var(--font-geist-mono), monospace",
+                    fontSize: 12,
+                    lineHeight: 1.6,
+                    color: "rgba(255,255,255,0.8)",
+                    whiteSpace: "pre",
+                  }}
+                >
+                  <PrettyOutput text={prettyResult.formatted} kind={prettyResult.kind} />
                 </Box>
               )}
             </Box>
