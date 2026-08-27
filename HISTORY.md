@@ -6,6 +6,38 @@ was verified, and what the next agent should pick up.
 
 ---
 
+## 2026-08-27 (21) — OS label on each install-command chip
+
+**Done (user request: "at install command can you add label OS for
+tell user should use what script to install"):**
+- `InstallHints.tsx` (the not-installed-tool warning shown in the Run
+  Tool dialog, the Tools catalog, and the Help dialog — one shared
+  component) now shows a second small chip next to each package-manager
+  chip (`brew`/`apt`/`go`/`pip`/`gem`/`git`/...) naming the OS(es) that
+  command actually targets — `brew` → macOS, `apt` → "Linux (Debian/
+  Ubuntu/Kali)", `go`/`pip`/`gem`/`git` → macOS/Linux, anything
+  unrecognized → "Cross-platform" rather than guessing wrong
+  (`MGR_OS` lookup table). Fixes a real ambiguity: "go" or "pip" alone
+  doesn't tell a tester whether it'll work on their machine the way
+  "brew"/"apt" obviously do.
+- Restructured `CopyRow` to two lines (chips on top, command+copy
+  button below) instead of cramming both chips into the same row as
+  the command box — the original single-row layout squeezed the
+  command text down to a couple of visible characters in the Tools
+  catalog's ~380px-wide cards.
+
+**Verified:**
+- `npx tsc --noEmit`, `eslint`, `next build` all clean.
+- Full browser E2E: Tools catalog card for `commix` (not installed on
+  this dev machine) shows "Linux (Debian/Ubuntu/Kali)" next to `apt`
+  and "macOS/Linux" next to `git`, both fully visible with the command
+  box keeping its full width. Same component re-checked inside the
+  wider Run Tool dialog (selecting `commix` on a fresh engagement's
+  WSTG-INPV-12) — renders correctly there too. Zero console errors.
+  Test engagement deleted after use.
+
+---
+
 ## 2026-08-27 (20) — Three new tools: naabu, dalfox, commix
 
 **Done (user request: "can you implement by add other tools for pentest
