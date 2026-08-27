@@ -6,6 +6,63 @@ was verified, and what the next agent should pick up.
 
 ---
 
+## 2026-08-27 (32) — Fix: gowitness v2→v3 CLI rewrite broke the wrapper's command
+
+**Done (user report: `gowitness single http://192.168.2.15 --timeout
+30` → `An error has occured. The error was: unknown command "single"
+for "gowitness"`):**
+- Root-caused by installing gowitness fresh (`go install
+  github.com/sensepost/gowitness@latest`) — it now installs v3 (banner:
+  "v3, with <3 by @leonjza"), which rewrote the CLI entirely from v2's
+  bare `gowitness single <url> --timeout N` to a `scan` subcommand
+  family. Confirmed the real v3 invocation directly against `gowitness
+  scan single --help`: `gowitness scan single -u <url> -T <timeout>` —
+  note `-u` is a real flag now (not a bare positional) and `-T`
+  (capital) is the timeout; lowercase `-t` was repurposed to thread
+  count in v3, a different flag entirely.
+- `surveil/tools/gowitness_tool.py`: `build_command()` rewritten to the
+  real v3 command. `example` updated to match.
+- `run_help()` overridden (previously used `BaseTool`'s default): the
+  generic `[binary, help_flag]` form would run top-level `gowitness
+  --help`, which only lists the `scan`/`report`/`version` subcommand
+  families, not the actual `-u`/`-T` flags a tester needs for this
+  wrapper's exact invocation. Now runs `gowitness scan single --help`
+  directly — same pattern used for `zap` in entry 31.
+- `mock_output()` rewritten to match v3's real (much terser than v2's)
+  default output: one `WARN` about no writers configured, then one
+  `INFO result` line with the actual result fields (status code,
+  title, `have-screenshot`).
+
+**Verified:**
+- Real `run_tool()` call against `https://example.com` through the
+  actual application code path: `exit_code: 0`, real captured output
+  (`WARN no writers have been configured...` /
+  `INFO result 🤖 target=https://example.com status-code=200
+  title="Example Domain" have-screenshot=true`).
+- `run_help()` confirmed to return the real `scan single --help` text
+  (correct ASCII banner + `-u`/`-T`/etc. flags), not the top-level
+  subcommand list.
+- Hit the real backend API (`GET /api/tools/gowitness/command?
+  target=192.168.2.15&fast=false`) — returned the exact fixed command,
+  confirming the fix against the user's own reported target.
+- Full browser E2E against a fresh test engagement: opened WSTG-INFO-07
+  → Run Tool → gowitness → Run, confirmed the old `unknown command
+  "single"` error text is gone and the dialog reaches "✓ Done — output
+  saved to this item." with the real `have-screenshot=true` result
+  streamed into the terminal panel. Zero console errors. Test
+  engagement and Playwright test script deleted after use.
+- `npx tsc --noEmit` clean (backend/tool-only fix, no frontend changes
+  needed); `python3 -c "from surveil.checklist import build_checklist;
+  ..."` import-time validation passes (24 tools, no import errors).
+
+**Next steps for the next agent:**
+- None outstanding for this fix. If gowitness majors again in the
+  future, same approach applies: reinstall fresh, diff `--help` output
+  against the wrapper's `build_command()`, don't assume the old syntax
+  still works.
+
+---
+
 ## 2026-08-27 (31) — OWASP ZAP integration (Docker-based), mapped to WSTG-INFO-07
 
 **Done (user question: "wstg-info-07 it use spider ZAP, in my project
