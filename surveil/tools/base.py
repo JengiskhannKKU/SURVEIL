@@ -127,10 +127,14 @@ def _subprocess_env() -> dict[str, str]:
     return env
 
 
+CANCELLED_EXIT_CODE = 130  # conventional 128+SIGINT, reused here for a tester-requested stop
+
+
 def run_tool(
     command: list[str],
     timeout: int = 120,
     on_line: Callable[[str], None] | None = None,
+    cancel_event: threading.Event | None = None,
 ) -> tuple[int, str]:
     """Run *command* via subprocess; stream each line to *on_line* callback.
 
@@ -141,6 +145,11 @@ def run_tool(
     deadline, so *timeout* only ever took effect after the process had
     already exited on its own. That made the timeout a no-op for any tool
     that hangs or runs long without emitting a line.
+
+    If *cancel_event* is given, it's polled (alongside the timeout deadline)
+    every 0.25s instead of blocking on a single `thread.join(timeout=)` —
+    that's what lets a tester-requested stop take effect immediately rather
+    than only once the full timeout has elapsed.
     """
     lines: list[str] = []
     try:
@@ -150,12 +159,13 @@ def run_tool(
             stderr=subprocess.STDOUT,
             text=True,
             env=_subprocess_env(),
-            # Own process group so a timeout can kill the whole tree (see
-            # below) — several tools here are themselves shell scripts that
-            # spawn their own subprocesses (testssl.sh -> openssl, for one),
-            # and killing only the direct child leaves those grandchildren
-            # holding the stdout pipe open, so the reader thread never sees
-            # EOF and the timeout effectively doesn't end the run.
+            # Own process group so a timeout/cancel can kill the whole tree
+            # (see below) — several tools here are themselves shell scripts
+            # that spawn their own subprocesses (testssl.sh -> openssl, for
+            # one), and killing only the direct child leaves those
+            # grandchildren holding the stdout pipe open, so the reader
+            # thread never sees EOF and the timeout/cancel effectively
+            # doesn't end the run.
             start_new_session=True,
         )
     except FileNotFoundError:
@@ -170,7 +180,24 @@ def run_tool(
 
     thread = threading.Thread(target=reader, daemon=True)
     thread.start()
-    thread.join(timeout=timeout)
+
+    start = time.monotonic()
+    cancelled = False
+    while thread.is_alive():
+        if cancel_event is not None and cancel_event.is_set():
+            cancelled = True
+            break
+        if time.monotonic() - start >= timeout:
+            break
+        thread.join(timeout=0.25)
+
+    if cancelled:
+        try:
+            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+        except ProcessLookupError:
+            pass  # already gone
+        thread.join(timeout=5)  # let the reader drain whatever's left and exit
+        return CANCELLED_EXIT_CODE, "".join(lines) + "\n[CANCELLED]"
 
     if thread.is_alive():
         try:
@@ -312,6 +339,7 @@ class BaseTool(ABC):
         override_command: list[str] | None = None,
         default_command: list[str] | None = None,
         fast: bool = False,
+        cancel_event: threading.Event | None = None,
     ) -> ToolResult:
         """Run the tool.
 
@@ -330,6 +358,10 @@ class BaseTool(ABC):
         — it's a smarter default, not an explicit tester override. Falls
         back to *fast*/self.build_command() when neither is given (plain
         CLI/TUI callers with no checklist item context).
+
+        *cancel_event*, if given, lets a caller stop a real (non-simulated)
+        run early — see run_tool() below. Has no effect on the simulated
+        path, which returns near-instantly anyway.
         """
         start = time.monotonic()
         if override_command is None and not self.is_available():
@@ -362,7 +394,9 @@ class BaseTool(ABC):
         # PATH lookup won't find it there on its own.
         resolved = resolve_binary(cmd[0])
         exec_cmd = [resolved, *cmd[1:]] if resolved else cmd
-        exit_code, raw_output = run_tool(exec_cmd, timeout=timeout, on_line=on_line)
+        exit_code, raw_output = run_tool(
+            exec_cmd, timeout=timeout, on_line=on_line, cancel_event=cancel_event
+        )
         output = self.postprocess_output(raw_output, exit_code)
         if on_line and output != raw_output:
             # postprocess_output appended something after the live stream

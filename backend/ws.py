@@ -10,8 +10,34 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from surveil import state
 from surveil.models import Status
 from surveil.orchestrator import Orchestrator
+from surveil.tools.base import CANCELLED_EXIT_CODE
 
 router = APIRouter()
+
+# Tracks the cancel_event for every currently-running tool, keyed by
+# (eng_id, item_id) — a run keeps executing server-side after its own
+# WebSocket disconnects (see the comment below), so a stop request needs
+# somewhere to find it that isn't tied to that connection. Registered right
+# before the worker thread starts, removed in its `finally`. Read/written
+# from the asyncio event loop thread (register/unregister, and the REST
+# cancel endpoint in backend/routers/items.py) and never mutated from the
+# worker thread itself, so no extra locking is needed — dict access itself
+# is already atomic under the GIL for these single get/set/del operations.
+_RUNNING: dict[tuple[str, str], threading.Event] = {}
+
+
+def cancel_run(eng_id: str, item_id: str) -> bool:
+    """Request a stop for the tool currently running on this item, if any.
+
+    Returns True if a run was found and signaled, False if nothing is
+    running there (nothing to do — not an error, the item may have already
+    finished on its own between the tester clicking Stop and this call).
+    """
+    event = _RUNNING.get((eng_id, item_id))
+    if event is None:
+        return False
+    event.set()
+    return True
 
 
 @router.websocket("/ws/engagements/{eng_id}/items/{item_id}/run")
@@ -74,6 +100,8 @@ async def run_tool_ws(websocket: WebSocket, eng_id: str, item_id: str) -> None:
     loop = asyncio.get_event_loop()
     queue: asyncio.Queue = asyncio.Queue()
     result_holder: dict = {}
+    cancel_event = threading.Event()
+    run_key = (eng_id, item_id)
 
     def on_line(line: str) -> None:
         loop.call_soon_threadsafe(queue.put_nowait, {"type": "line", "data": line})
@@ -84,14 +112,17 @@ async def run_tool_ws(websocket: WebSocket, eng_id: str, item_id: str) -> None:
             result = orchestrator.run_tool(
                 item, tool_name, on_line=on_line,
                 custom_command=custom_command, fast=fast,
+                cancel_event=cancel_event,
             )
             state.save(engagement)
             result_holder["result"] = result
         except Exception as exc:  # noqa: BLE001 — surfaced to the client, not swallowed
             result_holder["error"] = str(exc)
         finally:
+            _RUNNING.pop(run_key, None)
             loop.call_soon_threadsafe(queue.put_nowait, {"type": "done"})
 
+    _RUNNING[run_key] = cancel_event
     thread = threading.Thread(target=worker, daemon=True)
     thread.start()
 
@@ -113,6 +144,7 @@ async def run_tool_ws(websocket: WebSocket, eng_id: str, item_id: str) -> None:
                             "elapsed_seconds": result.elapsed_seconds,
                             "simulated": result.simulated,
                             "success": result.success,
+                            "cancelled": result.exit_code == CANCELLED_EXIT_CODE,
                         },
                     })
                 break

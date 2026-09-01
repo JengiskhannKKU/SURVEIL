@@ -71,6 +71,12 @@ export const api = {
       { method: "POST" }
     ),
 
+  cancelRun: (engId: string, itemId: string) =>
+    request<{ cancelling: string }>(
+      `/api/engagements/${engId}/items/${itemId}/cancel`,
+      { method: "POST" }
+    ),
+
   updateNotes: (engId: string, itemId: string, notes: string) =>
     request<ChecklistItem>(
       `/api/engagements/${engId}/items/${itemId}/notes`,

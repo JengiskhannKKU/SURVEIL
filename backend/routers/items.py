@@ -6,9 +6,10 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from surveil import state
-from surveil.models import ChecklistItem, Engagement
+from surveil.models import ChecklistItem, Engagement, Status
 from surveil.orchestrator import Orchestrator
 
+from .. import ws
 from ..deps import get_item, load_engagement
 
 router = APIRouter(prefix="/api/engagements/{eng_id}/items", tags=["items"])
@@ -105,6 +106,32 @@ def skip(eng_id: str, item_id: str) -> ChecklistItem:
     Orchestrator(engagement).mark_skipped(item)
     state.save(engagement)
     return item
+
+
+@router.post("/{item_id}/cancel")
+def cancel(eng_id: str, item_id: str) -> dict:
+    """Stop a tool currently running on this item.
+
+    Signals the run's cancel_event (see backend/ws.py) — the worker thread
+    kills the real subprocess (whole process group, so nothing lingers),
+    appends "[CANCELLED]" to whatever output it had produced so far, and
+    saves that as this item's result. Works whether or not the Run Tool
+    dialog that started the run is still open — the run itself isn't tied
+    to that WebSocket's lifetime, so this REST endpoint is the only way to
+    stop one that was started from a session that's since navigated away.
+    """
+    engagement = load_engagement(eng_id)
+    item = get_item(engagement, item_id)
+    if item.status != Status.RUNNING:
+        raise HTTPException(status_code=409, detail=f"{item_id} has no tool currently running.")
+    found = ws.cancel_run(eng_id, item_id)
+    if not found:
+        # Status says RUNNING but no cancel_event is registered — the run
+        # must have just finished between the tester's click and this
+        # request landing. Not an error; the item's real status will
+        # reflect that on the next fetch.
+        raise HTTPException(status_code=409, detail=f"{item_id}'s run just finished — nothing to cancel.")
+    return {"cancelling": item_id}
 
 
 @router.post("/{item_id}/reset")

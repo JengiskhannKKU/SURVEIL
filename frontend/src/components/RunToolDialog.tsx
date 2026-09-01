@@ -19,6 +19,7 @@ import CheckIcon from "@mui/icons-material/Check";
 import RestartAltIcon from "@mui/icons-material/RestartAlt";
 import ListAltIcon from "@mui/icons-material/ListAlt";
 import HelpOutlineIcon from "@mui/icons-material/HelpOutline";
+import StopIcon from "@mui/icons-material/Stop";
 import IconButton from "@mui/material/IconButton";
 import { motion } from "framer-motion";
 import { api, WS_BASE } from "@/lib/api";
@@ -74,6 +75,8 @@ export function RunToolDialog({
   const [finished, setFinished] = useState(false);
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
+  const [cancelled, setCancelled] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const outputRef = useRef<HTMLDivElement | null>(null);
 
@@ -148,6 +151,7 @@ export function RunToolDialog({
     setLines([]);
     setError("");
     setFinished(false);
+    setCancelled(false);
     setRunning(true);
     let startNotified = false;
 
@@ -189,8 +193,14 @@ export function RunToolDialog({
       } else if (msg.type === "done") {
         setRunning(false);
         setFinished(true);
+        setCancelling(false);
+        setCancelled(msg.result.cancelled);
         onDone(msg.item);
-        toast.success(`${toolName} finished (${msg.result.elapsed_seconds.toFixed(1)}s)`);
+        if (msg.result.cancelled) {
+          toast.success(`${toolName} stopped`);
+        } else {
+          toast.success(`${toolName} finished (${msg.result.elapsed_seconds.toFixed(1)}s)`);
+        }
       } else if (msg.type === "error") {
         setRunning(false);
         setFinished(true);
@@ -204,6 +214,26 @@ export function RunToolDialog({
       setError("WebSocket connection failed.");
       toast.error("WebSocket connection failed");
     };
+  }
+
+  async function stop() {
+    setCancelling(true);
+    try {
+      await api.cancelRun(engagementId, item.id);
+      // Nothing else to do here — the running subprocess gets killed
+      // server-side, and this dialog's own WebSocket (if it's the one
+      // watching this run) will get the resulting "done" message and flip
+      // `running`/`finished` itself. If this run was started from a
+      // different dialog/tab (alreadyRunningElsewhere), there's no live ws
+      // here to react to — the item prop updates once the parent's polling
+      // (or a reopen of this dialog) re-fetches it.
+      if (alreadyRunningElsewhere) {
+        toast.success(`Stopping ${toolName || "the running tool"}…`);
+      }
+    } catch (err) {
+      setCancelling(false);
+      toast.error(err instanceof Error ? err.message : "Could not stop the tool.");
+    }
   }
 
   return (
@@ -236,10 +266,25 @@ export function RunToolDialog({
       </DialogTitle>
       <DialogContent>
         {alreadyRunningElsewhere && (
-          <Alert severity="warning" sx={{ mt: 2, mb: 1 }}>
+          <Alert
+            severity="warning"
+            sx={{ mt: 2, mb: 1 }}
+            action={
+              <Button
+                color="warning"
+                size="small"
+                startIcon={<StopIcon fontSize="small" />}
+                onClick={stop}
+                disabled={cancelling}
+              >
+                {cancelling ? "Stopping…" : "Stop it"}
+              </Button>
+            }
+          >
             A tool is already running on {item.id} in the background — started earlier and still
             going even though no dialog was open to watch it. Its result will land here (and in
-            the checklist sidebar) once it finishes; starting another run now would be rejected.
+            the checklist sidebar) once it finishes; starting another run now would be rejected —
+            stop it first if you&apos;d rather run something else.
           </Alert>
         )}
         <Stack direction="row" spacing={2} flexWrap="wrap" useFlexGap alignItems="center" mb={2} mt={2}>
@@ -417,6 +462,17 @@ export function RunToolDialog({
               Help
             </Button>
           )}
+          {running && (
+            <Button
+              variant="outlined"
+              color="error"
+              startIcon={<StopIcon fontSize="small" />}
+              onClick={stop}
+              disabled={cancelling}
+            >
+              {cancelling ? "Stopping…" : "Stop"}
+            </Button>
+          )}
           <Button
             variant="contained"
             onClick={run}
@@ -457,7 +513,13 @@ export function RunToolDialog({
           )}
         </Box>
 
-        {finished && !error && (
+        {finished && !error && cancelled && (
+          <Typography variant="body2" sx={{ mt: 1.5, color: "#f59e0b" }}>
+            ■ Stopped — partial output saved to this item. Edit the command above (e.g. lower a
+            timeout/thread flag) and hit Run again to try a faster pass.
+          </Typography>
+        )}
+        {finished && !error && !cancelled && (
           <Typography variant="body2" sx={{ mt: 1.5, color: "#22c55e" }}>
             ✓ Done — output saved to this item.
           </Typography>

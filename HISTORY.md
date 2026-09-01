@@ -6,6 +6,96 @@ was verified, and what the next agent should pick up.
 
 ---
 
+## 2026-09-01 (33) — Cancel a running tool (stop + resume/edit)
+
+**Done (user report: a run stuck taking too long had no way to stop it —
+had to wait it out before running a different tool or a faster edited
+command):**
+- `surveil/tools/base.py`: `run_tool()` rewritten to poll a
+  `cancel_event: threading.Event | None` every 0.25s alongside the
+  existing timeout deadline, instead of one blocking
+  `thread.join(timeout=timeout)` — that blocking form couldn't react to
+  anything mid-wait. On cancel, kills the whole process group (same
+  `os.killpg(..., SIGKILL)` the timeout path already used, so
+  grandchildren like testssl.sh's spawned openssl don't linger) and
+  returns exit code `CANCELLED_EXIT_CODE` (130, new module constant) with
+  `[CANCELLED]` appended to whatever output had streamed so far.
+  `BaseTool.run()` and `Orchestrator.run_tool()` both thread the new
+  `cancel_event` param through unchanged otherwise.
+- `backend/ws.py`: new module-level `_RUNNING: dict[(eng_id, item_id),
+  threading.Event]` registry and `cancel_run(eng_id, item_id) -> bool`
+  helper. The run's `cancel_event` is registered right before the worker
+  thread starts and popped in its `finally` — deliberately **not** tied
+  to the WebSocket connection's lifetime, same as the run itself already
+  isn't (per entry on background-run streaming), so a stop request works
+  even from a browser tab/dialog that wasn't the one that started the
+  run. The "done" WS message now includes `result.cancelled` (exit code
+  == `CANCELLED_EXIT_CODE`) so the frontend can show "stopped" instead of
+  a generic failure.
+- `backend/routers/items.py`: new `POST
+  /api/engagements/{id}/items/{item_id}/cancel` — 409s if the item isn't
+  currently `RUNNING`, or if it says `RUNNING` but no `cancel_event` is
+  registered (the run finished in the gap between the tester's click and
+  the request landing — not an error). Otherwise calls
+  `ws.cancel_run()` and returns 200 immediately; the actual kill/save
+  happens asynchronously in the worker thread, same as it always did.
+- `frontend/src/components/RunToolDialog.tsx`: a **Stop** button next to
+  Run while this dialog's own WebSocket is watching a live run, and a
+  **Stop it** button on the existing "already running in the background"
+  warning Alert (for a run started from a different dialog/tab — no live
+  ws here, so the button just calls the REST endpoint and the item prop
+  catches up via the parent's existing 3s polling). Cancelling
+  re-enables the command field and Run button immediately — the point
+  being able to edit the command (lower a timeout/thread flag) and rerun
+  right away instead of waiting out the original run.
+- `frontend/src/lib/types.ts` / `api.ts`: `RunResult.cancelled: boolean`
+  added; new `api.cancelRun(engId, itemId)`.
+
+**Verified:**
+- Direct `run_tool()` call with a `sleep 30` and a `cancel_event` set
+  after 1.5s from another thread: returned in 1.53s (not 30s), exit code
+  130, output `"\n[CANCELLED]"`.
+- Process-group kill confirmed real: `bash -c 'sleep 30 & wait'` (nested
+  child, same shape as testssl.sh→openssl) cancelled after 1s — `pgrep -f
+  "sleep 30"` found nothing lingering afterward.
+- Full backend API test: started a real run over a WebSocket
+  (`custom_command` executes for real regardless of tool name), cancelled
+  via a separate REST call from an unrelated process mid-run — item
+  flipped to `failed` with `tool_outputs: {"curl": "...\n[CANCELLED]"}`
+  in ~1.5s total instead of the command's real 20s duration.
+- Specifically reproduced the "no dialog watching it" case end-to-end:
+  opened a WS, sent a slow command, closed the WS immediately after the
+  first output line arrived (run keeps going server-side, confirmed
+  status still `running`), then cancelled via REST from a completely
+  separate call — worked, `failed` status with `[CANCELLED]` output.
+  409 confirmed on a second cancel attempt (nothing left to stop) and on
+  an item that was never running.
+- Full browser E2E: opened WSTG-INFO-02, selected `curl`, edited the
+  command to `sleep 20`, hit Run, confirmed the **Stop** button appears
+  next to Run while it's going, clicked it, confirmed within ~2s the
+  dialog shows the amber "Stopped — partial output saved..." message,
+  the command field and Run button re-enable, and a "curl stopped" toast
+  appears — matching the reported need to stop-then-edit-then-rerun.
+  Zero console errors. Test engagements and Playwright script deleted
+  after use.
+- `npx tsc --noEmit` clean; `python3 -c "from backend.main import app"`
+  imports with no circular-import issues (`backend/routers/items.py`
+  imports `backend/ws.py`, not the reverse).
+
+**Next steps for the next agent:**
+- None outstanding. A cancelled run's item lands in the existing
+  `FAILED` status (same bucket a timeout already uses) rather than a new
+  dedicated status — kept deliberately minimal to avoid touching every
+  frontend status icon/color/order list (`frontend/src/lib/severity.ts`'s
+  `STATUS_ORDER`, `Checklist.tsx`'s icons, etc.) for what the `output`
+  text (`[CANCELLED]` vs `[TIMEOUT]`) already disambiguates. Revisit only
+  if a tester specifically asks to distinguish "I stopped it" from "it
+  actually failed" in the checklist sidebar itself, not just inside the
+  Run Tool dialog (which already does distinguish them via
+  `result.cancelled`).
+
+---
+
 ## 2026-08-27 (32) — Fix: gowitness v2→v3 CLI rewrite broke the wrapper's command
 
 **Done (user report: `gowitness single http://192.168.2.15 --timeout

@@ -126,6 +126,7 @@ export interface RunResult {
   elapsed_seconds: number;
   simulated: boolean;
   success: boolean;
+  cancelled: boolean;
 }
 
 export type WsMessage =

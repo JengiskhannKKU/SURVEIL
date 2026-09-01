@@ -1,6 +1,7 @@
 """Tool Orchestration Layer — runs tool wrappers and updates checklist state."""
 from __future__ import annotations
 
+import threading
 import time
 from datetime import datetime
 from typing import Callable, Optional
@@ -25,13 +26,17 @@ class Orchestrator:
         on_line: Callable[[str], None] | None = None,
         custom_command: list[str] | None = None,
         fast: bool = False,
+        cancel_event: threading.Event | None = None,
     ) -> ToolResult:
         """
         Execute *tool_name* against the engagement target.
 
         - Sets item status to RUNNING before execution.
         - Stores raw output in item.tool_outputs[tool_name].
-        - Sets item status to DONE on success, FAILED on error.
+        - Sets item status to DONE on success, FAILED on error (including a
+          tester-requested cancel, which comes back as a non-zero exit code
+          same as a timeout does — see CANCELLED_EXIT_CODE in
+          surveil.tools.base).
         - Records elapsed time.
         - If *custom_command* is given, it replaces the tool's default
           command line and always executes for real (see BaseTool.run).
@@ -40,6 +45,10 @@ class Orchestrator:
           swapped in via apply_tool_overrides() — the same swap the Run
           Tool dialog's preview applies, so it actually takes effect on a
           real run instead of only affecting the previewed text.
+        - *cancel_event*, if given, is passed through to BaseTool.run() so
+          a caller (see backend/ws.py's cancel endpoint) can stop a
+          long-running real scan early instead of waiting out its full
+          timeout.
         """
         tool_cls = TOOL_REGISTRY.get(tool_name)
         if tool_cls is None:
@@ -55,7 +64,11 @@ class Orchestrator:
                 tool_name, item.id, tool.build_command(fast=fast), uses_wordlist=tool_cls.uses_wordlist
             )
         result = tool.run(
-            on_line=on_line, override_command=custom_command, default_command=default_command, fast=fast
+            on_line=on_line,
+            override_command=custom_command,
+            default_command=default_command,
+            fast=fast,
+            cancel_event=cancel_event,
         )
 
         item.tool_outputs[tool_name] = result.output
