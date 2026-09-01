@@ -11,7 +11,34 @@ import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import FolderOutlinedIcon from "@mui/icons-material/FolderOutlined";
 import InsertDriveFileOutlinedIcon from "@mui/icons-material/InsertDriveFileOutlined";
 import PlayCircleOutlineIcon from "@mui/icons-material/PlayCircleOutline";
+import Chip from "@mui/material/Chip";
 import type { TreeNode } from "@/lib/pathTree";
+
+// 401/403 mean the path exists but needs credentials/permission; 200 means
+// it's reached and served with no auth at all — the two things a tester
+// actually needs to tell apart at a glance in this tree, not just "found".
+function StatusChip({ status }: { status: number | null }) {
+  if (status === null) return null;
+  const isOpen = status === 200;
+  const isAuthWalled = status === 401 || status === 403;
+  const color = isOpen ? "#22c55e" : isAuthWalled ? "#f59e0b" : "#64748b";
+  const label = isOpen ? "200 open" : isAuthWalled ? `${status} needs auth` : String(status);
+  return (
+    <Chip
+      label={label}
+      size="small"
+      sx={{
+        height: 18,
+        fontSize: 10.5,
+        fontFamily: "var(--font-geist-mono)",
+        color,
+        borderColor: color,
+        bgcolor: "transparent",
+      }}
+      variant="outlined"
+    />
+  );
+}
 
 function Node({
   node,
@@ -59,6 +86,7 @@ function Node({
         >
           {node.name}
         </Typography>
+        {node.observed && <StatusChip status={node.status} />}
         <Box flex={1} />
         <Tooltip title={`Run a tool against ${node.path}`}>
           <IconButton
@@ -85,14 +113,16 @@ function Node({
 export function DirectoryTree({
   root,
   onRunHere,
+  emptyMessage = "No directory/file paths could be parsed from this output.",
 }: {
   root: TreeNode;
   onRunHere: (path: string) => void;
+  emptyMessage?: string;
 }) {
   if (root.children.length === 0) {
     return (
       <Typography variant="body2" color="text.secondary" sx={{ py: 2 }}>
-        No directory/file paths could be parsed from this output.
+        {emptyMessage}
       </Typography>
     );
   }

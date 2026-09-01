@@ -46,6 +46,7 @@ class GowitnessTool(BaseTool):
             text=True,
             timeout=15,
             env=_subprocess_env(),
+            stdin=subprocess.DEVNULL,
         )
         return ((proc.stdout or "") + (proc.stderr or "")).strip()
 

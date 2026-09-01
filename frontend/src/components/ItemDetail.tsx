@@ -10,6 +10,9 @@ import Tab from "@mui/material/Tab";
 import Link from "@mui/material/Link";
 import ToggleButton from "@mui/material/ToggleButton";
 import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
+import TextField from "@mui/material/TextField";
+import InputAdornment from "@mui/material/InputAdornment";
+import SearchIcon from "@mui/icons-material/Search";
 import HelpOutlineIcon from "@mui/icons-material/HelpOutline";
 import { motion } from "framer-motion";
 import { api } from "@/lib/api";
@@ -21,7 +24,12 @@ import { HighlightedOutput } from "@/components/HighlightedOutput";
 import { DirectoryTree } from "@/components/DirectoryTree";
 import { PrettyOutput } from "@/components/PrettyOutput";
 import { ItemToolsHelpDialog } from "@/components/ItemToolsHelpDialog";
-import { parseDiscoveredPaths, buildPathTree } from "@/lib/pathTree";
+import {
+  parseDiscoveredPaths,
+  buildPathTree,
+  collectStatuses,
+  filterRawByStatus,
+} from "@/lib/pathTree";
 import { detectAndFormat } from "@/lib/prettyFormat";
 import type { PrettyKind } from "@/lib/prettyFormat";
 import { useToast } from "@/lib/toast";
@@ -63,12 +71,56 @@ export function ItemDetail({
   const [busyAction, setBusyAction] = useState<"markDone" | "skip" | "reset" | null>(null);
   const [outputView, setOutputView] = useState<"raw" | "tree" | "pretty">("raw");
   const [runAtPath, setRunAtPath] = useState<string | null>(null);
+  // Filters applied to the Tool output panel below — a plain substring
+  // search (works against any tool's raw output) plus, when the active
+  // output is ffuf/gobuster-shaped, a status-code filter (200/301/302/403/
+  // ...) so a tester can isolate "what's publicly open" from "what needs
+  // permission" without hand-reading the whole dump.
+  const [filterQuery, setFilterQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<number | null>(null);
 
-  const discoveredTree = useMemo(() => {
-    if (!activeOutput) return null;
-    const paths = parseDiscoveredPaths(item.tool_outputs[activeOutput] ?? "", activeOutput);
-    return paths.length > 0 ? buildPathTree(paths) : null;
+  function selectOutputTab(name: string) {
+    setActiveOutput(name);
+    // A status filter that made sense for ffuf shouldn't silently carry
+    // over and hide everything in an unrelated nmap tab.
+    setFilterQuery("");
+    setStatusFilter(null);
+  }
+
+  const discoveredEntries = useMemo(() => {
+    if (!activeOutput) return [];
+    return parseDiscoveredPaths(item.tool_outputs[activeOutput] ?? "", activeOutput);
   }, [activeOutput, item.tool_outputs]);
+  const hasDiscoveredPaths = discoveredEntries.length > 0;
+  const availableStatuses = useMemo(() => collectStatuses(discoveredEntries), [discoveredEntries]);
+
+  const filteredEntries = useMemo(() => {
+    const q = filterQuery.trim().toLowerCase();
+    return discoveredEntries.filter(
+      (e) =>
+        (statusFilter === null || e.status === statusFilter) &&
+        (!q || e.path.toLowerCase().includes(q))
+    );
+  }, [discoveredEntries, filterQuery, statusFilter]);
+
+  const discoveredTree = useMemo(
+    () => (hasDiscoveredPaths ? buildPathTree(filteredEntries) : null),
+    [hasDiscoveredPaths, filteredEntries]
+  );
+
+  const displayedRawOutput = useMemo(() => {
+    if (!activeOutput) return "";
+    let text = item.tool_outputs[activeOutput] ?? "";
+    if (statusFilter !== null) text = filterRawByStatus(text, statusFilter);
+    const q = filterQuery.trim().toLowerCase();
+    if (q) {
+      text = text
+        .split("\n")
+        .filter((line) => line.toLowerCase().includes(q))
+        .join("\n");
+    }
+    return text;
+  }, [activeOutput, item.tool_outputs, statusFilter, filterQuery]);
   // Detects embedded JSON/HTML in the active tab's output (e.g. a curl/wget
   // response body) and offers a reformatted, syntax-highlighted view of it.
   const prettyResult = useMemo(() => {
@@ -287,27 +339,25 @@ export function ItemDetail({
                 <Typography variant="subtitle2" fontWeight={700}>
                   Tool output
                 </Typography>
-                {(discoveredTree || prettyResult) && (
-                  <ToggleButtonGroup
-                    size="small"
-                    exclusive
-                    value={outputView}
-                    onChange={(_, v) => v && setOutputView(v)}
-                    sx={{ "& .MuiToggleButton-root": { px: 1.25, py: 0.25, fontSize: 11, textTransform: "none" } }}
-                  >
-                    <ToggleButton value="raw">Raw</ToggleButton>
-                    {discoveredTree && <ToggleButton value="tree">Tree</ToggleButton>}
-                    {prettyResult && (
-                      <ToggleButton value="pretty">
-                        Pretty {PRETTY_KIND_LABEL[prettyResult.kind]}
-                      </ToggleButton>
-                    )}
-                  </ToggleButtonGroup>
-                )}
+                <ToggleButtonGroup
+                  size="small"
+                  exclusive
+                  value={outputView}
+                  onChange={(_, v) => v && setOutputView(v)}
+                  sx={{ "& .MuiToggleButton-root": { px: 1.25, py: 0.25, fontSize: 11, textTransform: "none" } }}
+                >
+                  <ToggleButton value="raw">Raw</ToggleButton>
+                  {discoveredTree && <ToggleButton value="tree">Tree</ToggleButton>}
+                  {prettyResult && (
+                    <ToggleButton value="pretty">
+                      Pretty {PRETTY_KIND_LABEL[prettyResult.kind]}
+                    </ToggleButton>
+                  )}
+                </ToggleButtonGroup>
               </Stack>
               <Tabs
                 value={activeOutput}
-                onChange={(_, v) => setActiveOutput(v)}
+                onChange={(_, v) => selectOutputTab(v)}
                 variant="scrollable"
                 sx={{ minHeight: 32, mb: 1, "& .MuiTab-root": { minHeight: 32, py: 0.5 } }}
               >
@@ -315,6 +365,48 @@ export function ItemDetail({
                   <Tab key={t} value={t} label={t} sx={{ fontSize: 12 }} />
                 ))}
               </Tabs>
+
+              <Stack direction="row" alignItems="center" spacing={1} flexWrap="wrap" useFlexGap mb={1}>
+                <TextField
+                  size="small"
+                  placeholder="Filter output…"
+                  value={filterQuery}
+                  onChange={(e) => setFilterQuery(e.target.value)}
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <SearchIcon fontSize="small" sx={{ color: "text.secondary" }} />
+                      </InputAdornment>
+                    ),
+                    sx: { fontSize: 12.5 },
+                  }}
+                  sx={{ width: 220 }}
+                />
+                {availableStatuses.length > 0 && (
+                  <ToggleButtonGroup
+                    size="small"
+                    exclusive
+                    value={statusFilter === null ? "all" : statusFilter}
+                    onChange={(_, v) => setStatusFilter(v === "all" || v === null ? null : v)}
+                    sx={{ "& .MuiToggleButton-root": { px: 1, py: 0.25, fontSize: 11, textTransform: "none" } }}
+                  >
+                    <ToggleButton value="all">All</ToggleButton>
+                    {availableStatuses.map((s) => (
+                      <ToggleButton
+                        key={s}
+                        value={s}
+                        sx={{
+                          color:
+                            s === 200 ? "#22c55e" : s === 401 || s === 403 ? "#f59e0b" : undefined,
+                        }}
+                      >
+                        {s}
+                      </ToggleButton>
+                    ))}
+                  </ToggleButtonGroup>
+                )}
+              </Stack>
+
               {activeOutput && effectiveOutputView === "raw" && (
                 <Box
                   component="pre"
@@ -333,7 +425,13 @@ export function ItemDetail({
                     color: "rgba(255,255,255,0.8)",
                   }}
                 >
-                  <HighlightedOutput text={item.tool_outputs[activeOutput]} />
+                  {displayedRawOutput.trim().length > 0 ? (
+                    <HighlightedOutput text={displayedRawOutput} />
+                  ) : (
+                    <Typography variant="body2" color="text.secondary">
+                      No output lines match this filter.
+                    </Typography>
+                  )}
                 </Box>
               )}
               {activeOutput && effectiveOutputView === "tree" && discoveredTree && (
@@ -346,7 +444,15 @@ export function ItemDetail({
                     py: 0.5,
                   }}
                 >
-                  <DirectoryTree root={discoveredTree} onRunHere={runToolAt} />
+                  <DirectoryTree
+                    root={discoveredTree}
+                    onRunHere={runToolAt}
+                    emptyMessage={
+                      filterQuery || statusFilter !== null
+                        ? "No discovered paths match this filter."
+                        : undefined
+                    }
+                  />
                 </Box>
               )}
               {activeOutput && effectiveOutputView === "pretty" && prettyResult && (

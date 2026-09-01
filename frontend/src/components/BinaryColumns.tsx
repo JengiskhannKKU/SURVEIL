@@ -16,10 +16,10 @@ function Column({ align }: { align: "left" | "right" }) {
       style={{
         position: "absolute",
         top: 90,
-        [align]: 24,
+        [align]: 48,
         display: "flex",
         flexDirection: "column",
-        gap: 6,
+        gap: 12,
         fontFamily: "var(--font-geist-mono), monospace",
         fontSize: 12,
         color: "rgba(94,234,212,0.28)",

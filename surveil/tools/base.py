@@ -157,8 +157,22 @@ def run_tool(
             command,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
+            stdin=subprocess.DEVNULL,
             text=True,
             env=_subprocess_env(),
+            # Without an explicit stdin, the child inherits this backend
+            # process's own stdin — normally harmless, but this backend is
+            # commonly started backgrounded (`nohup uvicorn ... &`), which
+            # leaves stdin connected to something that's neither a real
+            # terminal nor closed. Confirmed directly against amass: piped
+            # through subprocess with an inherited stdin, it produced zero
+            # output and ran past a 90s timeout with the process still
+            # alive; with stdin explicitly closed (this line), the exact
+            # same command streamed real lines and exited cleanly in ~55s.
+            # A closed stdin (immediate EOF) is also the safer default for
+            # any other tool that might probe or read from a terminal —
+            # it fails/skips a prompt instantly instead of hanging on one
+            # that can now never be answered.
             # Own process group so a timeout/cancel can kill the whole tree
             # (see below) — several tools here are themselves shell scripts
             # that spawn their own subprocesses (testssl.sh -> openssl, for
@@ -303,6 +317,7 @@ class BaseTool(ABC):
             text=True,
             timeout=15,
             env=_subprocess_env(),
+            stdin=subprocess.DEVNULL,
         )
         text = (proc.stdout or "") + (proc.stderr or "")
         return text.strip()

@@ -12,7 +12,7 @@ class FfufTool(BaseTool):
     uses_wordlist = True
     example = (
         "ffuf -u https://example.com/FUZZ -w /usr/share/wordlists/dirb/common.txt "
-        "-mc 200,301,302,403 -t 50 -c -s"
+        "-mc 200,301,302,401,403 -t 50 -c -v"
     )
     install_hints = {
         "brew": "brew install ffuf",
@@ -26,9 +26,16 @@ class FfufTool(BaseTool):
             "ffuf",
             "-u", f"{base_url(self.target)}/FUZZ",
             "-w", default_wordlist(),
-            "-mc", "200,301,302,403",
+            # 401/403 included (not just the "found" 200/redirect codes) so a
+            # tester can tell "exists but needs permission" apart from
+            # "exists and is publicly accessible" — -s (silent) is dropped
+            # in favor of -v (verbose) since -s strips the [Status: ...]
+            # line entirely, which is exactly the info needed to tell those
+            # two cases apart (see extract_ffuf()/pathTree.ts's per-path
+            # status parsing).
+            "-mc", "200,301,302,401,403",
             "-t", "50",
-            "-c", "-s",
+            "-c", "-v",
         ]
         if fast:
             cmd += ["-maxtime", "30"]

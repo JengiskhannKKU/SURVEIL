@@ -6,6 +6,142 @@ was verified, and what the next agent should pick up.
 
 ---
 
+## 2026-09-01 (35) — Tool output: always-visible Raw view + text/status filter
+
+**Done (user follow-up to entry 34: "each tool can you add button for see
+raw result and filter and at the filter result at ffuf show status also
+that 200,301,302 or 403"):**
+- `ItemDetail.tsx`'s Tool output Raw/Tree/Pretty `ToggleButtonGroup` was
+  previously only rendered at all when a Tree or Pretty view was also
+  available (`{(discoveredTree || prettyResult) && (...)}`) — an output
+  with neither (most tools: nmap, nuclei, etc.) showed raw text with no
+  toggle at all, not even a "Raw" button, just an implicit view. Now
+  always rendered so every tool's output has an explicit **Raw** button,
+  with Tree/Pretty added alongside only when actually applicable — same
+  underlying content, just consistently surfaced per the request.
+- New filter row (always shown once any tool output exists): a **Filter
+  output…** text search box (plain case-insensitive substring match,
+  works against any tool's raw lines — nmap, curl, whatever) plus, only
+  when the active output is ffuf/gobuster-shaped, a **status filter**
+  (`All` / one chip per status code actually present in that run's
+  results — commonly `200`/`301`/`302`/`403`, not a hardcoded fixed set,
+  since a run might also turn up e.g. `401` or `500`). Chips reuse the
+  same color coding as entry 34's `StatusChip` (`200` green, `401`/`403`
+  amber).
+- `frontend/src/lib/pathTree.ts`: two new exports —
+  `collectStatuses(entries)` (distinct status codes present, sorted, for
+  the chip list) and `filterRawByStatus(output, status)` (filters ffuf's
+  paired `[Status: N]` + `| URL |` lines, or gobuster's inline `(Status:
+  N)` line, down to just the matching ones — passthrough/no-op for any
+  other tool's output shape, since those never carry a status code to
+  filter on in the first place).
+- The status filter and text filter both apply to **both** the Raw view
+  (via `filterRawByStatus` + per-line substring match) and the Tree view
+  (by filtering the `{path, status}` entries before `buildPathTree()`,
+  rather than filtering the already-built tree) — switching between Raw
+  and Tree while a filter is active shows the same filtered result either
+  way. `DirectoryTree` gained an `emptyMessage` prop so an empty *filtered*
+  tree reads as "No discovered paths match this filter" rather than the
+  pre-existing "couldn't be parsed at all" message, which would have been
+  misleading when the real cause is just an active filter.
+- Filters reset when switching output tabs (a status filter that made
+  sense for ffuf shouldn't silently carry over and hide everything in an
+  unrelated nmap tab) — done via a `selectOutputTab()` handler on the
+  `Tabs`' `onChange`, not a `useEffect`, since resetting state
+  synchronously inside an effect body triggers React's
+  `set-state-in-effect` lint rule (cascading-render risk) — caught by
+  `eslint` during this session, not assumed.
+
+**Verified:**
+- `npx tsc --noEmit`, `eslint`, and `next build` all clean.
+- Direct logic test (via `npx tsx`, not just type-checking) against
+  ffuf's own real `mock_output()` shape from entry 34: `collectStatuses`
+  correctly returned `[200, 301, 403]`; `buildPathTree` on
+  status-403-only-filtered entries produced a tree containing only
+  `/backup`; `filterRawByStatus(mock, 200)` and `filterRawByStatus(mock,
+  403)` each correctly kept only their matching `[Status: N]`/`| URL |`
+  pairs while preserving the trailing `:: Progress: ...` summary line
+  verbatim in both.
+- Browser E2E **not** performed this round — the Claude-in-Chrome
+  extension reported "not connected" when attempted (browser extension
+  session issue, not a code issue); confirmed the actual running
+  `next-server` process is `next dev` (turbopack dev build, hot-reloads
+  on save), so no separate rebuild/restart was needed for this fix to be
+  live, but a human should click through the new Filter box and status
+  chips in a real browser to confirm the UI renders as expected before
+  calling this fully done.
+
+**Next steps for the next agent:**
+1. Browser E2E is still outstanding for this entry specifically (see
+   above) — worth doing once the Claude-in-Chrome extension connection is
+   working again, or manually.
+2. The text filter is a plain substring match on raw lines / discovered
+   paths — no regex/AND-of-terms support. Fine for the "find 200s
+   containing /api" kind of use this was built for; would need a real
+   query mini-language if a tester wants more than that.
+
+---
+
+## 2026-09-01 (34) — ffuf: per-endpoint status (200 open vs. needs permission)
+
+**Done (user request: "can you add status at ffuf for user know any
+endpoint can access 200, or must have a permisson for access"):**
+- Root-caused first: `surveil/tools/ffuf_tool.py`'s real `build_command()`
+  ran ffuf with `-s` (silent), which strips the `[Status: N, ...]` line
+  from every match entirely — so even though `mock_output()` already
+  showed a status per URL (its own `-v`-style verbose format, `[Status:
+  200, ...]` immediately followed by `| URL | ...`), a real run never
+  actually produced that information at all. Fixed by dropping `-s` in
+  favor of `-v`, and added `401` to `-mc` alongside the existing
+  `200,301,302,403` — 401/403 are the two codes that mean "exists but
+  needs credentials," which is exactly the distinction being asked for.
+- `surveil/findings_extractor.py`: `extract_ffuf()` rewritten to pair each
+  `[Status: N]` line with the `| URL |` line that follows it (falls back
+  to the old bare-path-per-line parse for pre-existing saved runs from
+  before `-v` replaced `-s`, which carry no status at all).
+  `extract_gobuster()` similarly now captures its already-inline `(Status:
+  N)` instead of discarding it. Both now thread a `path → status` map into
+  `_flag_interesting_paths()`, which appends a plain-English note to each
+  finding's description: "(HTTP 200 — publicly accessible)" vs. "(HTTP
+  401/403 — requires permission/authentication to access)".
+- `frontend/src/lib/pathTree.ts`: `parseDiscoveredPaths()` now returns
+  `{path, status}[]` instead of bare strings (captures ffuf's `[Status:
+  ...]` line the same way the Python extractor does), and `TreeNode`
+  gained a `status: number | null` field set by `buildPathTree()`.
+- `frontend/src/components/DirectoryTree.tsx`: new `StatusChip` — a small
+  outlined chip next to each discovered leaf node, green "200 open" or
+  amber "401/403 needs auth" (any other code shown as a plain gray
+  number), so a tester scanning the Tree view can tell open vs.
+  permission-walled endpoints apart without opening Raw output.
+
+**Verified:**
+- `python3 -c "from surveil.tools.ffuf_tool import FfufTool; from
+  surveil.findings_extractor import extract_ffuf; ..."` against the real
+  `mock_output()` (which already used the `-v` shape) — confirmed
+  `.env`/`.git`/`config.php.bak` findings now say "(HTTP 200 — publicly
+  accessible)" and the `/backup` finding says "(HTTP 403 — requires
+  permission/authentication to access)".
+- `python3 -c "from surveil.checklist import build_checklist; ..."` —
+  import-time tool-reference validator passes clean.
+- `npx tsc --noEmit` and `eslint` clean on `pathTree.ts`,
+  `DirectoryTree.tsx`, `ItemDetail.tsx` (its call site didn't need
+  changes — it only checks `paths.length > 0`, agnostic to element shape).
+
+**Next steps for the next agent:**
+1. Not done here (out of scope, UI-only ask): a real ffuf run's finding
+   description now correctly separates open vs. auth-walled per path, but
+   `_flag_interesting_paths()` still assigns the same fixed severity
+   regardless of status (e.g. an admin panel that's 401-walled and one
+   that's wide open at 200 both currently score the same). Worth
+   revisiting if a tester wants the *severity*, not just the description
+   text, to reflect that distinction.
+2. `gobuster`'s `DirectoryTree`/`StatusChip` path also benefits from this
+   fix automatically (its output already carried inline status, just
+   wasn't captured) — not separately verified against a real gobuster run
+   this session, only against the parsing logic directly.
+
+---
+
 ## 2026-09-01 (33) — Cancel a running tool (stop + resume/edit)
 
 **Done (user report: a run stuck taking too long had no way to stop it —

@@ -877,7 +877,27 @@ _INTERESTING_PATHS: tuple[tuple[str, str, Severity, str, bool], ...] = (
 )
 
 
-def _flag_interesting_paths(paths: list[str], item_id: str, tool: str) -> list[Finding]:
+# Status codes that mean "exists but needs credentials/permission" rather
+# than "publicly reachable" — surfaced per-path so a tester can tell the two
+# apart at a glance instead of treating every discovered path as equally
+# open (see the paired status badges in frontend/src/components/DirectoryTree.tsx).
+_AUTH_REQUIRED_CODES = {"401", "403"}
+
+
+def _access_note(status: Optional[str]) -> str:
+    if status is None:
+        return ""
+    if status in _AUTH_REQUIRED_CODES:
+        return f" (HTTP {status} — requires permission/authentication to access)"
+    if status == "200":
+        return " (HTTP 200 — publicly accessible)"
+    return f" (HTTP {status})"
+
+
+def _flag_interesting_paths(
+    paths: list[str], item_id: str, tool: str, statuses: Optional[dict[str, str]] = None
+) -> list[Finding]:
+    statuses = statuses or {}
     findings: list[Finding] = []
     seen_titles: set[str] = set()
     for path in paths:
@@ -885,11 +905,12 @@ def _flag_interesting_paths(paths: list[str], item_id: str, tool: str) -> list[F
         for keyword, title, severity, cwe, use_vector in _INTERESTING_PATHS:
             if keyword in lower and title not in seen_titles:
                 seen_titles.add(title)
+                note = _access_note(statuses.get(path))
                 findings.append(_make_finding(
                     item_id=item_id,
                     title=title,
                     severity=severity,
-                    description=f"A path matching '{keyword}' was discovered: {path}.",
+                    description=f"A path matching '{keyword}' was discovered: {path}{note}.",
                     evidence=path,
                     owasp_category="WSTG-CONF-05" if "admin" in keyword else "WSTG-CONF-04",
                     cwe_id=cwe,
@@ -902,22 +923,44 @@ def _flag_interesting_paths(paths: list[str], item_id: str, tool: str) -> list[F
 
 
 def extract_ffuf(item_id: str, output: str) -> list[Finding]:
-    """Extract findings from ffuf output (both its own mock "| URL |" style
-    and real ffuf's -s silent bare-path-per-line output)."""
-    paths = re.findall(r"\|\s*URL\s*\|\s*(\S+)", output)
+    """Extract findings from ffuf output: its own mock/-v verbose "[Status:
+    ...]" + "| URL |" pair, real ffuf's -s silent bare-path-per-line output
+    (older saved runs, from before -v replaced -s), and gobuster-style
+    "path (Status: N)" as a fallback."""
+    statuses: dict[str, str] = {}
+    pending_status: Optional[str] = None
+    paths: list[str] = []
+    for raw_line in output.splitlines():
+        line = raw_line.strip()
+        status_m = re.match(r"^\[Status:\s*(\d+)", line)
+        if status_m:
+            pending_status = status_m.group(1)
+            continue
+        url_m = re.match(r"^\|\s*URL\s*\|\s*(\S+)", line)
+        if url_m:
+            path = url_m.group(1).split("->")[0].strip()
+            paths.append(path)
+            if pending_status:
+                statuses[path] = pending_status
+            pending_status = None
+
     if not paths:
-        # Real ffuf -s output: one bare relative path per line, nothing else.
+        # Real ffuf -s output: one bare relative path per line, nothing else
+        # (no status info at all — a run saved before -v replaced -s).
         paths = [
             line.strip() for line in output.splitlines()
             if line.strip() and re.match(r"^[\w.\-/]+$", line.strip())
         ]
-    return _flag_interesting_paths(paths, item_id, "ffuf")
+
+    return _flag_interesting_paths(paths, item_id, "ffuf", statuses)
 
 
 def extract_gobuster(item_id: str, output: str) -> list[Finding]:
     """Extract findings from gobuster output."""
-    paths = re.findall(r"^(/\S*)\s+\(Status:", output, re.MULTILINE)
-    return _flag_interesting_paths(paths, item_id, "gobuster")
+    matches = re.findall(r"^(/\S*)\s+\(Status:\s*(\d+)", output, re.MULTILINE)
+    paths = [p for p, _ in matches]
+    statuses = {p: s for p, s in matches}
+    return _flag_interesting_paths(paths, item_id, "gobuster", statuses)
 
 
 # ---------------------------------------------------------------------------
