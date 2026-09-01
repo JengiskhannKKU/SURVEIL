@@ -3,9 +3,9 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from surveil import state
-from surveil.checklist import build_checklist
-from surveil.models import Engagement
+from oculus import state
+from oculus.checklist import build_checklist
+from oculus.models import Engagement
 
 from ..deps import load_engagement
 
@@ -16,6 +16,8 @@ class NewEngagement(BaseModel):
     target: str
     name: str = ""
     notes: str = ""
+    icon: str = "web"
+    methodology: str = "wstg"
 
 
 @router.get("")
@@ -28,6 +30,8 @@ def create_engagement(body: NewEngagement) -> Engagement:
     engagement = Engagement(
         target=body.target,
         name=body.name or body.target,
+        icon=body.icon or "web",
+        methodology=body.methodology or "wstg",
         scope_notes=body.notes,
         checklist_items=build_checklist(),
     )

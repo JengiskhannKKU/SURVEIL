@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Interactively install surveil's enumeration tool binaries — not all 16 at
+# Interactively install oculus's enumeration tool binaries — not all 16 at
 # once, just the ones you pick (recommended set pre-selected).
 #
 # Usage: ./install-tools.sh
 #
-# Thin wrapper around `surveil install-tools` (see surveil/tool_installer.py
-# for the actual picker/install logic and surveil/tools/*_tool.py for the
-# per-tool install commands). Creates ./venv and installs surveil into it
+# Thin wrapper around `oculus install-tools` (see oculus/tool_installer.py
+# for the actual picker/install logic and oculus/tools/*_tool.py for the
+# per-tool install commands). Creates ./venv and installs oculus into it
 # first if that hasn't been done yet.
 set -euo pipefail
 
@@ -26,9 +26,9 @@ fi
 # shellcheck disable=SC1091
 source venv/bin/activate
 
-if ! command -v surveil >/dev/null 2>&1; then
-	echo "Installing surveil into venv..."
+if ! command -v oculus >/dev/null 2>&1; then
+	echo "Installing oculus into venv..."
 	pip install -e . -q
 fi
 
-exec surveil install-tools
+exec oculus install-tools

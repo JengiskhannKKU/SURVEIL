@@ -7,10 +7,10 @@ from datetime import datetime
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from surveil import state
-from surveil.models import Status
-from surveil.orchestrator import Orchestrator
-from surveil.tools.base import CANCELLED_EXIT_CODE
+from oculus import state
+from oculus.models import Status
+from oculus.orchestrator import Orchestrator
+from oculus.tools.base import CANCELLED_EXIT_CODE
 
 router = APIRouter()
 

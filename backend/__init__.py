@@ -1,1 +1,1 @@
-"""FastAPI web backend for surveil."""
+"""FastAPI web backend for oculus."""

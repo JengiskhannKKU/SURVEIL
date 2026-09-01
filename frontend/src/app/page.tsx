@@ -80,7 +80,7 @@ export default function LandingPage() {
             <Box
               component="img"
               src="/logo.svg"
-              alt="surveil"
+              alt="oculus"
               width={88}
               height={88}
               sx={{ filter: `drop-shadow(0 0 16px ${GREEN}77) drop-shadow(0 0 40px ${GREEN}33)` }}
@@ -96,7 +96,7 @@ export default function LandingPage() {
                 color: "text.secondary",
               }}
             >
-              [ SURVEIL ]
+              [ OCULUS ]
             </Typography>
           </FadeIn>
 
@@ -113,7 +113,7 @@ export default function LandingPage() {
                 textShadow: `0 0 24px ${GREEN}99, 0 0 60px ${GREEN}55`,
               }}
             >
-              SURVEIL
+              OCULUS
             </Typography>
           </FadeIn>
 

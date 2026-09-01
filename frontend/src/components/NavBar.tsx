@@ -48,7 +48,7 @@ export function NavBar() {
               color: "text.primary",
             }}
           >
-            [ SURVEIL ]
+            [ OCULUS ]
           </Typography>
         </Box>
         <Box flex={1} />

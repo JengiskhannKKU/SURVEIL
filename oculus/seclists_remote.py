@@ -11,7 +11,7 @@ Two operations:
     content and installs it under `INSTALL_DIR`, *inside this project's
     own source tree* (not the user's home directory) — mirroring the
     repo's own directory structure, so it also shows up in the normal
-    local wordlist discovery/grouping (`surveil/wordlists.py`) once
+    local wordlist discovery/grouping (`oculus/wordlists.py`) once
     installed, and persists with the project rather than a per-user
     cache elsewhere.
 """
@@ -23,16 +23,18 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
+from ._home import ensure_home
+
 GITHUB_API_TREE_URL = (
     "https://api.github.com/repos/danielmiessler/SecLists/git/trees/master?recursive=1"
 )
 RAW_BASE_URL = "https://raw.githubusercontent.com/danielmiessler/SecLists/master/"
 
-# Installed files land here, inside surveil's own package directory,
+# Installed files land here, inside oculus's own package directory,
 # mirroring the repo's own path structure (e.g.
 # INSTALL_DIR/Discovery/Web-Content/common.txt) — a sibling of, not mixed
-# into, the small hand-curated bundle in surveil/data/wordlists/ (see
-# wordlists.py's BUNDLED_WORDLIST). Registered as a surveil/wordlists.py
+# into, the small hand-curated bundle in oculus/data/wordlists/ (see
+# wordlists.py's BUNDLED_WORDLIST). Registered as a oculus/wordlists.py
 # search root, so an installed file is immediately usable everywhere the
 # local wordlist picker already looks. Gitignored (see .gitignore) —
 # these are downloaded on demand per checkout, not meant to be committed.
@@ -45,9 +47,9 @@ CACHE_DIR = INSTALL_DIR
 # The GitHub API tree-listing response is just request metadata (which
 # files exist, not their content) — kept in the user's own state dir
 # rather than inside the project, same as engagements/config.json.
-_TREE_CACHE_PATH = Path.home() / ".surveil" / "seclists_tree_cache.json"
+_TREE_CACHE_PATH = Path.home() / ".oculus" / "seclists_tree_cache.json"
 _TREE_CACHE_TTL_SECONDS = 24 * 3600
-_USER_AGENT = "surveil-wordlist-browser"
+_USER_AGENT = "oculus-wordlist-browser"
 
 
 class RemoteFetchError(RuntimeError):
@@ -73,6 +75,7 @@ def list_remote_wordlists(force_refresh: bool = False) -> list[dict]:
     matching what `ls` on the repo itself shows), so the picker can group
     these the same way it groups a real local SecLists checkout.
     """
+    ensure_home()
     if not force_refresh and _TREE_CACHE_PATH.is_file():
         try:
             cached = json.loads(_TREE_CACHE_PATH.read_text())

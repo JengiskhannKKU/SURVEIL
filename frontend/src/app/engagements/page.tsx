@@ -22,9 +22,12 @@ import SearchIcon from "@mui/icons-material/Search";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import InputAdornment from "@mui/material/InputAdornment";
 import IconButton from "@mui/material/IconButton";
+import Tooltip from "@mui/material/Tooltip";
 import { api } from "@/lib/api";
 import { useToast } from "@/lib/toast";
 import { ProgressBar } from "@/components/SeverityBar";
+import { ENGAGEMENT_ICONS, DEFAULT_ENGAGEMENT_ICON, engagementIcon } from "@/lib/engagementIcons";
+import { METHODOLOGIES, DEFAULT_METHODOLOGY, methodologyLabel } from "@/lib/methodologies";
 import type { EngagementSummary } from "@/lib/types";
 
 function StatCard({ label, value, color, delay }: { label: string; value: string | number; color?: string; delay: number }) {
@@ -44,6 +47,94 @@ function StatCard({ label, value, color, delay }: { label: string; value: string
         </Typography>
       </Paper>
     </motion.div>
+  );
+}
+
+function IconPicker({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (key: string) => void;
+}) {
+  return (
+    <Box>
+      <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 0.75 }}>
+        Icon
+      </Typography>
+      <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+        {Object.entries(ENGAGEMENT_ICONS).map(([key, meta]) => {
+          const selected = key === value;
+          const { Icon } = meta;
+          return (
+            <Tooltip key={key} title={meta.label}>
+              <IconButton
+                onClick={() => onChange(key)}
+                sx={{
+                  width: 40,
+                  height: 40,
+                  border: "1px solid",
+                  borderColor: selected ? meta.color : "divider",
+                  bgcolor: selected ? `${meta.color}22` : "transparent",
+                  color: meta.color,
+                }}
+              >
+                <Icon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          );
+        })}
+      </Stack>
+    </Box>
+  );
+}
+
+function MethodologyPicker({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (key: string) => void;
+}) {
+  return (
+    <Box>
+      <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 0.75 }}>
+        Testing strategy / methodology
+      </Typography>
+      <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap mb={0.75}>
+        {Object.entries(METHODOLOGIES).map(([key, meta]) => {
+          const selected = key === value;
+          return (
+            <Box
+              key={key}
+              role="button"
+              tabIndex={0}
+              onClick={() => onChange(key)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") onChange(key);
+              }}
+              sx={{
+                cursor: "pointer",
+                border: "1px solid",
+                borderColor: selected ? "primary.main" : "divider",
+                bgcolor: selected ? "rgba(94,234,212,0.1)" : "transparent",
+                borderRadius: 1,
+                px: 1.5,
+                py: 0.75,
+                "&:hover": { borderColor: "primary.main" },
+              }}
+            >
+              <Typography variant="body2" fontWeight={selected ? 700 : 400}>
+                {meta.label}
+              </Typography>
+            </Box>
+          );
+        })}
+      </Stack>
+      <Typography variant="caption" color="text.secondary">
+        {METHODOLOGIES[value]?.description}
+      </Typography>
+    </Box>
   );
 }
 
@@ -83,18 +174,50 @@ function EngagementCard({
         }}
       >
         <Stack direction="row" justifyContent="space-between" alignItems="flex-start" mb={1.5} spacing={1}>
-          <Box minWidth={0}>
-            <Typography variant="subtitle1" fontWeight={700} noWrap>
-              {engagement.name}
-            </Typography>
-            <Typography
-              variant="caption"
-              color="text.secondary"
-              sx={{ fontFamily: "var(--font-geist-mono)" }}
-            >
-              {engagement.id}
-            </Typography>
-          </Box>
+          <Stack direction="row" spacing={1.25} alignItems="center" minWidth={0}>
+            {(() => {
+              const { Icon, color, label } = engagementIcon(engagement.icon);
+              return (
+                <Tooltip title={label}>
+                  <Box
+                    sx={{
+                      width: 34,
+                      height: 34,
+                      borderRadius: 1,
+                      flexShrink: 0,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      bgcolor: `${color}1a`,
+                      color,
+                    }}
+                  >
+                    <Icon fontSize="small" />
+                  </Box>
+                </Tooltip>
+              );
+            })()}
+            <Box minWidth={0}>
+              <Stack direction="row" alignItems="center" spacing={0.75}>
+                <Typography variant="subtitle1" fontWeight={700} noWrap>
+                  {engagement.name}
+                </Typography>
+                <Chip
+                  label={methodologyLabel(engagement.methodology)}
+                  size="small"
+                  variant="outlined"
+                  sx={{ height: 18, fontSize: 10, flexShrink: 0 }}
+                />
+              </Stack>
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                sx={{ fontFamily: "var(--font-geist-mono)" }}
+              >
+                {engagement.id}
+              </Typography>
+            </Box>
+          </Stack>
           <IconButton
             size="small"
             onClick={(e) => {
@@ -161,6 +284,8 @@ export default function EngagementsPage() {
   const [target, setTarget] = useState("");
   const [name, setName] = useState("");
   const [notes, setNotes] = useState("");
+  const [icon, setIcon] = useState(DEFAULT_ENGAGEMENT_ICON);
+  const [methodology, setMethodology] = useState(DEFAULT_METHODOLOGY);
   const [creating, setCreating] = useState(false);
 
   async function refresh() {
@@ -183,7 +308,7 @@ export default function EngagementsPage() {
     if (!target.trim()) return;
     setCreating(true);
     try {
-      const eng = await api.createEngagement(target.trim(), name.trim(), notes.trim());
+      const eng = await api.createEngagement(target.trim(), name.trim(), notes.trim(), icon, methodology);
       toast.success(`Engagement "${eng.name}" created`);
       router.push(`/engagements/${eng.id}`);
     } catch {
@@ -237,7 +362,7 @@ export default function EngagementsPage() {
             variant="caption"
             sx={{ color: "text.secondary", textDecoration: "none", "&:hover": { color: "text.primary" } }}
           >
-            ← surveil
+            ← oculus
           </Typography>
           <Stack direction="row" alignItems="center" spacing={1}>
             <Box
@@ -306,6 +431,8 @@ export default function EngagementsPage() {
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
               />
+              <IconPicker value={icon} onChange={setIcon} />
+              <MethodologyPicker value={methodology} onChange={setMethodology} />
             </Stack>
           </DialogContent>
           <DialogActions sx={{ px: 3, pb: 2.5 }}>

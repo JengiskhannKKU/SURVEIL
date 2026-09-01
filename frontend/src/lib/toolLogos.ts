@@ -1,5 +1,5 @@
 // Small colored "logo" badges for each tool wrapper, keyed by tool name
-// (see surveil/tools/__init__.py's TOOL_REGISTRY). Deliberately not real
+// (see oculus/tools/__init__.py's TOOL_REGISTRY). Deliberately not real
 // project logos/wordmarks — pulling in 18 external brand assets (network
 // fetches, licensing/trademark questions, inconsistent art styles) isn't
 // worth it for a local single-user tool. Instead: a 2-3 letter monogram

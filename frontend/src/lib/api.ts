@@ -40,10 +40,16 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export const api = {
   listEngagements: () => request<EngagementSummary[]>("/api/engagements"),
 
-  createEngagement: (target: string, name: string, notes: string) =>
+  createEngagement: (
+    target: string,
+    name: string,
+    notes: string,
+    icon: string,
+    methodology: string
+  ) =>
     request<Engagement>("/api/engagements", {
       method: "POST",
-      body: JSON.stringify({ target, name, notes }),
+      body: JSON.stringify({ target, name, notes, icon, methodology }),
     }),
 
   getEngagement: (id: string) =>
@@ -52,6 +58,42 @@ export const api = {
   deleteEngagement: (id: string) =>
     request<{ deleted: string }>(`/api/engagements/${id}`, {
       method: "DELETE",
+    }),
+
+  addManualPath: (engId: string, path: string, status: number | null, note: string) =>
+    request<Engagement>(`/api/engagements/${engId}/paths`, {
+      method: "POST",
+      body: JSON.stringify({ path, status, note }),
+    }),
+
+  removePath: (engId: string, path: string) =>
+    request<Engagement>(`/api/engagements/${engId}/paths/remove`, {
+      method: "POST",
+      body: JSON.stringify({ path }),
+    }),
+
+  restorePath: (engId: string, path: string) =>
+    request<Engagement>(`/api/engagements/${engId}/paths/restore`, {
+      method: "POST",
+      body: JSON.stringify({ path }),
+    }),
+
+  addManualPort: (engId: string, port: number, protocol: string, service: string, note: string) =>
+    request<Engagement>(`/api/engagements/${engId}/ports`, {
+      method: "POST",
+      body: JSON.stringify({ port, protocol, service, note }),
+    }),
+
+  removePort: (engId: string, port: number, protocol: string) =>
+    request<Engagement>(`/api/engagements/${engId}/ports/remove`, {
+      method: "POST",
+      body: JSON.stringify({ port, protocol }),
+    }),
+
+  restorePort: (engId: string, port: number, protocol: string) =>
+    request<Engagement>(`/api/engagements/${engId}/ports/restore`, {
+      method: "POST",
+      body: JSON.stringify({ port, protocol }),
     }),
 
   markDone: (engId: string, itemId: string) =>
@@ -136,17 +178,27 @@ export const api = {
 
   listWordlists: () => request<WordlistInfo[]>("/api/tools/wordlists"),
 
-  listWordlistsGrouped: (itemId?: string) =>
+  // `category`, when passed, overrides the item_id-derived recommendation
+  // outright — for a picker opened against a fixed category regardless of
+  // checklist item (hydra's -L/-P slots; see ToolInfo.wordlist_slots).
+  listWordlistsGrouped: (itemId?: string, category?: string) =>
     request<GroupedWordlists>(
-      `/api/tools/wordlists/grouped${itemId ? `?item_id=${encodeURIComponent(itemId)}` : ""}`
+      `/api/tools/wordlists/grouped?` +
+        [
+          itemId ? `item_id=${encodeURIComponent(itemId)}` : "",
+          category ? `category=${encodeURIComponent(category)}` : "",
+        ]
+          .filter(Boolean)
+          .join("&")
     ),
 
-  browseRemoteWordlists: (itemId?: string, q?: string) =>
+  browseRemoteWordlists: (itemId?: string, q?: string, category?: string) =>
     request<RemoteGroupedWordlists>(
       `/api/tools/wordlists/remote/browse?` +
         [
           itemId ? `item_id=${encodeURIComponent(itemId)}` : "",
           q ? `q=${encodeURIComponent(q)}` : "",
+          category ? `category=${encodeURIComponent(category)}` : "",
         ]
           .filter(Boolean)
           .join("&")

@@ -79,10 +79,12 @@ function SearchBox({
 
 function LocalWordlistsPane({
   itemId,
+  categoryOverride,
   currentPath,
   onSelect,
 }: {
   itemId: string;
+  categoryOverride?: string;
   currentPath: string;
   onSelect: (path: string) => void;
 }) {
@@ -105,7 +107,7 @@ function LocalWordlistsPane({
   useEffect(() => {
     let cancelled = false;
     api
-      .listWordlistsGrouped(itemId)
+      .listWordlistsGrouped(itemId, categoryOverride)
       .then((res) => {
         if (!cancelled) setData(res);
       })
@@ -118,7 +120,7 @@ function LocalWordlistsPane({
     return () => {
       cancelled = true;
     };
-  }, [itemId]);
+  }, [itemId, categoryOverride]);
 
   const filteredGroups = useMemo<WordlistGroup[]>(() => {
     if (!data) return [];
@@ -167,7 +169,7 @@ function LocalWordlistsPane({
           No wordlists found on this host — install SecLists (
           <code>apt install seclists</code> on Kali/Debian, or set a custom directory in
           Settings), use the &quot;SecLists (GitHub)&quot; tab to install individual files
-          into this project on demand, or use surveil&apos;s bundled defaults.
+          into this project on demand, or use oculus&apos;s bundled defaults.
         </Typography>
       )}
 
@@ -300,10 +302,12 @@ function LocalWordlistsPane({
 
 function RemoteWordlistsPane({
   itemId,
+  categoryOverride,
   currentPath,
   onSelect,
 }: {
   itemId: string;
+  categoryOverride?: string;
   currentPath: string;
   onSelect: (path: string) => void;
 }) {
@@ -318,7 +322,7 @@ function RemoteWordlistsPane({
 
   function fetchGroupsInner(q: string) {
     api
-      .browseRemoteWordlists(itemId, q || undefined)
+      .browseRemoteWordlists(itemId, q || undefined, categoryOverride)
       .then((res) => {
         setData(res);
         setError("");
@@ -341,7 +345,7 @@ function RemoteWordlistsPane({
   useEffect(() => {
     fetchGroupsInner("");
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [itemId]);
+  }, [itemId, categoryOverride]);
 
   function toggleExpanded(category: string) {
     setExpanded((prev) => {
@@ -392,7 +396,7 @@ function RemoteWordlistsPane({
         <Box component="span" sx={{ fontFamily: "var(--font-geist-mono)" }}>
           github.com/danielmiessler/SecLists
         </Box>{" "}
-        into this project (<code>surveil/data/wordlists_downloaded/</code>) — not the whole
+        into this project (<code>oculus/data/wordlists_downloaded/</code>) — not the whole
         repository.
       </Typography>
 
@@ -532,11 +536,18 @@ function RemoteWordlistsPane({
 
 export function WordlistPickerDialog({
   itemId,
+  categoryOverride,
+  title = "Select wordlist",
   currentPath,
   onSelect,
   onClose,
 }: {
   itemId: string;
+  // Forces the recommended category regardless of itemId (e.g. hydra's
+  // -L/-P pickers always want "usernames"/"passwords") — see
+  // ToolInfo.wordlist_slots.
+  categoryOverride?: string;
+  title?: string;
   currentPath: string;
   onSelect: (path: string) => void;
   onClose: () => void;
@@ -545,7 +556,7 @@ export function WordlistPickerDialog({
 
   return (
     <Dialog open onClose={onClose} fullWidth maxWidth="md">
-      <DialogTitle>Select wordlist</DialogTitle>
+      <DialogTitle>{title}</DialogTitle>
       <Tabs
         value={tab}
         onChange={(_, v) => setTab(v)}
@@ -556,9 +567,19 @@ export function WordlistPickerDialog({
       </Tabs>
       <DialogContent>
         {tab === "local" ? (
-          <LocalWordlistsPane itemId={itemId} currentPath={currentPath} onSelect={onSelect} />
+          <LocalWordlistsPane
+            itemId={itemId}
+            categoryOverride={categoryOverride}
+            currentPath={currentPath}
+            onSelect={onSelect}
+          />
         ) : (
-          <RemoteWordlistsPane itemId={itemId} currentPath={currentPath} onSelect={onSelect} />
+          <RemoteWordlistsPane
+            itemId={itemId}
+            categoryOverride={categoryOverride}
+            currentPath={currentPath}
+            onSelect={onSelect}
+          />
         )}
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2 }}>

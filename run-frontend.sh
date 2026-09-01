@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run the surveil Next.js frontend dev server.
+# Run the oculus Next.js frontend dev server.
 #
 # Usage: ./run-frontend.sh [port] [backend_port]
 #   port          - defaults to 3000

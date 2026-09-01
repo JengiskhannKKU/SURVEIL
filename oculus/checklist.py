@@ -26,7 +26,7 @@ from __future__ import annotations
 from .models import ChecklistItem
 
 # Maps a checklist item ID to a wordlist category (see
-# surveil/wordlists.py's recommend_wordlist() and CATEGORY_LABELS below)
+# oculus/wordlists.py's recommend_wordlist() and CATEGORY_LABELS below)
 # for the items whose tools include a wordlist-based tool (ffuf/gobuster).
 # Lets the Run Tool dialog suggest a wordlist actually suited to what that
 # specific test is looking for — an admin-panel list for "Enumerate Admin
@@ -169,7 +169,7 @@ def apply_tool_overrides(
     tags / curl-wget path+flags into *command*, if any of those apply.
 
     Shared by the Run Tool dialog's command-preview endpoint AND the real
-    execution path (surveil.orchestrator.Orchestrator.run_tool) — the
+    execution path (oculus.orchestrator.Orchestrator.run_tool) — the
     recommendation has to be applied in both places, not just the preview,
     or a tester who runs a tool without first editing the (already correct-
     looking) previewed command gets the tool's plain generic default
@@ -1675,7 +1675,7 @@ def _validate_tool_references() -> None:
         if unknown:
             raise AssertionError(
                 f"{item.id} ({item.name}) lists unregistered tool(s) {unknown} — "
-                f"check TOOL_REGISTRY in surveil/tools/__init__.py"
+                f"check TOOL_REGISTRY in oculus/tools/__init__.py"
             )
 
     def _check_override(overrides: dict, required_tool: str, dict_name: str) -> None:

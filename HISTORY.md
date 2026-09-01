@@ -1,8 +1,761 @@
-# surveil — project history
+# oculus — project history
 
 Running log of work sessions on this repo, kept for continuity across
 agent sessions. Newest entry on top. Each entry: what was done, what
 was verified, and what the next agent should pick up.
+
+---
+
+## 2026-09-01 (45) — Rename surveil -> OCULUS, engagement methodology tag, live-log noise filter
+
+**Done (user request, three parts — scoped via AskUserQuestion before
+starting the first two):**
+
+**1. Full rename to OCULUS** — user explicitly chose "Everything,
+including repo/Docker/git remote":
+- `surveil/` package directory -> `oculus/` via `git mv` (preserves
+  history), then a repo-wide case-variant token substitution
+  (`surveil`->`oculus`, `Surveil`->`Oculus`, `SURVEIL`->`OCULUS`) across
+  every source file (Python imports, Dockerfile, docker-compose.yml,
+  pyproject.toml, shell scripts, frontend branding strings, README.md,
+  HISTORY.md) — confirmed no false-positive matches first (checked for
+  "surveillance" specifically, since that would have partially corrupted
+  under a plain substring replace; none found). `venv/` and
+  `surveil.egg-info/` (both gitignored build artifacts, not source)
+  deliberately left untouched — they regenerate from a fresh `pip
+  install -e .` rather than needing hand-editing.
+- **Real data-loss risk caught and fixed, not just assumed handled:**
+  a blanket substitution would have renamed the Docker named volume key
+  `surveil-data` -> `oculus-data` in `docker-compose.yml`. Docker volumes
+  aren't renamed by editing a YAML key — Compose would have silently
+  provisioned a **new, empty** volume under the new name and orphaned
+  every existing engagement sitting in the old one (confirmed two real
+  ones existed: `SecureBank` and `internal lab 1`, the latter created by
+  the user during this session, not a test engagement). Reverted just
+  that one identifier back to `surveil-data` with a comment explaining
+  why, so the exact same Docker volume keeps being used.
+- Added new `oculus/_home.py`: `ensure_home()` renames `~/.surveil` ->
+  `~/.oculus` in place (idempotent — no-op once migrated, or if there
+  was never a `~/.surveil`) the first time either `state.py` or
+  `config.py` touches the home directory. This is what actually makes
+  existing engagement data reachable under the new path *inside* the
+  still-same Docker volume — the volume-identity fix above and this
+  path-migration fix are two different problems (Docker volume object
+  identity vs. the filesystem path within it) that both needed solving,
+  not one.
+- `docker-compose.yml`'s `frontend` service (previously no explicit
+  `image:`, so Compose named it `surveil-frontend` off the project name)
+  now has an explicit `image: oculus-frontend:latest` to match the
+  backend's already-explicit `oculus:latest`.
+- **Deliberately not done**: renaming the local working directory itself
+  (still `SURVEIL` on disk) and the Docker Compose *project* name
+  (defaults to the directory name, hence containers are still named
+  `surveil-backend-1`/`surveil-frontend-1`). Explained why in the plan:
+  renaming the project name would change which Docker volume name
+  Compose resolves `surveil-data` to internally (`<project>_surveil-
+  data`), which would itself orphan data again unless the volume is
+  separately marked `external: true` with its exact current internal
+  name — decided this was compounding risk for a purely cosmetic
+  container-name detail nobody sees in the app itself, so left it alone.
+- GitHub repo renamed `JengiskhannKKU/SURVEIL` -> `JengiskhannKKU/OCULUS`
+  via `gh repo rename` (confirmed `gh auth status` was already
+  authenticated as the repo owner first), local `origin` remote URL
+  updated to match, all commits pushed.
+
+**2. Engagement methodology tag** — user chose "just tag the engagement
+for now" over authoring a real distinct OSCP checklist under time
+pressure:
+- `oculus/models.py`: new `Engagement.methodology: str = "wstg"`.
+  `backend/routers/engagements.py`'s `NewEngagement`/`create_engagement`
+  thread it through; `state.list_all()`'s summary dict includes it too.
+- New `frontend/src/lib/methodologies.ts`: three options (`wstg`/`oscp`/
+  `other`), each with a label and an honest description — the OSCP and
+  Other entries explicitly say they currently build the same real WSTG
+  checklist underneath, not a fabricated distinct one, so a tester isn't
+  misled about what selecting them actually does today.
+- New engagement dialog gained a `MethodologyPicker` (same selectable-
+  chip pattern as entry 36's icon picker), defaulting to `wstg` — a
+  selection always exists, satisfying "must select" without needing a
+  separate empty/required-field state. Each `EngagementCard` on the
+  dashboard now shows a small methodology chip next to its name.
+
+**3. Live-run output: Raw/Filtered toggle** (user pasted a real example:
+ffuf's repeating `:: Progress: [.../...] :: Job [1/1] :: N req/sec ::
+Duration: ... :: Errors: 0 ::` ticker line, which can number in the
+thousands over a long run and bury any actual finding underneath):
+- New `frontend/src/lib/logFilter.ts`: `NOISE_LINE_RE`/`isNoiseLine()`/
+  `filterNoiseLines()` — factored out of `pathTree.ts`'s existing
+  (already-correct, already-matches-`^::`) `IGNORE_LINE_RE` rather than
+  writing a second pattern, since the same lines that are noise for path-
+  parsing are noise for live-log readability too. `pathTree.ts` now
+  imports it instead of duplicating the regex.
+- `RunToolDialog.tsx`'s live-streaming terminal panel gained a Raw/
+  Filtered `ToggleButtonGroup` plus a plain substring search box (same UI
+  pattern as entry 35's saved-output filter) — "Filtered" hides ticker
+  lines and shows a live "(N hidden)" count; the auto-scroll-to-bottom
+  effect now tracks the filtered/searched line count, not just the raw
+  one, so it still scrolls correctly when the visible line count changes
+  independently of new output arriving.
+
+**Verified:**
+- Case-variant substitution: manually checked for "surveillance" (would
+  have partially corrupted) before running — none present, safe to do a
+  plain substring replace.
+- `docker exec ... python3 -c "from oculus.checklist import
+  build_checklist; ..."` — real import against the actual running
+  container, clean.
+- Migration logic (`ensure_home()`) unit-tested standalone first (a
+  temp `$HOME` with a simulated `~/.surveil/engagements/abc123.json` ->
+  confirmed it lands at `~/.oculus/engagements/abc123.json` and the old
+  path is gone) before trusting it against real data.
+- **Full rebuild + real data survival check**, not assumed: rebuilt both
+  Docker images from a clean `docker compose build backend frontend`,
+  recreated both containers, then confirmed via the live API that both
+  pre-existing real engagements (`SecureBank`, `internal lab 1`) were
+  still present with all their data intact and now report
+  `"methodology": "wstg"` (the field's default, applied automatically to
+  data that predates the field entirely — same backward-compat pattern
+  used for `icon` in entry 36). Directly inspected the container's `/data`
+  filesystem afterward: `.oculus/engagements/{dca42490,4d126044}.json`
+  present, no leftover `.surveil` directory.
+- `docker compose run --rm oculus --help` — real CLI entrypoint under the
+  new name, full command listing returned correctly.
+- Created a real engagement via `POST /api/engagements` with
+  `"methodology":"oscp"` through the live API — response correctly
+  carried it through and still built the real 97-item WSTG checklist (as
+  designed for this scoping choice); deleted the test engagement after.
+- `npx tsc --noEmit`, `eslint`, `next build` all clean throughout — no
+  new errors beyond the two pre-existing warnings in `page.tsx` noted
+  back in entry 26 (unused `Paper`/`FEATURES`, unrelated to this change).
+
+**Next steps for the next agent:**
+1. The local working directory is still named `SURVEIL` on disk, and
+   Docker container names are still `surveil-backend-1`/`surveil-
+   frontend-1` (Compose project name, derived from the directory name) —
+   both deliberate, disclosed exceptions explained above. If the user
+   wants those renamed too, the volume needs `external: true` with its
+   exact current name first, or the existing `surveil-data` volume will
+   get orphaned the same way this entry's rename almost orphaned it.
+2. The local `venv/` and `surveil.egg-info/` (gitignored, untouched by
+   this rename) are now stale — anyone using the local non-Docker path
+   should re-run `pip install -e ".[dev,web]"` (or `make install`) to
+   get a clean `oculus`-named editable install; the Docker path (this
+   session's primary verified path) is unaffected.
+3. A real distinct OSCP-style checklist (different items/structure than
+   WSTG, not just a tag) remains unimplemented by design — flagged as a
+   genuine content-authoring task in the scoping question, not attempted
+   here.
+4. (Resolved before this entry was finalized) `seclists_remote.py`'s
+   `list_remote_wordlists()` initially didn't call `ensure_home()` before
+   touching `~/.oculus/seclists_tree_cache.json` — added the same call
+   there too, for consistency with `state.py`/`config.py`, rather than
+   leaving it as a known gap.
+
+---
+
+## 2026-09-01 (44) — hydra: dual wordlist pickers (-L usernames / -P passwords)
+
+**Done (user report: "at hydra tool can't select the wordlists"):**
+- Root cause, found directly in the code rather than assumed: hydra's
+  wrapper already had `uses_wordlist = False` with an explicit comment —
+  "takes two lists (-L/-P), not the single -w the picker assumes". The
+  Run Tool dialog's wordlist picker only ever knew how to manage one
+  `-w <path>` flag (ffuf/gobuster's shape), so it had been deliberately
+  disabled for hydra rather than built to handle two — a real gap, not a
+  bug in the existing single-wordlist code path.
+- `oculus/tools/base.py`: new `BaseTool.wordlist_slots: dict[str, str]`
+  (empty by default) — maps a CLI flag to the `wordlists.
+  CATEGORY_KEYWORDS` category to recommend for that flag's own picker.
+  `hydra_tool.py` sets `wordlist_slots = {"-L": "usernames", "-P":
+  "passwords"}` — both categories already existed in
+  `CATEGORY_KEYWORDS` (added earlier for the general wordlist-discovery
+  feature, just never wired to anything that used them until now).
+- `backend/routers/tools.py`: `list_tools()` now includes
+  `wordlist_slots` in each tool's JSON. `/wordlists/grouped` and
+  `/wordlists/remote/browse` both gained an optional `category` query
+  param that overrides the existing `item_id`-derived recommendation
+  outright — needed because hydra's -L/-P categories are fixed
+  (always "usernames"/"passwords") regardless of which checklist item
+  it happens to be running under, unlike ffuf/gobuster's per-item
+  `WORDLIST_CATEGORY` mapping.
+- `WordlistPickerDialog.tsx` gained an optional `categoryOverride` prop
+  (threaded into both its Local and SecLists/GitHub tabs) and an optional
+  `title` prop (defaults to "Select wordlist", set to "Select usernames
+  wordlist" / "Select passwords wordlist" for hydra's two instances).
+- `RunToolDialog.tsx`: when `tool.wordlist_slots` is non-empty, renders
+  one "Usernames: ..." / "Passwords: ..." button per flag (alongside,
+  never together with, the existing single `uses_wordlist` button — a
+  tool sets at most one of the two). New `applySlotWordlist(flag, path)`
+  mirrors the existing `applyWordlist()` but is parameterized by flag
+  instead of hardcoding `-w`, so picking a wordlist for `-L` only touches
+  the `-L <path>` portion of the command, leaving `-P` (and anything
+  else) untouched. `resetCommand()` also clears the new `slotPaths` state.
+
+**Verified:**
+- `docker exec oculus-backend-1 python3 -c "from oculus.tools import
+  TOOL_REGISTRY; ..."` — `TOOL_REGISTRY['hydra'].wordlist_slots` returns
+  the real `{'-L': 'usernames', '-P': 'passwords'}` dict; `build_checklist()`
+  still imports clean (no reference-validation regressions from the new
+  class attribute).
+- `npx tsc --noEmit`, `eslint`, `next build` all clean across every
+  touched file.
+- Rebuilt **both** images and recreated both containers. Hit the real
+  live backend: `GET /api/tools` → hydra's entry now includes
+  `"wordlist_slots": {"-L": "usernames", "-P": "passwords"}`. `GET
+  /api/tools/wordlists/grouped?category=usernames` → real response with
+  `"recommended_category": "usernames"` and the bundled/SecLists groups
+  correctly reordered around it (same for `category=passwords`,
+  confirming the new override param actually takes priority over the
+  item_id path, since no `item_id` was even passed). `GET
+  /api/tools/hydra/command?target=example.com&fast=false` → confirmed
+  the real built command still correctly uses hydra's bundled
+  `usernames.txt`/`passwords.txt` by default (no regression to the
+  existing default-command path from adding the new attribute).
+
+**Next steps for the next agent:**
+1. Browser E2E (opening the Run Tool dialog for hydra, clicking each of
+   the two new wordlist buttons, confirming the picker opens pre-sorted
+   to the right category and editing the command correctly per-flag) not
+   performed — same outstanding Claude-in-Chrome connection issue as
+   entries 35/36/38/39/40/41/42/43.
+2. `wordlist_slots` is a general mechanism (any future tool with more
+   than one wordlist-shaped flag can use it the same way hydra does now)
+   — not audited whether any other already-wrapped tool has the same
+   gap hydra did; hydra was fixed because it was reported, not because a
+   full audit was done.
+
+---
+
+## 2026-09-01 (43) — "Paths" rename + a parallel "Ports" summary button
+
+**Done (user request: "remove button Paths/Endpoints to Paths, and can
+you implement like Paths button at Ports"):**
+- Renamed the header button label from "Paths/Endpoints" to "Paths"
+  (the underlying feature/endpoints are unchanged — cosmetic label only).
+- Refactored entry 42's large inline Paths dialog JSX out of
+  `[id]/page.tsx` into its own `frontend/src/components/PathsDialog.tsx`
+  — the page component was getting unwieldy with two parallel summary
+  features living inline, and extracting it first made the new Ports
+  feature's structure obvious to mirror rather than duplicating ~200
+  lines of dialog chrome by hand.
+- New **Ports** button and `PortsDialog.tsx`, full feature parity with
+  Paths: add a port by hand (port/protocol/service/note), remove one
+  (deletes if manual, hides if auto-discovered — same distinction as
+  paths), a collapsible "Show hidden" restore list, a live count badge,
+  and a real-time "N new ports discovered (tool)" toast — all riding the
+  same existing `engagement`-state real-time plumbing as Paths, no new
+  polling added. Rendered as a simple row-per-port list (port/protocol,
+  service, version, a purple "manual" chip, a red sensitive-port chip)
+  rather than a tree/graph, since ports don't have Paths' natural
+  hierarchical shape.
+- `oculus/models.py`: new `ManualPortEntry` (port/protocol/service/note)
+  + `Engagement.manual_ports`/`removed_ports` (the latter keyed as
+  `"port/protocol"` strings, e.g. `"3306/tcp"`, to disambiguate the same
+  port number open on both tcp and udp). New `backend/routers/ports.py`
+  mirrors `paths.py` exactly: `POST /ports` (add/upsert), `POST
+  /ports/remove`, `POST /ports/restore`, registered in `main.py`.
+- New `frontend/src/lib/engagementPorts.ts`: `collectEngagementPorts()`
+  parses nmap's real table output (`80/tcp   open  http      nginx
+  1.18.0...`) and naabu's real `-silent` bare `host:port` lines, merges
+  by `port/protocol` key (nmap's richer service/version wins over
+  naabu's bare port when both found the same one), and exposes
+  `sensitivePortLabel()` — a port→label lookup deliberately kept in sync
+  with `oculus/findings_extractor.py`'s existing `_INTERESTING_PORTS`
+  list (3306 MySQL, 6379 Redis, 3389 RDP, ...) so the same ports get
+  flagged here as would be flagged as findings.
+
+**Verified:**
+- `npx tsc --noEmit`, `eslint`, `next build` all clean across every
+  touched/new file.
+- Direct logic test (`npx tsx`) against nmap's real table shape (3 ports,
+  including a duplicate `80/tcp` also reported bare by naabu) merged with
+  naabu's real bare-port lines: correctly deduped to 5 entries sorted by
+  port number, nmap's richer `service`/`version` preserved over naabu's
+  bare duplicate for port 80; `sensitivePortLabel(3306)` → `"MySQL"`,
+  `sensitivePortLabel(80)` → `null`.
+- Rebuilt **both** images and recreated both containers; `GET
+  /api/health` → `{"status":"ok"}`.
+- **Full live round-trip against the real backend**: `POST
+  /api/engagements/{id}/ports` with a real manual port → appeared in
+  `manual_ports`. `POST .../ports/remove` on that same port → deleted
+  outright (`manual_ports` empty, `removed_ports` still empty). `POST
+  .../ports/remove` on a port that only exists in this engagement's
+  auto-discovered tool output → landed in `removed_ports` (hidden, not
+  deleted). `POST .../ports/restore` on that same port → `removed_ports`
+  back to empty. All three matched the design on the first real try,
+  same as entry 42's path round-trip. `GET /api/engagements/{id}` on the
+  live container confirms all four new keys
+  (`manual_paths`/`removed_paths`/`manual_ports`/`removed_ports`) are
+  present and the engagement detail page still returns 200.
+
+**Next steps for the next agent:**
+1. Browser E2E (the Ports button/dialog, the add-port form, remove/
+   restore, confirming the sensitive-port chip renders) not performed —
+   same outstanding Claude-in-Chrome connection issue as entries
+   35/36/38/39/40/41/42.
+2. `sensitivePortLabel()`'s list is hand-kept in sync with Python's
+   `_INTERESTING_PORTS` rather than shared from one source of truth —
+   if that Python list changes, this frontend copy needs a matching edit.
+   Worth exposing it from a backend endpoint instead if the two ever
+   drift, though duplication was the simpler choice for now (small, rarely-
+   changed list).
+
+---
+
+## 2026-09-01 (42) — Add/remove path entries + a node-link graph view
+
+**Done (user request: "implement user can add or remove path tree, or
+visualize path" — scoped via AskUserQuestion: manual add/remove with
+backend persistence, plus a graphical node-link diagram alongside the
+existing list-style tree):**
+- `oculus/models.py`: new `ManualPathEntry` (path/status/note/added_at)
+  and `Engagement.manual_paths: list[ManualPathEntry]` +
+  `removed_paths: list[str]`. Can't edit the raw text a tool's output is
+  parsed from, so "removing" an auto-discovered path just hides it via
+  `removed_paths` instead of mutating anything; a manual entry is deleted
+  outright.
+- New `backend/routers/paths.py` (registered in `main.py`): `POST
+  /api/engagements/{id}/paths` (add/upsert a manual entry — re-adding an
+  existing path updates it in place and un-hides it if it had been
+  removed), `POST .../paths/remove` (deletes if manual, else hides), `POST
+  .../paths/restore` (un-hides). All three return the updated `Engagement`
+  so the frontend can set state directly, same pattern as every other
+  mutation endpoint in this app.
+- `frontend/src/lib/engagementPaths.ts`: `collectEngagementPaths()` now
+  takes `manualPaths`/`removedPaths`, filters hidden paths out entirely,
+  and merges in manual entries (tagged `manual: true`, `itemId: null`) —
+  a manual annotation always wins a path collision over an unannotated
+  auto-discovered duplicate. `pathTree.ts`'s `TreeNode`/`buildPathTree()`
+  gained a `manual` flag threaded through (optional on the input, default
+  `false`, so `ItemDetail.tsx`'s existing per-item Tree view call sites
+  don't need updating).
+- `DirectoryTree.tsx`: new optional `onRemove` prop — a red "×" appears on
+  hover next to the existing "run here" button for any real (`observed`)
+  node when supplied; a small purple "manual" chip marks hand-added
+  entries. Also fixed a latent bug found while touching this file: the
+  tree's own wrapper `Box` hardcoded `maxHeight: 320` regardless of what
+  the caller wanted — added a `maxHeight` prop (default `320`, unchanged
+  for existing callers) so the new engagement-wide dialog can size it to
+  fill the available space instead.
+- New `frontend/src/components/PathGraph.tsx` — a hand-rolled SVG node-
+  link diagram of the same `TreeNode` tree (no graph-layout library added;
+  the tree is shallow/narrow enough that a plain depth-as-x, leaf-order-
+  as-y layout with bezier connector lines reads fine). Same status color
+  coding as the tree view, same remove-on-click, native title tooltips
+  plus a real MUI `Tooltip` overlay for status detail.
+- Engagement page (`[id]/page.tsx`): the Paths/Endpoints dialog (entry 41)
+  gained an add-path mini-form (path/status/note + submit), a Tree/Graph
+  `ToggleButtonGroup`, `onRemove` wired to the new `/paths/remove`
+  endpoint, and a collapsible "Show hidden (N)" section listing
+  `removed_paths` with a restore button each — so hiding a path is
+  reversible from the UI, not just via a raw API call.
+
+**Also fixed in this entry (user report caught mid-build: "the new path
+from nikto doesn't add to paths/endpoints"):** `pathTree.ts`'s
+`parseDiscoveredPaths()` had no case at all for nikto's real output shape
+— `+ /admin/: This might be interesting.` or, when OSVDB-tagged, `+
+OSVDB-3092: /admin/: This might be interesting.` — so every nikto finding
+that names a path was silently invisible to both the per-item Tree view
+and this entry's new engagement-wide summary, not just a new-feature gap.
+New `NIKTO_RE`, gated to `toolName === "nikto"` (same reasoning as the
+existing ffuf bare-path fallback: `+ <word>:` alone is too generic a
+shape to assume "path" for every tool). No status code in this output
+format, so nikto-derived entries carry `status: null`, same as
+katana/bare-URL ones.
+
+**Verified:**
+- `npx tsc --noEmit`, `eslint`, `next build` all clean across every
+  touched file.
+- `docker exec oculus-backend-1 python3 -c "from oculus.models import
+  Engagement; ..."` — a hand-built legacy JSON payload with no
+  `manual_paths`/`removed_paths` keys at all loads with both defaulting
+  to `[]` (same backward-compat pattern as entry 36's `icon` field).
+- Direct logic test (`npx tsx`) against nikto's real `mock_output()` shape
+  (banner/SSL-info/target lines plus four real `+ .../OSVDB-.../` finding
+  lines): `parseDiscoveredPaths()` now correctly extracts exactly the 4
+  real paths (`/admin/`, `/info.php`, `/backup/`, `/login.php`) and
+  correctly ignores the non-path `+ Server:`/`+ SSL Info:`/`+ Start
+  Time:` lines.
+- Rebuilt **both** images (`docker compose build backend frontend`) and
+  recreated both containers; confirmed `GET /api/health` → `{"status":
+  "ok"}` and the engagement detail page still returns 200 through the
+  live frontend container.
+- **Full live round-trip against the real backend**, not just a unit
+  test: `POST /api/engagements/{id}/paths` with a real manual entry →
+  confirmed it appears in `manual_paths` on the response. `POST
+  .../paths/remove` on that same path → confirmed it's deleted outright
+  (`manual_paths` empty, `removed_paths` still empty — correct, since a
+  manual entry never touches the hide-list). `POST .../paths/remove` on a
+  path that only exists in auto-discovered tool output → confirmed it
+  lands in `removed_paths` instead (hidden, not deleted, since there's no
+  underlying manual entry to delete). `POST .../paths/restore` on that
+  same path → confirmed `removed_paths` goes back to empty. All three
+  behaviors matched the design exactly on the first real try.
+
+**Next steps for the next agent:**
+1. Browser E2E (the add-path form, the remove "×" on both Tree and Graph
+   views, the hidden-paths restore list, confirming nikto's paths now
+   actually render) not performed — same outstanding Claude-in-Chrome
+   connection issue as entries 35/36/38/39/40/41.
+2. `PathGraph.tsx`'s layout is a simple depth/leaf-order placement, not a
+   real tidy-tree algorithm — fine for the shallow trees this app
+   actually produces (a handful of path segments deep), but would need a
+   real layout algorithm (or a library) if ever used for something with
+   much deeper nesting or many more siblings per node.
+3. The nikto path-parsing gap fixed here was found by the user testing a
+   real nikto run, not caught by this session's own review of
+   `parseDiscoveredPaths()` — worth a dedicated audit of every tool
+   wrapped in this app against `pathTree.ts`'s supported line shapes,
+   since other tools that can name a discovered path in their own output
+   (`wpscan`, `sqlmap` crawling, `dalfox`) may have the same gap and just
+   haven't been reported yet.
+
+---
+
+## 2026-09-01 (41) — Engagement-wide "Paths/Endpoints" summary, live + notifying
+
+**Done (user request: "add Paths/Endpoints button for see path tree
+summary at above and tell status also if tool run any tool that find
+path or endpoints, will update real time and notificate to user"):**
+- Entries 34/35's ffuf status-tree work was scoped to a single checklist
+  item's Tool output panel — there was no engagement-wide view of every
+  path any tool had found across the whole engagement. New
+  `frontend/src/lib/engagementPaths.ts`: `collectEngagementPaths()` runs
+  the existing `parseDiscoveredPaths()` (entry 34) over **every**
+  checklist item's **every** tool output, deduping by path (preferring
+  whichever duplicate actually carries a status code, since the same
+  `/admin` might turn up once via `katana` with no status and once via
+  `ffuf` with a real one).
+- New **Paths/Endpoints** button in the engagement page's top header row
+  (next to View Report/Markdown/Word — "at above" per the request),
+  showing a live count badge (`Paths/Endpoints (14)`). Opens a `Dialog`
+  with a status breakdown (`200 × 8`, `403 × 3`, ...) reusing the same
+  green/amber color coding as entry 34's `StatusChip`, then the full
+  aggregated tree via the existing `DirectoryTree` component (reused as-
+  is, not reimplemented) — "Run here" on a node here just points the
+  tester back to that path's own checklist item's Tree view, since
+  running a tool needs a specific item/target context this aggregate
+  view doesn't have.
+- **Real-time**: didn't add a second polling/websocket path — the
+  summary is a `useMemo` over `engagement.checklist_items`, and
+  `engagement` already updates live from the existing plumbing (entry
+  25's 3s poll-while-anything-is-running loop, plus `RunToolDialog`'s
+  `onDone`/`onStart` callbacks) — so the button's count and the dialog's
+  tree just ride that same existing real-time state, no new
+  infrastructure needed.
+- **Notification**: new effect diffs the current path set against a
+  `knownPathsRef` (a plain ref, not state) each time `pathEntries`
+  recomputes; any path not seen before fires `toast.info("N new paths
+  discovered (tool)")`. The very first computation (initial page load, or
+  after switching to a different engagement id) seeds the ref silently
+  instead of toasting once per pre-existing path — only *newly*
+  discovered paths during the session notify.
+
+**Verified:**
+- `npx tsc --noEmit`, `eslint`, `next build` all clean.
+- Direct logic test (`npx tsx`) against two checklist items' real tool
+  output shapes (ffuf's `[Status: N]`/`| URL |` pairs on one item,
+  katana's bare-URL-per-line on another, both including the same
+  `/admin` path): `collectEngagementPaths()` correctly deduped to 3
+  entries, keeping ffuf's `status: 200` for `/admin` over katana's
+  `status: null` duplicate; `collectStatuses()` and `buildPathTree()`
+  both correct against the deduped set.
+- Rebuilt (`docker compose build frontend`) and recreated
+  (`docker compose up -d frontend`) the live container per the now-
+  standard last step; confirmed `GET /engagements/{id}` on a real
+  existing engagement still returns 200 through the live container.
+- Browser E2E (opening the dialog against a real multi-tool engagement,
+  running a tool and watching the count/toast update live) **not**
+  performed — same outstanding Claude-in-Chrome connection issue as
+  entries 35/36/38/39/40.
+
+**Next steps for the next agent:**
+1. Browser E2E still outstanding — same combined-pass note as entries
+   39/40.
+2. The "new paths" toast doesn't say *which* checklist item found them
+   (only which tool) — a tester with many items running at once might
+   want that too. Not added since `EngagementPathEntry` already carries
+   `itemId`, straightforward to include in the toast message if asked.
+
+---
+
+## 2026-09-01 (40) — Checklist sidebar: all category tabs collapsed by default
+
+**Done (user request: "can you set default at checklists bar on left
+side to close all tab"):**
+- `Checklist.tsx`'s `collapsed` state (a `Set` of category names whose
+  card list is hidden) previously started as an empty `Set()` — every
+  category tab (INFO, CONF, ATHN, ...) rendered fully expanded on first
+  load, all 11 sections' items stacked open at once.
+- Can't just change the initial `useState` value to
+  `new Set(categories)`, since `categories` is empty on this component's
+  very first render — the parent engagement page hasn't finished
+  fetching yet, so that would collapse nothing. Added a one-shot
+  `useEffect` guarded by a `didDefaultCollapse` ref: the first time
+  `categories` actually arrives non-empty, it collapses all of them once
+  and never again — so a tab a tester deliberately reopens afterward
+  (e.g. adding a new checklist item, which re-runs the `categories`
+  `useMemo`) doesn't get silently re-collapsed out from under them.
+
+**Verified:**
+- `npx tsc --noEmit`, `eslint`, `next build` all clean.
+- Confirmed `categories` (from the parent `[id]/page.tsx`) and
+  `item.category` use exactly the same strings (both come straight off
+  `checklist_items[].category`), so the collapsed `Set`'s membership
+  check lines up correctly against real category names, not a
+  case/formatting mismatch.
+- Rebuilt (`docker compose build frontend`) and recreated
+  (`docker compose up -d frontend`) the live container per the now-
+  standard last step; `GET /engagements` still returns 200 after the swap.
+- Browser E2E (opening a real engagement, confirming all tabs render
+  collapsed on first load, then confirming clicking one still expands/
+  collapses normally and a second unrelated tab isn't affected) **not**
+  performed — same outstanding Claude-in-Chrome connection issue as
+  entries 35/36/38/39.
+
+**Next steps for the next agent:**
+1. Browser E2E still outstanding — same combined-pass note as entry 39.
+
+---
+
+## 2026-09-01 (39) — Bordered icon buttons on entry 38's expand/zoom row
+
+**Done (user follow-up to entry 38: "add border at button more
+outstanding ui" — confirmed via AskUserQuestion this meant specifically
+the new icon buttons from entry 38, not every IconButton app-wide):**
+- The expand button (next to the Raw/Tree/Pretty toggle) and the
+  zoom-out/zoom-in/close buttons inside the expanded popup were plain
+  borderless `IconButton`s — icon floating with no visible boundary,
+  reading as inert/decorative next to the bordered `ToggleButtonGroup`
+  sitting right beside them.
+- New shared `BORDERED_ICON_BUTTON_SX` constant in `ItemDetail.tsx`: a
+  subtle `1px solid rgba(255,255,255,0.14)` border + `borderRadius: 1`,
+  teal (`primary.main`) border + faint teal background tint on hover
+  (matching the app's existing accent color, `GREEN` in `theme.ts`), and
+  a dimmer border for the disabled zoom-limit state. Applied to all four
+  buttons (expand, zoom out, zoom in, close) rather than restyling each
+  inline, so they read as one consistent control group.
+
+**Verified:**
+- `npx tsc --noEmit`, `eslint`, `next build` all clean.
+- Rebuilt (`docker compose build frontend`) and recreated
+  (`docker compose up -d frontend`) the live `oculus-frontend-1`
+  container per the now-standard last step (entries 35/37/38); confirmed
+  `GET /engagements` still returns 200 after the swap.
+- Browser E2E (visually confirming the border/hover state) **not**
+  performed — same outstanding Claude-in-Chrome connection issue as
+  entries 35/36/38.
+
+**Next steps for the next agent:**
+1. Browser E2E still outstanding across entries 35/36/38/39 — worth one
+   combined manual pass once the extension connection issue is sorted,
+   rather than four separate follow-ups.
+
+---
+
+## 2026-09-01 (38) — Expand-to-popup + zoom for the Tool output panel
+
+**Done (user request: "at the result can you implement can show popup
+window for scaling result to see" — the inline Tool output panel is
+capped at a small `maxHeight`/font size so the rest of the checklist item
+stays usable, which makes a long/dense result genuinely hard to read in
+place):**
+- `ItemDetail.tsx`: extracted the Raw/Tree/Pretty body rendering (three
+  near-identical blocks that were inline before) into one shared
+  `renderOutputBody(fontSize, maxHeight)` function, parameterized instead
+  of duplicated, so the same logic drives both the small inline panel and
+  the new popup at a different size — one source of truth for what
+  "the result" actually looks like in each view.
+- New expand button (small `OpenInFull` icon) next to the Raw/Tree/Pretty
+  toggle opens a `Dialog` (`maxWidth="lg"`, 85vh tall) showing the same
+  active tab's output at a much larger `maxHeight` and an adjustable zoom
+  level (`ZoomIn`/`ZoomOut`, 75%–250% in 25% steps, shown as a live "N%"
+  readout) — scales the body's font size, which is what "scaling to see"
+  actually means for a monospace text/tree panel like this one.
+  The popup also carries its own copy of the filter/status-chip row (same
+  `filterQuery`/`statusFilter` state as the inline panel, entry 35 — not
+  a separate filter), so a tester can filter *and* zoom in the same view
+  rather than having to set a filter in the small panel first.
+- Popup and inline panel share state (`activeOutput`, `outputView`,
+  filters) — closing the popup and looking at the inline panel again
+  shows the same tab/view/filter, no separate "popup mode" to fall out of
+  sync with.
+
+**Verified:**
+- `npx tsc --noEmit`, `eslint`, `next build` all clean.
+- Confirmed (again, same lesson as entries 35/37) that the real running
+  app is the Docker Compose `oculus-frontend-1` container, not a bare
+  dev server — rebuilt (`docker compose build frontend`) and recreated
+  (`docker compose up -d frontend`) it so this change is actually live,
+  then confirmed `GET /engagements` on the live container still returns
+  200 after the swap.
+- Browser E2E (clicking the expand button, dragging the zoom slider
+  through a real result) **not** performed — Claude-in-Chrome extension
+  connection issue, same outstanding item as entries 35/36.
+
+**Next steps for the next agent:**
+1. Browser E2E still outstanding — see entries 35/36's same note. Worth
+   a manual click-through: open a tool output, hit expand, zoom in/out,
+   confirm the Tree view's "Run here" buttons still work at the larger
+   size.
+2. Zoom only scales font size (`fontSize: 12 * zoom`), not layout spacing
+   (padding/line-height stay fixed) — fine for the 75%–250% range chosen,
+   but worth widening line-height proportionally too if a much larger
+   zoom range is ever wanted.
+
+---
+
+## 2026-09-01 (37) — Fix: `zap` shows "not installed" even with Docker Desktop running
+
+**Done (user report: the app's own install-hints message told them to
+"Install Docker Desktop... docker desktop already installed but isn't
+installed" — i.e. Docker Desktop *is* running on the host, but the app
+still treats `zap` as unavailable):**
+- Root cause, exactly the gap flagged as a known limitation back in entry
+  27: **this app's own backend runs inside its own Docker container**
+  (`oculus-backend-1`, confirmed via `docker ps`) — Docker Desktop
+  running on the host is irrelevant to what that *container* can see.
+  Two things were missing inside it: the `docker` CLI wasn't installed at
+  all (confirmed: not in the image), and even if it were, nothing wired
+  the container up to actually reach the host's Docker daemon.
+  `ZapTool.is_available()` (inherited from `BaseTool`) just checks
+  whether `docker` resolves on `PATH` — false on both counts, hence the
+  "not installed" hint despite Docker Desktop being right there on the
+  host.
+- `Dockerfile`: added `docker.io` to the backend image's apt install list
+  — this installs the `docker` **client** only; no `dockerd` runs inside
+  the container itself.
+- `docker-compose.yml`: backend service now mounts the host's
+  `/var/run/docker.sock` into the container at the same path. That's what
+  actually lets the `docker` CLI *inside* the container talk to the *host's*
+  Docker Desktop daemon — installing the CLI alone doesn't do this by
+  itself, both pieces were needed together. Documented the real tradeoff
+  inline: this hands the backend container root-equivalent control over
+  the host (the standard Docker-socket-mount caveat) — acceptable for a
+  local single-user pentest tool, explicitly flagged as not something to
+  do on a shared/multi-tenant host.
+
+**Verified:**
+- `docker compose build backend` — clean rebuild with the new
+  `docker.io` layer.
+- `docker exec oculus-backend-1 which docker` → `/usr/bin/docker`;
+  `docker exec oculus-backend-1 docker ps` → real output listing the
+  host's own running containers (`oculus:latest`, `oculus-frontend`),
+  proving the socket-mount actually reaches the host daemon, not just
+  that the CLI binary exists.
+- Hit the real running backend: `GET /api/tools` → `zap`'s
+  `"available"` flipped `false` → `true` (recreated the container after
+  the image rebuild — a plain `docker compose build` doesn't restart the
+  already-running container on its own, confirmed the hard way: `zap`
+  still showed `available: false` immediately after the build until
+  `docker compose up -d backend` recreated it).
+- **Full real scan through the actual application code path**, not just
+  a preview: `docker exec oculus-backend-1 python3 -c "ZapTool(...).run()"`
+  against `example.com` — `exit_code: 0`, real ZAP output (dozens of real
+  `PASS:` rule lines). First tried `scanme.nmap.org` (this project's usual
+  authorized test target) and got a real (not simulated) connection
+  failure — `Connection refused` on port 443, since that host doesn't
+  serve HTTPS at all — confirming the run was genuinely hitting the
+  network via the real container, not returning canned/simulated output;
+  switched to `example.com` (does serve HTTPS) for the clean pass.
+
+**Next steps for the next agent:**
+1. This closes out entry 27's item 2 ("if oculus's own backend is ever
+   run inside Docker, zap won't be available there unless given access
+   to the host's Docker socket") — that limitation no longer applies for
+   the `docker compose up` path. `README.md`'s ZAP/Docker callout section
+   (added in entry 27) should be revisited to reflect that this is now
+   solved for the shipped compose setup, not still an open caveat.
+2. The `docker compose run --rm oculus ...` CLI/TUI service (profile
+   `cli`) does **not** get the same socket mount — only the `backend`
+   service does. `zap` would still show unavailable there. Not fixed
+   here since it wasn't reported and the web UI is the primary interface;
+   worth mirroring the same `volumes:` addition to the `oculus` service
+   if a CLI/TUI user hits the same report for that path.
+
+---
+
+## 2026-09-01 (36) — Icon picker on New Engagement (like each tool's own badge)
+
+**Done (user request: "when create new engagement can you implement can
+select icon or use like icon tools" — i.e. give an engagement a
+selectable icon the same way each tool already has its own colored badge
+in `toolLogos.ts`):**
+- New `frontend/src/lib/engagementIcons.tsx` — a fixed, curated set of 12
+  icon options keyed by what a pentest engagement's target actually is
+  (`web`/`api`/`mobile`/`cloud`/`network`/`database`/`iot`/`auth`/
+  `ecommerce`/`corporate`/`cli`/`other`), each a real MUI icon + a
+  distinct color, same pattern as `toolLogos.ts`'s per-tool monogram+color
+  table. Chose a curated key set over a free-text/open icon library
+  deliberately: cheap to store (a short string, no sanitizing needed
+  anywhere it's rendered) and every option is genuinely relevant to this
+  app's domain, matching the "like icon tools" ask directly.
+- `oculus/models.py`: `Engagement` gained `icon: str = "web"`.
+  `oculus/state.py`'s `list_all()` summary dict now includes it.
+  `backend/routers/engagements.py`'s `NewEngagement` body gained
+  `icon: str = "web"`, threaded into `create_engagement()`.
+  `frontend/src/lib/types.ts`: `Engagement`/`EngagementSummary` both
+  gained `icon: string`. `api.ts`'s `createEngagement()` gained an `icon`
+  param.
+- `frontend/src/app/engagements/page.tsx`: new `IconPicker` — a row of
+  selectable icon buttons (highlighted border+tint in that icon's own
+  color when selected) added to the New Engagement dialog, defaulting to
+  `web`. `EngagementCard` now renders the chosen icon in a small colored
+  tile next to the engagement's name (previously just name+ID, no visual
+  identity at all beyond that).
+- Backward compatible by construction, not by special-casing: Pydantic's
+  field default (`icon: str = "web"`) means every engagement saved before
+  this change (no `icon` key in its JSON at all) validates and loads with
+  `icon="web"` automatically — confirmed directly against a hand-built
+  legacy JSON payload missing the field entirely, not just assumed from
+  reading the Pydantic docs.
+
+**Verified:**
+- `npx tsc --noEmit`, `eslint`, `next build` all clean.
+- `python3 -c "from oculus.models import Engagement; ..."` — direct
+  construction with `icon='api'` round-trips correctly through
+  `model_dump_json()`; a legacy JSON blob with no `icon` key at all loads
+  with `icon='web'` (the backward-compatibility case above).
+- Found mid-session that the actual running app is **Docker Compose**
+  (`oculus-backend-1`/`oculus-frontend-1`, `docker ps` confirmed —
+  earlier sessions' "full browser E2E" entries were against this same
+  setup, not a bare local dev server as briefly assumed while investigating
+  entry 35's failed connection). Rebuilt both images
+  (`docker compose build backend frontend`) and recreated the containers
+  (`docker compose up -d backend frontend`) so the real running app
+  reflects this change, then confirmed against the **live** container
+  over the network: `POST /api/engagements` with `"icon":"mobile"` →
+  response echoed `"icon":"mobile"`; `GET /api/engagements` on the
+  pre-existing `securebank` engagement (created before this change)
+  correctly shows `"icon":"web"` (the default, not an error/null) proving
+  the backward-compat path holds against real on-disk data, not just the
+  hand-built test payload above. Test engagements created during this
+  verification deleted afterward (`DELETE /api/engagements/{id}` x2).
+  `GET /engagements` on the live frontend container returns 200.
+- Browser E2E (clicking through the actual icon picker UI) **not**
+  performed — the Claude-in-Chrome extension reported "not connected"
+  both before and after the container rebuild in this session, same
+  outstanding issue noted in entry 35.
+
+**Next steps for the next agent:**
+1. Browser E2E is still outstanding for both this entry and entry 35 —
+   the Claude-in-Chrome extension connection issue affects any session
+   trying to visually verify UI changes right now, not something specific
+   to this feature. Worth checking whether the extension itself needs
+   reinstalling/restarting, and until then doing a manual click-through.
+2. Only wired into creation — there's no "edit an existing engagement's
+   icon" path (no update-engagement endpoint exists at all yet, icon or
+   otherwise). Worth adding if a tester wants to change one after the
+   fact, not attempted here since it wasn't asked for.
+3. Since the real running app is Docker Compose (not a local dev
+   server), **every future frontend/backend change needs `docker compose
+   build backend frontend && docker compose up -d backend frontend`
+   before it's actually live** — confirmed the hard way this session
+   (entry 35's fix landed in source but the running containers were still
+   serving the pre-fix image the whole time it was reported "done").
+   Worth doing this rebuild+recreate as a standard last step for any
+   future oculus change, not just re-running `tsc`/`eslint`/`next build`
+   against source.
 
 ---
 
@@ -86,7 +839,7 @@ that 200,301,302 or 403"):**
 
 **Done (user request: "can you add status at ffuf for user know any
 endpoint can access 200, or must have a permisson for access"):**
-- Root-caused first: `surveil/tools/ffuf_tool.py`'s real `build_command()`
+- Root-caused first: `oculus/tools/ffuf_tool.py`'s real `build_command()`
   ran ffuf with `-s` (silent), which strips the `[Status: N, ...]` line
   from every match entirely — so even though `mock_output()` already
   showed a status per URL (its own `-v`-style verbose format, `[Status:
@@ -95,7 +848,7 @@ endpoint can access 200, or must have a permisson for access"):**
   favor of `-v`, and added `401` to `-mc` alongside the existing
   `200,301,302,403` — 401/403 are the two codes that mean "exists but
   needs credentials," which is exactly the distinction being asked for.
-- `surveil/findings_extractor.py`: `extract_ffuf()` rewritten to pair each
+- `oculus/findings_extractor.py`: `extract_ffuf()` rewritten to pair each
   `[Status: N]` line with the `| URL |` line that follows it (falls back
   to the old bare-path-per-line parse for pre-existing saved runs from
   before `-v` replaced `-s`, which carry no status at all).
@@ -115,13 +868,13 @@ endpoint can access 200, or must have a permisson for access"):**
   permission-walled endpoints apart without opening Raw output.
 
 **Verified:**
-- `python3 -c "from surveil.tools.ffuf_tool import FfufTool; from
-  surveil.findings_extractor import extract_ffuf; ..."` against the real
+- `python3 -c "from oculus.tools.ffuf_tool import FfufTool; from
+  oculus.findings_extractor import extract_ffuf; ..."` against the real
   `mock_output()` (which already used the `-v` shape) — confirmed
   `.env`/`.git`/`config.php.bak` findings now say "(HTTP 200 — publicly
   accessible)" and the `/backup` finding says "(HTTP 403 — requires
   permission/authentication to access)".
-- `python3 -c "from surveil.checklist import build_checklist; ..."` —
+- `python3 -c "from oculus.checklist import build_checklist; ..."` —
   import-time tool-reference validator passes clean.
 - `npx tsc --noEmit` and `eslint` clean on `pathTree.ts`,
   `DirectoryTree.tsx`, `ItemDetail.tsx` (its call site didn't need
@@ -147,7 +900,7 @@ endpoint can access 200, or must have a permisson for access"):**
 **Done (user report: a run stuck taking too long had no way to stop it —
 had to wait it out before running a different tool or a faster edited
 command):**
-- `surveil/tools/base.py`: `run_tool()` rewritten to poll a
+- `oculus/tools/base.py`: `run_tool()` rewritten to poll a
   `cancel_event: threading.Event | None` every 0.25s alongside the
   existing timeout deadline, instead of one blocking
   `thread.join(timeout=timeout)` — that blocking form couldn't react to
@@ -246,7 +999,7 @@ for "gowitness"`):**
   note `-u` is a real flag now (not a bare positional) and `-T`
   (capital) is the timeout; lowercase `-t` was repurposed to thread
   count in v3, a different flag entirely.
-- `surveil/tools/gowitness_tool.py`: `build_command()` rewritten to the
+- `oculus/tools/gowitness_tool.py`: `build_command()` rewritten to the
   real v3 command. `example` updated to match.
 - `run_help()` overridden (previously used `BaseTool`'s default): the
   generic `[binary, help_flag]` form would run top-level `gowitness
@@ -278,7 +1031,7 @@ for "gowitness"`):**
   streamed into the terminal panel. Zero console errors. Test
   engagement and Playwright test script deleted after use.
 - `npx tsc --noEmit` clean (backend/tool-only fix, no frontend changes
-  needed); `python3 -c "from surveil.checklist import build_checklist;
+  needed); `python3 -c "from oculus.checklist import build_checklist;
   ..."` import-time validation passes (24 tools, no import errors).
 
 **Next steps for the next agent:**
@@ -294,7 +1047,7 @@ for "gowitness"`):**
 **Done (user question: "wstg-info-07 it use spider ZAP, in my project
 can integrate?" — an exploratory question, confirmed the approach and
 tradeoff with the user via AskUserQuestion before building):**
-- New `surveil/tools/zap_tool.py` — wraps ZAP's own official automation
+- New `oculus/tools/zap_tool.py` — wraps ZAP's own official automation
   script, `zap-baseline.py` (spider + passive scan rules, **no active
   attacks**), via `docker run --rm -t zaproxy/zap-stable
   zap-baseline.py -t <url> -m <mins> -I`. Architecturally different
@@ -302,18 +1055,18 @@ tradeoff with the user via AskUserQuestion before building):**
   scanner runs inside a container ZAP ships and maintains, not a local
   install. `-I` forces exit 0 even when the passive scan finds WARN/FAIL
   alerts — without it, a scan that successfully found real issues would
-  report a nonzero exit code, which surveil's own status tracking would
+  report a nonzero exit code, which oculus's own status tracking would
   misread as "the tool run failed" rather than "ran fine, found things."
   Fast = `-m 1` (1-minute spider budget), Full = `-m 5`.
 - `run_help()` overridden: the inherited default would run `docker -h`
   (since `binary` is `"docker"`, not the actual tool) and show Docker's
   own help instead of `zap-baseline.py`'s — now runs `docker run --rm
   zaproxy/zap-stable zap-baseline.py -h` instead, the right target.
-- `surveil/checklist.py`: added to `WSTG-INFO-07`'s tools alongside
+- `oculus/checklist.py`: added to `WSTG-INFO-07`'s tools alongside
   `katana`/`gowitness` — the real WSTG-INFO-07 methodology names ZAP's
   spider explicitly (confirmed against the real page in an earlier
   audit this session, entry 27).
-- New `extract_zap()` in `surveil/findings_extractor.py` — parses
+- New `extract_zap()` in `oculus/findings_extractor.py` — parses
   `WARN-NEW`/`FAIL-NEW` alert blocks (`<title> [<rule-id>] x <count>`
   followed by tab-indented affected URLs), zap-baseline.py's own real
   reporting format. `FAIL-NEW` → HIGH, `WARN-NEW` → MEDIUM (its own
@@ -329,7 +1082,7 @@ tradeoff with the user via AskUserQuestion before building):**
   content / 3.6GB on disk, not the "few hundred MB" first guessed —
   corrected in the description before committing) against
   `scanme.nmap.org` (an nmap.org-authorized test target) through the
-  actual `surveil.tools.base.run_tool()` code path: exit code 0 (the
+  actual `oculus.tools.base.run_tool()` code path: exit code 0 (the
   `-I` flag confirmed working), 10 real `WARN-NEW` alerts found,
   completed in 46s.
 - Ran `extract_zap()` against that **real captured output** (not just
@@ -343,7 +1096,7 @@ tradeoff with the user via AskUserQuestion before building):**
   correctly lists `zap` for WSTG-INFO-07 with the real command preview;
   Help button shows the real `zap-baseline.py` usage text fetched live.
   Zero console errors. Test engagement deleted after use.
-- `npx tsc --noEmit` clean; `python3 -c "from surveil.checklist import
+- `npx tsc --noEmit` clean; `python3 -c "from oculus.checklist import
   build_checklist; ..."` import-time validation passes (24 tools, 17
   extractors registered).
 
@@ -355,7 +1108,7 @@ tradeoff with the user via AskUserQuestion before building):**
    ZAP isn't Python. Not pursued further; documented as a known
    limitation in the tool's own description rather than silently
    left unexplained.
-2. If surveil's own backend is ever run *inside* Docker (see
+2. If oculus's own backend is ever run *inside* Docker (see
    `docker-compose.yml`), `zap` won't be available there unless that
    container is given access to the host's Docker socket — Docker-in-
    Docker wasn't set up for this feature. Documented as a callout in
@@ -379,7 +1132,7 @@ tradeoff with the user via AskUserQuestion before building):**
   (`BaseTool.timeout_seconds` default) was never going to be enough —
   this is a genuinely slow tool by design when run this way, not a
   hang or a broken command.
-- `surveil/tools/arjun_tool.py`: full-mode timeout raised to 900s
+- `oculus/tools/arjun_tool.py`: full-mode timeout raised to 900s
   (`timeout_seconds = 900`, applied via `get_timeout()`). Also fixed
   Fast mode, which had a real, separate bug: it still scanned the
   full ~26k-word list (only upping thread count), unlike every other
@@ -399,7 +1152,7 @@ tradeoff with the user via AskUserQuestion before building):**
   actually live — nothing arrived until the process exited on its
   own, and a run killed by our own timeout (the exact scenario a
   tester hits) lost 100% of its output instead of showing whatever
-  had run so far. `surveil/tools/base.py`'s `_subprocess_env()` now
+  had run so far. `oculus/tools/base.py`'s `_subprocess_env()` now
   sets `PYTHONUNBUFFERED=1` for every tool subprocess — fixes this for
   arjun and any other Python-based wrapped tool (sqlmap, wafw00f,
   commix), harmless no-op for every non-Python tool (nmap, Go
@@ -417,7 +1170,7 @@ tradeoff with the user via AskUserQuestion before building):**
   produces zero bytes without `PYTHONUNBUFFERED=1` and real progress
   lines with it.
 - Confirmed the fix through the **actual application code path**, not
-  just raw shell: called `surveil.tools.base.run_tool()` directly with
+  just raw shell: called `oculus.tools.base.run_tool()` directly with
   the real arjun `--stable` command and a live `on_line` callback —
   7 real lines arrived within 0.2 seconds of starting. Confirmed
   separately that a timed-out/killed run still preserves and returns
@@ -426,7 +1179,7 @@ tradeoff with the user via AskUserQuestion before building):**
 - Confirmed `wafw00f` (another Python-based wrapped tool) still runs
   and produces correct output with the new env var set — the global
   change doesn't break anything already working.
-- `python3 -c "from surveil.checklist import build_checklist; ..."` —
+- `python3 -c "from oculus.checklist import build_checklist; ..."` —
   import-time validation passes clean. Hit the live backend's preview
   endpoint with the exact target from the report (`192.168.2.15`) and
   confirmed both Fast and Full commands build correctly.
@@ -594,7 +1347,7 @@ following the objectives on that checklist"):**
   Gathering items directly from the OWASP source (`gh api` to list the
   real files in `OWASP/www-project-web-security-testing-guide`, then
   fetched each `.md`'s real "Test Objectives"/"How to Test"/"Tools"
-  sections) and compared them one by one against `surveil/checklist.py`'s
+  sections) and compared them one by one against `oculus/checklist.py`'s
   current `tools=[...]`/description for INFO-01 through INFO-10, rather
   than going from memory or assumption.
 - **Real finding, not previously known:** WSTG v4.2 officially **merged
@@ -625,7 +1378,7 @@ following the objectives on that checklist"):**
   the two real gaps found, not a wholesale rewrite.
 
 **Verified:**
-- `python3 -c "from surveil.checklist import build_checklist; ..."` —
+- `python3 -c "from oculus.checklist import build_checklist; ..."` —
   import-time tool-reference validator (including the `NUCLEI_TAGS`
   cross-check) passes clean with the new entry.
 - Hit the real running backend: `GET /api/tools/nuclei/command?...
@@ -682,9 +1435,9 @@ cards component, and on landing can you add the logo"):**
     `356b0583`) left over from this session's earlier amass-v5
     debugging — a real cleanup miss, not part of this feature.
 - `frontend/src/app/page.tsx` (the landing page): added the same
-  `logo.svg` above the `[ SURVEIL ]` bracket text, sized larger (88px)
+  `logo.svg` above the `[ OCULUS ]` bracket text, sized larger (88px)
   with a two-layer teal glow (`drop-shadow`) matching the big
-  "SURVEIL" heading's own glow treatment right below it, in its own
+  "OCULUS" heading's own glow treatment right below it, in its own
   `FadeIn` so it animates in first.
 
 **Verified:**
@@ -806,7 +1559,7 @@ running tools status at checklists bar also"):**
 
 **Done (user request: "can you add basic tools or basic command bash
 such wget script,, curl scripts or anything each wstg"):**
-- New `surveil/tools/curl_tool.py` / `wget_tool.py` — lightweight,
+- New `oculus/tools/curl_tool.py` / `wget_tool.py` — lightweight,
   almost-always-already-installed alternatives to the heavier wrappers,
   for a quick manual header/existence check. Mapped onto ~18 checklist
   items chosen for genuine fit, not padding: HTTP methods (`curl -X
@@ -814,7 +1567,7 @@ such wget script,, curl scripts or anything each wstg"):**
   policy and robots.txt/`.git/HEAD` existence (`wget`), cookie
   attributes, error handling, clickjacking headers, and a few more —
   see `CURL_ARGS`/`CURL_PATH_SUFFIX`/`WGET_PATH_SUFFIX` in
-  `surveil/checklist.py`. Deliberately skipped items where the generic
+  `oculus/checklist.py`. Deliberately skipped items where the generic
   command wouldn't add real value over what nmap/testssl/nuclei already
   do (e.g. `WSTG-CRYP-01`, TLS auditing — testssl already owns that).
 - **Found and fixed a real pre-existing bug while wiring in the
@@ -828,7 +1581,7 @@ such wget script,, curl scripts or anything each wstg"):**
   was really running its generic misconfig scan, not SSRF templates,
   every time — unless the tester happened to edit the command box.
   Fixed by extracting the swap logic into one shared
-  `surveil.checklist.apply_tool_overrides()`, called from both the
+  `oculus.checklist.apply_tool_overrides()`, called from both the
   preview endpoint and `Orchestrator.run_tool()`. `BaseTool.run()`
   gained a `default_command` parameter, distinct from the existing
   `override_command` (tester-edited, always-real) — `default_command`
@@ -897,7 +1650,7 @@ change it to favicon also", attaching a teal eye/radar-scope image):**
   home-screen icon). All three are Next.js special-file names — no
   metadata config needed, confirmed via the generated `<link rel=
   icon/apple-touch-icon>` tags on a real page load.
-- Added the same SVG next to the `[ SURVEIL ]` wordmark in
+- Added the same SVG next to the `[ OCULUS ]` wordmark in
   `frontend/src/components/NavBar.tsx` (22px, subtle teal drop-shadow
   matching the app's terminal-glow aesthetic) and at the top of
   `README.md`.
@@ -942,8 +1695,8 @@ not respond within the timeout period"):**
   never hit this but a local `brew install amass` user always will.
   Also found the specific reason no engine could ever be reached on
   this machine: an unrelated process already has port 4000 bound
-  (`lsof -i :4000`) — confirmed, left untouched (not surveil's to kill).
-- `surveil/tools/base.py`: new `BaseTool.postprocess_output(output,
+  (`lsof -i :4000`) — confirmed, left untouched (not oculus's to kill).
+- `oculus/tools/base.py`: new `BaseTool.postprocess_output(output,
   exit_code) -> str` hook, called in `run()` after a *real* (non-
   simulated) run, default no-op. Deliberately not a blanket "clean up
   every tool's error output" mechanism — just an extension point for
@@ -951,7 +1704,7 @@ not respond within the timeout period"):**
   inscrutable. Also pushes any appended lines through the existing
   `on_line` live-stream callback (checked: `output != raw_output`) so a
   tester watching the run live sees the note too, not just on replay.
-- `surveil/tools/amass_tool.py`: overrides it — detects `"did not
+- `oculus/tools/amass_tool.py`: overrides it — detects `"did not
   respond"` + `"engine"` in real output and appends a clear explanation
   + three concrete fixes (start `amass engine` yourself; install v4 via
   `go install .../amass/v4/...@master`, added as a new `install_hints`
@@ -975,7 +1728,7 @@ not respond within the timeout period"):**
   regression in `run_tool()`'s subprocess-timeout enforcement (already
   covered by the existing 90s/660s ceiling either way). Test engagement
   deleted after use.
-- `python3 -c "from surveil.checklist import build_checklist; ..."` —
+- `python3 -c "from oculus.checklist import build_checklist; ..."` —
   import-time tool-reference validator still passes with the new
   `install_hints` entry.
 
@@ -1033,19 +1786,19 @@ more complete"):**
   all 97 items) to find genuine gaps rather than guessing — the three
   additions below each fill a specific one instead of duplicating a
   tool the checklist already had:
-  - **naabu** (`surveil/tools/naabu_tool.py`) — ProjectDiscovery's fast
+  - **naabu** (`oculus/tools/naabu_tool.py`) — ProjectDiscovery's fast
     SYN-based port scanner. Mapped alongside `nmap` on WSTG-CONF-01
     (Network Infrastructure Configuration) as a fast pre-scan pass;
     nmap remains the tool for banner/version detail on whatever naabu
     finds open. Fast mode: top 100 ports. Full: all 65535 (`-p -`).
-  - **dalfox** (`surveil/tools/dalfox_tool.py`) — reflected/DOM XSS
+  - **dalfox** (`oculus/tools/dalfox_tool.py`) — reflected/DOM XSS
     fuzzer that confirms each hit in a real browser context instead of
     just flagging a raw string reflection (fewer false positives than
     nuclei's generic XSS templates). Mapped alongside `nuclei` on
     WSTG-INPV-01 (Reflected XSS) only — deliberately **not** added to
     WSTG-INPV-02 (Stored XSS), since dalfox's URL-fuzzing approach
     can't do the submit-then-revisit workflow stored XSS actually needs.
-  - **commix** (`surveil/tools/commix_tool.py`) — automated OS command
+  - **commix** (`oculus/tools/commix_tool.py`) — automated OS command
     injection tester (parameter + crawled-form fuzzing, `--batch` so it
     never blocks on a prompt). Mapped alongside `nuclei` on
     WSTG-INPV-12 (Command Injection).
@@ -1095,7 +1848,7 @@ more complete"):**
   without the new entries they'd have shown a plain gray fallback badge).
 - Full Docker build of the image with all three new tools included —
   **passed clean**. Ran the built image directly (`docker run --rm
-  --entrypoint sh surveil:tooltest -c "..."`) and confirmed `naabu
+  --entrypoint sh oculus:tooltest -c "..."`) and confirmed `naabu
   -version`, `dalfox version`, and `commix --version` all execute for
   real, and `BaseTool.is_available()` returns `True` for all three from
   inside the container. Test image removed after verification
@@ -1173,7 +1926,7 @@ display option each tools"):**
 
 **Done (user request: "add helping function near running button for
 describe each options on the tools such as `nmap -help`"):**
-- `BaseTool` (`surveil/tools/base.py`) gained `help_flag` (default `-h`)
+- `BaseTool` (`oculus/tools/base.py`) gained `help_flag` (default `-h`)
   and `run_help()`, which shells out to the resolved binary with that
   flag and returns its raw stdout+stderr, exit code ignored (nikto and
   testssl.sh both exit non-zero on their own help flag by design).
@@ -1339,7 +2092,7 @@ same then report it display duplicated finding"):**
 - Fixed at the report layer specifically (not the underlying data model
   — the per-item findings panel correctly keeps its own per-item list,
   since each item genuinely did detect it): new
-  `surveil/report.py::_deduplicate_findings()` groups by `(tool,
+  `oculus/report.py::_deduplicate_findings()` groups by `(tool,
   title)` — deliberately *not* also `evidence`, since the same real
   finding's evidence text can differ slightly between runs
   (`_grep_context()` in `findings_extractor.py` captures a few
@@ -1380,7 +2133,7 @@ same then report it display duplicated finding"):**
 
 **Next steps for the next agent:**
 1. Deliberately left `Engagement.total_findings`/`findings_by_severity`
-   (in `surveil/models.py`) untouched — those still return raw,
+   (in `oculus/models.py`) untouched — those still return raw,
    non-deduplicated counts, and feed the dashboard's `SeverityBar` on
    the engagement page (outside the report). The user's report was
    specifically about the report showing duplicates; the dashboard
@@ -1408,7 +2161,7 @@ finding blocks were plain text headers with no visual separation):**
 - `ReportView.tsx`: `splitIntoSections()` splits the markdown string on
   its own top-level `## ` headers (Overview / Executive Summary /
   Checklist Coverage / Detailed Findings / Appendix — Raw Tool Output —
-  matching `surveil/report.py`'s own structure exactly, no backend
+  matching `oculus/report.py`'s own structure exactly, no backend
   change needed) and renders each as a collapsible MUI `Accordion` with
   a size chip (row/sub-heading count) so a collapsed section still
   communicates its size without opening it.
@@ -1460,7 +2213,7 @@ was no way to see the report's content without downloading it first):**
   content` returning `{"content": "<markdown string>"}` — the exact
   same string `generate_markdown()` already produced for the file
   download, just returned as JSON instead of a `FileResponse`. No
-  changes to `surveil/report.py` needed; it already returned the string
+  changes to `oculus/report.py` needed; it already returned the string
   directly regardless of whether `out_path` was given.
 - New `frontend/src/components/ReportView.tsx`: a dialog that fetches
   that endpoint and renders it with `react-markdown` + `remark-gfm`
@@ -1507,7 +2260,7 @@ was no way to see the report's content without downloading it first):**
 auto-finding extraction vs. add a test suite — after I recommended it
 as the higher-leverage one since findings are the actual deliverable of
 a pentest tool, and 11 of 18 tools' output was going unparsed):**
-- 6 new extractors in `surveil/findings_extractor.py`, registered in
+- 6 new extractors in `oculus/findings_extractor.py`, registered in
   `EXTRACTORS`:
   - `extract_sqlmap` — parses sqlmap's own real reporting format
     (`Parameter: NAME (METHOD)` blocks with `Type:`/`Payload:` lines,
@@ -1574,7 +2327,7 @@ a pentest tool, and 11 of 18 tools' output was going unparsed):**
   injected a real sqlmap finding via the extractor, confirmed the
   engagement's progress bar correctly shows "1 critical" and the
   finding renders in the item detail panel. Zero console errors.
-- `backend.main` and `surveil.cli` both import clean; `_validate_tool_
+- `backend.main` and `oculus.cli` both import clean; `_validate_tool_
   references()` (unrelated to this change but always runs at import)
   still passes.
 
@@ -1688,7 +2441,7 @@ had no Docker path at all):**
   ".[web]"` so FastAPI/uvicorn/websockets ship in the same image. Added
   `COPY backend ./backend` and `ENV PYTHONPATH=/app` — `backend/` isn't
   a pip-installed package (pyproject.toml's `packages.find` only
-  includes `surveil*`), so it needs to be on disk and importable via
+  includes `oculus*`), so it needs to be on disk and importable via
   `python -m uvicorn backend.main:app` for the new `backend` compose
   service.
 - New `frontend/Dockerfile`: 3-stage build (deps → build → runtime) for
@@ -1699,11 +2452,11 @@ had no Docker path at all):**
   actually makes those calls, hitting the backend's published host port.
 - `docker-compose.yml` rewritten: `backend` + `frontend` services (what
   a plain `docker compose up` starts by default) alongside the
-  pre-existing `surveil` CLI/TUI service, now gated behind a `cli`
+  pre-existing `oculus` CLI/TUI service, now gated behind a `cli`
   profile specifically so a plain `up` doesn't try to start an
-  interactive-TTY-only service. All three share the same `surveil-data`
+  interactive-TTY-only service. All three share the same `oculus-data`
   volume, so an engagement created via the web UI is visible to
-  `docker compose run --rm surveil status` and vice versa.
+  `docker compose run --rm oculus status` and vice versa.
 - New `run-docker.sh` (mirrors the existing local-dev `run.sh`):
   `up`/`down`/`logs`/`build` subcommands wrapping `docker compose`.
 - `.gitignore`/`.dockerignore` cleanup: removed 3 files that had no
@@ -1759,12 +2512,12 @@ had no Docker path at all):**
    it, but worth knowing if a future change to the Dockerfile seems to
    "hang": it's very likely just this, not a real problem.
 2. `docker compose build` (no service name) builds all 3 services,
-   including the `cli`-profile-gated `surveil` one — `build` ignores
+   including the `cli`-profile-gated `oculus` one — `build` ignores
    profile restrictions even though `up`/`run` respect them. Not a bug,
    just worth knowing `make docker`/`docker compose build` do build all
    three, not just the two the default `up` starts.
-3. The Docker backend/CLI services use a *separate* `surveil-data`
-   volume from this dev machine's local `~/.surveil/` — engagements
+3. The Docker backend/CLI services use a *separate* `oculus-data`
+   volume from this dev machine's local `~/.oculus/` — engagements
    created via the containerized web app (like the "Docker Final Check"/
    "Docker Stack Check" ones from this session's verification, deleted
    afterward) are invisible to the local dev servers and vice versa.
@@ -1779,7 +2532,7 @@ had no Docker path at all):**
 **Done (user pasted the complete WSTG v4.2 table of contents — all 12
 sections, 4.1 through 4.12 — and asked to "implement tools and script
 for test these objectives"):**
-- Rewrote `surveil/checklist.py`'s `build_checklist()` from 26 items
+- Rewrote `oculus/checklist.py`'s `build_checklist()` from 26 items
   (INFO, CONF, partial IDNT/ATHN/INPV) to the **full 97-item** WSTG v4.2
   TOC across all 12 sections: INFO(10), CONF(11), IDNT(5), ATHN(10),
   ATHZ(4), SESS(9), INPV(19), ERRH(2), CRYP(4), BUSL(9), CLNT(13),
@@ -1832,7 +2585,7 @@ for test these objectives"):**
   this session specifically to catch a dead/unregistered tool name)
   passes cleanly across all 97 items' `tools` lists.
 - `./venv/bin/python -c "from backend.main import app"` and `from
-  surveil.cli import build_checklist` both import clean.
+  oculus.cli import build_checklist` both import clean.
 - Curled the live backend's `POST /api/engagements` and confirmed a
   freshly created engagement gets all 97 items with the correct
   per-section breakdown.
@@ -1893,7 +2646,7 @@ path"):**
   directory. `RunToolDialog` now also shows a `Target: ...` caption
   under its title so this is visible, not just implicit in the command
   preview.
-- **Bug caught and fixed while building this**: `surveil/tools/base.py`'s
+- **Bug caught and fixed while building this**: `oculus/tools/base.py`'s
   `base_url()` isolated the hostname for its IPv4-vs-hostname scheme
   check via `target.split(":")[0]` — correct for a bare host or
   `host:port`, but a target with an appended path (`192.168.2.11/admin`,
@@ -1954,7 +2707,7 @@ path"):**
 clarified via AskUserQuestion into all three: more wordlist categories,
 more tool wrappers, more checklist coverage):**
 
-- **2 new tool wrappers** (`surveil/tools/`), registered in
+- **2 new tool wrappers** (`oculus/tools/`), registered in
   `TOOL_REGISTRY` (18 tools total, was 16):
   - `sqlmap_tool.py` — SQL injection detection/exploitation. Default
     command crawls the target and tests every form/link parameter found
@@ -1972,7 +2725,7 @@ more tool wrappers, more checklist coverage):**
     doesn't fit the picker's single-`-w` assumption, so its default
     wordlists are just hardcoded paths in `build_command()` rather than
     wired into the picker.
-- **2 new bundled wordlists**: `surveil/data/wordlists/usernames.txt`
+- **2 new bundled wordlists**: `oculus/data/wordlists/usernames.txt`
   (~30 common account names) and `passwords.txt` (~30 common/default
   passwords) — same small-curated-default pattern as the existing
   admin/api/backup/etc. bundles.
@@ -1985,7 +2738,7 @@ more tool wrappers, more checklist coverage):**
   - `WSTG-INPV-05` Test SQL Injection (`sqlmap`, `nuclei`)
   - `WSTG-INPV-12` Test Command Injection (`nuclei`)
 - **2 new wordlist recommendation categories**
-  (`surveil.wordlists.CATEGORY_KEYWORDS`, `checklist.WORDLIST_CATEGORY`):
+  (`oculus.wordlists.CATEGORY_KEYWORDS`, `checklist.WORDLIST_CATEGORY`):
   `"usernames"` (mapped to `WSTG-IDNT-04`) and `"passwords"` (not
   currently mapped to any picker-using item since hydra doesn't use the
   picker — added for consistency/future use). Keywords deliberately
@@ -2057,7 +2810,7 @@ which never matches since SecLists' real top-level folders are broad
 topics — `Discovery`, `Fuzzing`, `Passwords`, `Usernames`, ... — not
 per-test categories, so the remote tab's recommendation never actually
 fired for any real test):**
-- `surveil/wordlists.py`: renamed the private `_CATEGORY_KEYWORDS` dict
+- `oculus/wordlists.py`: renamed the private `_CATEGORY_KEYWORDS` dict
   to public `CATEGORY_KEYWORDS` so it's importable elsewhere — same
   lookup `recommend_wordlist()` and the Local tab's grouping already
   use (e.g. `"admin": ("admin",)`, `"api": ("api", "swagger",
@@ -2103,45 +2856,45 @@ fired for any real test):**
 
 **Done (user request: "can you implement at select wordlists and can
 install the wordlists to own project" — a direct follow-up to the prior
-entry, which had put picked-file downloads under `~/.surveil/wordlists/
+entry, which had put picked-file downloads under `~/.oculus/wordlists/
 seclists/`; the ask was for them to live inside the project itself):**
-- `surveil/seclists_remote.py`: renamed the destination from
-  `CACHE_DIR = ~/.surveil/wordlists/seclists` to
-  `INSTALL_DIR = surveil/data/wordlists_downloaded/seclists` — inside
+- `oculus/seclists_remote.py`: renamed the destination from
+  `CACHE_DIR = ~/.oculus/wordlists/seclists` to
+  `INSTALL_DIR = oculus/data/wordlists_downloaded/seclists` — inside
   this project's own package directory, a sibling of (not mixed into)
-  the small hand-curated bundle at `surveil/data/wordlists/`. Kept
+  the small hand-curated bundle at `oculus/data/wordlists/`. Kept
   `CACHE_DIR` as a backwards-compatible alias pointing at the same
   value. Added `install_wordlist` as an alias for `download_wordlist` —
   same function, a name that matches how it reads in the UI now
   ("Installs only the single file...").
   - The *tree-listing* cache (`seclists_tree_cache.json` — which files
-    exist, not their content) deliberately stayed in `~/.surveil/` next
+    exist, not their content) deliberately stayed in `~/.oculus/` next
     to `config.json`/`engagements/` — it's request metadata, not a
     wordlist install, so home-dir persistence is still the right call
     for it specifically.
-- `.gitignore`: added an explicit `surveil/data/wordlists_downloaded/`
+- `.gitignore`: added an explicit `oculus/data/wordlists_downloaded/`
   entry — these are per-checkout downloads, not meant to be committed.
   (There's also an unrelated pre-existing uncommitted `*.txt` rule in
   this file from before this session that would incidentally cover the
   same thing; added the explicit directory rule anyway so this doesn't
   depend on that other, unrelated change staying in place.)
-- `surveil/wordlists.py`'s registered search root didn't need to change
+- `oculus/wordlists.py`'s registered search root didn't need to change
   — it already referenced `seclists_remote.CACHE_DIR.parent` generically,
   which now just resolves to the project directory instead of the home
   directory automatically.
 - Frontend (`WordlistPickerDialog.tsx`): updated the SecLists (GitHub)
   tab's caption and the Local tab's empty-state hint from "downloads"/
   "download" to "installs"/"install... into this project", naming the
-  actual destination path (`surveil/data/wordlists_downloaded/`) so a
+  actual destination path (`oculus/data/wordlists_downloaded/`) so a
   tester knows where to look on disk.
 
 **Verified:**
-- Cleared any leftover files under the old `~/.surveil/wordlists/` path
+- Cleared any leftover files under the old `~/.oculus/wordlists/` path
   from the previous entry's testing first.
 - `download_wordlist("Discovery/Web-Content/quickhits.txt")` against the
-  real repo: confirmed the file lands at `<project>/surveil/data/
+  real repo: confirmed the file lands at `<project>/oculus/data/
   wordlists_downloaded/seclists/Discovery/Web-Content/quickhits.txt`,
-  confirmed nothing appears under `~/.surveil/` matching a wordlist file,
+  confirmed nothing appears under `~/.oculus/` matching a wordlist file,
   confirmed `git status`/`git check-ignore -v` show it correctly ignored
   (matched by the new explicit rule, not the unrelated stray one), and
   confirmed it still surfaces under `discover_wordlists_grouped()`'s
@@ -2150,7 +2903,7 @@ seclists/`; the ask was for them to live inside the project itself):**
 - Full browser E2E via a throwaway Playwright script (deleted after
   use): opened the SecLists (GitHub) tab, confirmed the caption reads
   "Installs only the single file... into this project
-  (surveil/data/wordlists_downloaded/)", searched "quickhits", installed
+  (oculus/data/wordlists_downloaded/)", searched "quickhits", installed
   the matching file, confirmed the Run Tool dialog's command field
   pointed at the new in-project path. Zero console errors. Deleted the
   test engagement and the installed test file afterward.
@@ -2165,24 +2918,24 @@ https://github.com/danielmiessler/SecLists.git only target wordlists
 file for run the script and create the structure wordlists in own
 project" — i.e. no full `git clone` of the ~1GB SecLists repo; browse it
 remotely and download only the one file actually picked):**
-- New `surveil/seclists_remote.py`:
+- New `oculus/seclists_remote.py`:
   - `list_remote_wordlists()` — one GitHub API call
     (`GET /repos/danielmiessler/SecLists/git/trees/master?recursive=1`)
     listing every file in the repo (6000+ `.txt` files as of this
-    session), cached to disk for 24h at `~/.surveil/wordlists/
+    session), cached to disk for 24h at `~/.oculus/wordlists/
     seclists_tree_cache.json` — unauthenticated GitHub API calls are
     rate-limited to 60/hour, and the tree barely changes hour to hour,
     so there's no reason to refetch on every dialog open.
   - `download_wordlist(path)` — fetches exactly that one file's raw
     content (`raw.githubusercontent.com/.../master/<path>`) and saves it
-    under `~/.surveil/wordlists/seclists/<path>`, mirroring the repo's
+    under `~/.oculus/wordlists/seclists/<path>`, mirroring the repo's
     own directory structure. No-ops (returns the existing path) if
     already downloaded. Rejects absolute paths / `..` segments — *path*
     ultimately comes from a request a tester could hand-edit.
   - No new Python dependency — uses stdlib `urllib.request` for both
     calls rather than adding `requests`.
   - Registered the download cache dir's *parent* as a
-    `surveil/wordlists.py` search root (specifically the parent, not the
+    `oculus/wordlists.py` search root (specifically the parent, not the
     `seclists/` dir itself, so `_category_for()`'s existing "seclists/
     <Discovery|Passwords|...>" special-case groups a downloaded file the
     same way a full local SecLists checkout would) — a file downloaded
@@ -2240,7 +2993,7 @@ remotely and download only the one file actually picked):**
   real matches (`OBEX_common.txt`, `Discovery/Web-Content/common.txt`)
   → clicked the `Discovery/Web-Content/common.txt` card → confirmed the
   Run Tool dialog's button updated to "Wordlist: common.txt" and the
-  command field's `-w` flag now pointed at `~/.surveil/wordlists/
+  command field's `-w` flag now pointed at `~/.oculus/wordlists/
   seclists/Discovery/Web-Content/common.txt` → confirmed via `find` on
   disk that **only that one file** exists under the cache dir, nothing
   else. Zero console errors throughout.
@@ -2279,13 +3032,13 @@ when running the `dnsx` checklist tool for real.**
   reaches the *nested* `dnsx` invocation inside the shell string at all;
   the child shell just inherits the parent process's own PATH, which
   doesn't include the Go bin dir either.
-- Fixed in `surveil/tools/base.py`: new `_subprocess_env()` builds the
+- Fixed in `oculus/tools/base.py`: new `_subprocess_env()` builds the
   environment passed to every `run_tool()` subprocess with the same
   extra dirs `_extra_bin_dirs()`/`resolve_binary()` already know about
   (`$GOBIN`, `$GOPATH/bin`) prepended to `PATH`. Fixes this for dnsx and
   for any other shell-wrapped tool the same way, without parsing/
   rewriting each command string individually — the general architectural
-  gap was "surveil's own binary search path never reaches a subprocess's
+  gap was "oculus's own binary search path never reaches a subprocess's
   own env," not "dnsx specifically is broken."
 
 **Verified:**
@@ -2326,7 +3079,7 @@ testing purpose):**
   Found and fixed:
   - **`WSTG-INFO-08` (Fingerprint Web Application Framework) listed
     `"wappalyzer-cli"`** — not a real tool anywhere in this project
-    (`surveil/tools/__init__.py`'s `TOOL_REGISTRY` has no such entry).
+    (`oculus/tools/__init__.py`'s `TOOL_REGISTRY` has no such entry).
     It's been a dead reference since this checklist item was written —
     the Run Tool dropdown for this item was silently missing that third
     option the whole time, no error, just fewer choices than intended.
@@ -2359,7 +3112,7 @@ testing purpose):**
   specifically to catch the `wappalyzer-cli` class of bug immediately
   (a crash on startup) instead of it silently sitting there as a
   missing dropdown option for however long, like this one did.
-- Migrated the one existing real engagement (`~/.surveil/engagements/
+- Migrated the one existing real engagement (`~/.oculus/engagements/
   25f27157.json`, the user's actual "Snoopbee Lab1" lab work) to match:
   its checklist items were snapshotted from `build_checklist()` at
   creation time, so it had the stale `wappalyzer-cli` entry and the 3
@@ -2375,7 +3128,7 @@ testing purpose):**
   a fake unregistered tool name and checking the `AssertionError` fires
   with a clear message.
 - `./venv/bin/python -c "from backend.main import app"` and `from
-  surveil.cli import build_checklist` both import without error.
+  oculus.cli import build_checklist` both import without error.
 - Curled the live (already-running, `--reload`) backend's `/api/tools`
   and confirmed `wappalyzer-cli` isn't there and `nuclei` is.
 - Curled `/api/engagements/25f27157` after the data migration and
@@ -2579,7 +3332,7 @@ the select wordlists button that show dialog popup can select card
 wordlists, each category and recommendation by follow path default by
 Kali linux wordlists and seclist" — pasted their real Kali
 `/usr/share/wordlists` and `seclists/` layout):**
-- `surveil/wordlists.py` discovery rewrite:
+- `oculus/wordlists.py` discovery rewrite:
   - `_all_candidates()` walks every search root once (was 3x — one rglob
     per extension) matching both `*.txt` and `*.lst` (Kali's own
     `nmap.lst`/`john.lst` use `.lst`, previously invisible entirely).
@@ -2597,7 +3350,7 @@ Kali linux wordlists and seclist" — pasted their real Kali
     broken out by its own top-level folder; sibling Kali packages (dirb,
     dirbuster, wfuzz, legion, fern-wifi, metasploit, ...) group by their
     own directory name; the bundled bare files (rockyou.txt,
-    fasttrack.txt, ...) land in "Other". surveil's own bundled wordlists
+    fasttrack.txt, ...) land in "Other". oculus's own bundled wordlists
     (added last session) always appear too, under "Bundled (built-in)"
     — so the dialog is never empty on a machine with no system wordlists.
   - A group is flagged `recommended` if its category name matches the
@@ -2626,7 +3379,7 @@ Kali linux wordlists and seclist" — pasted their real Kali
   (`dirb/`, `dirbuster/`, `wfuzz/`, `seclists/Discovery/Web-Content/`,
   `seclists/Passwords/`, `seclists/Fuzzing/`, `seclists/Usernames/`,
   plus root-level `rockyou.txt`/`nmap.lst`) matching exactly the
-  structure the user pasted, pointed `SURVEIL_WORDLIST_DIR` at it via the
+  structure the user pasted, pointed `OCULUS_WORDLIST_DIR` at it via the
   config endpoint, and curled `/api/tools/wordlists/grouped` — confirmed
   9 groups exactly matching that layout (`SecLists/Discovery`,
   `SecLists/Fuzzing`, `SecLists/Passwords`, `SecLists/Usernames`, `dirb`,
@@ -2681,14 +3434,14 @@ Kali linux wordlists and seclist" — pasted their real Kali
 
 **Done (user request: "each testing can you recommend wordlists for that
 test, such as ffuf for search endpoint use that wordlist"):**
-- Added 5 new bundled wordlists under `surveil/data/wordlists/`:
+- Added 5 new bundled wordlists under `oculus/data/wordlists/`:
   `admin.txt` (~55 admin-panel paths), `api.txt` (~60 API/GraphQL/Swagger
   paths), `backup.txt` (~65 backup/dump file names), `extensions.txt`
   (~50 file-extension-handling probes like `index.php.bak`, `.git/config`),
   `metafiles.txt` (~30 well-known metafiles like `robots.txt`,
   `.well-known/security.txt`). `common.txt` (existing, general-purpose)
   is reused as the "common" category.
-- `surveil/checklist.py`: new `WORDLIST_CATEGORY` dict mapping specific
+- `oculus/checklist.py`: new `WORDLIST_CATEGORY` dict mapping specific
   WSTG checklist item IDs to a category (e.g. `WSTG-CONF-05` "Enumerate
   Admin Interfaces" → `"admin"`, `WSTG-CONF-04` "Review Old Backup and
   Unreferenced Files" → `"backup"`, `WSTG-INFO-06` "Identify Application
@@ -2696,7 +3449,7 @@ test, such as ffuf for search endpoint use that wordlist"):**
   hint text. Only 6 items are mapped — everything else (including any
   tester-added custom item) falls through to the plain default wordlist,
   unchanged from before.
-- `surveil/wordlists.py`: new `recommend_wordlist(category)` — tries a
+- `oculus/wordlists.py`: new `recommend_wordlist(category)` — tries a
   *discovered* wordlist whose path matches the category's keywords first
   (so a real SecLists install's own admin/API/backup lists win over the
   bundled ones), then falls back to the bundled `<category>.txt`, then to
@@ -2796,7 +3549,7 @@ immediately after "tool default" and before any DNS entries; typing
 1. The priority keyword list is a heuristic, not exhaustive — if another
    wordlist naming convention turns out to matter (e.g. a different
    pentesting distro's layout), extend `_DIR_BRUTEFORCE_KEYWORDS` in
-   `surveil/wordlists.py` rather than reworking the sort mechanism.
+   `oculus/wordlists.py` rather than reworking the sort mechanism.
 2. `limit=150` is still a cap, chosen to keep the Autocomplete responsive
    — a truly enormous SecLists install could still have Web-Content
    entries beyond position 150 if there happen to be 150+ higher-priority
@@ -2809,14 +3562,14 @@ immediately after "tool default" and before any DNS entries; typing
 ## 2026-08-19 (3) — Settings dialog: configure wordlist dir from the web UI
 
 **Done (user request: "ffuf can select wordlists and user can config
-environment wordlists path" — the previous session's `SURVEIL_WORDLIST_DIR`
+environment wordlists path" — the previous session's `OCULUS_WORDLIST_DIR`
 env var required a backend restart to change, not something settable from
 the running app):**
-- New `surveil/config.py` — persisted app-wide settings
-  (`~/.surveil/config.json`, separate from `~/.surveil/engagements/`).
+- New `oculus/config.py` — persisted app-wide settings
+  (`~/.oculus/config.json`, separate from `~/.oculus/engagements/`).
   Currently just `wordlist_dir`; designed to hold more settings later.
 - `wordlists.py`'s `_configured_root()` now checks the persisted config
-  first, then `SURVEIL_WORDLIST_DIR` — config wins if both are set, since
+  first, then `OCULUS_WORDLIST_DIR` — config wins if both are set, since
   it's the more explicit, most-recently-set value.
 - New `GET /api/config` / `PUT /api/config/wordlist-dir` (backend/routers/
   config.py) — the PUT validates the path actually exists before
@@ -2845,7 +3598,7 @@ back to null after the test. `tsc`/`eslint`/`next build` clean; all 16
 tools still `build_command()` without error; backend imports clean.
 
 **Next steps for the next agent:**
-1. If more app-wide settings get added later, extend `surveil/config.py`'s
+1. If more app-wide settings get added later, extend `oculus/config.py`'s
    get/set functions the same way `wordlist_dir` was done — one JSON file,
    simple key access, no need for a heavier settings framework yet.
 2. The Settings dialog only covers the wordlist directory right now —
@@ -2909,12 +3662,12 @@ recovery. `tsc`/`eslint`/`next build` all clean.
 
 **Done (user request: configurable wordlist folder + "implement ffuf for
 real ffuf"):**
-- New `SURVEIL_WORDLIST_DIR` env var (`surveil/wordlists.py`) — point it
+- New `OCULUS_WORDLIST_DIR` env var (`oculus/wordlists.py`) — point it
   at a directory (searched recursively for `*.txt`, also folded into the
   wordlist picker's search) or a specific file, and it's used first.
-- New `default_wordlist()` resolver: `SURVEIL_WORDLIST_DIR` → first
+- New `default_wordlist()` resolver: `OCULUS_WORDLIST_DIR` → first
   discovered wordlist in the existing common-location scan → a wordlist
-  now bundled with surveil itself (`surveil/data/wordlists/common.txt`,
+  now bundled with oculus itself (`oculus/data/wordlists/common.txt`,
   ~220 common paths, added to `package-data` in `pyproject.toml` so it
   survives a non-editable install too).
 - **Root cause of "ffuf not really working" #1**: `ffuf_tool.py` and
@@ -2928,13 +3681,13 @@ real ffuf"):**
   this repo's own `192.168.2.11` test target) every single request failed
   to connect, and ffuf reported "success" with zero results — silently
   indistinguishable from a real empty scan. Added `base_url()` to
-  `surveil/tools/base.py`: respects an explicit scheme if the tester typed
+  `oculus/tools/base.py`: respects an explicit scheme if the tester typed
   one, defaults bare IPv4 targets to `http://` (internal targets are
   usually plain HTTP), bare hostnames to `https://` (still the common case
   for a real domain). Applied to `ffuf`/`gobuster` only, per the request's
   explicit scope — **9 other tools have the exact same hardcoded-https://
   pattern** (arjun, gowitness, katana, wafw00f, nikto, nuclei, wpscan,
-  testssl — grep `f"https://{self.target}` across `surveil/tools/*.py`)
+  testssl — grep `f"https://{self.target}` across `oculus/tools/*.py`)
   and would benefit from the same `base_url()` fix; deliberately not
   touched this session to stay scoped to what was asked.
 
@@ -2943,7 +3696,7 @@ directly, then again through the actual backend WebSocket path) against
 the same `192.168.2.11` target used in earlier bug reports — both now
 return real results (`.htaccess`, `.htpasswd`, `assets`,
 `server-status`, `vendor`) instead of silently succeeding with nothing.
-Confirmed `SURVEIL_WORDLIST_DIR` resolves correctly for both a directory
+Confirmed `OCULUS_WORDLIST_DIR` resolves correctly for both a directory
 and a direct file path. All 16 tools still `build_command()` without
 error; backend imports clean; CLI still works.
 
@@ -2965,7 +3718,7 @@ httpx `-response-header` bug** (below) — checked every installed tool's
 real `--help`/`-h` output against what each wrapper's `build_command()`
 actually sends, on the theory that a hallucinated-flag bug might not be
 unique to httpx. `nuclei`, `wpscan`, `subfinder`, `ffuf`, `gobuster`,
-`nmap` all check out clean — every flag `surveil/tools/*_tool.py` uses for
+`nmap` all check out clean — every flag `oculus/tools/*_tool.py` uses for
 those exists in the installed binary's real help output.
 
 **`amass` does not check out, and it's bigger than a bad flag:**
@@ -2973,7 +3726,7 @@ those exists in the installed binary's real help output.
   completely restructured CLI: `amass [assoc|engine|enum|subs|track|viz]`.
   This is OWASP Amass's new "OAM" (Open Asset Model) architecture — a
   significant rewrite from the v3/v4-era single-shot CLI our wrapper
-  (`surveil/tools/amass_tool.py`, still sending
+  (`oculus/tools/amass_tool.py`, still sending
   `amass enum -passive -d <target> -timeout <N>`) assumes.
 - `amass enum -h` (and even `amass enum` with no arguments at all) **hangs
   indefinitely** — confirmed with `timeout 10s`, exit 124, zero output,
@@ -3022,7 +3775,7 @@ scope for the reported bug (httpx's flag).
 not defined: -response-header"):**
 - Confirmed by checking real `httpx -h` output (v1.10.0): `-response-header`
   has never been a valid flag in any httpx release. It was a made-up name
-  in `surveil/tools/httpx_tool.py`'s full-mode `build_command()` that
+  in `oculus/tools/httpx_tool.py`'s full-mode `build_command()` that
   happened to never get caught because the app's own simulated-fallback
   path never actually invokes the real binary's flag parser.
 - The real flag for header info is `-include-response-header`/`-irh`, but
@@ -3070,7 +3823,7 @@ response but success"):**
   before concluding this.
 - Real gap fixed: nothing told the tester *why* it would return nothing
   before they ran it. Added `BaseTool.domain_only: bool` (new attribute,
-  `surveil/tools/base.py`), set `True` on `subfinder`, `amass`, `dnsx` —
+  `oculus/tools/base.py`), set `True` on `subfinder`, `amass`, `dnsx` —
   the three tools that structurally require a domain name. Exposed via
   `/api/tools` (`domain_only` field) and surfaced as a warning `Alert` in
   `RunToolDialog.tsx` when the selected tool is domain-only and the
@@ -3116,11 +3869,11 @@ not just landing, and switch fully to green rather than keep red/blue):**
   down the left/right edges (fixed content, not `Math.random()`-generated,
   to avoid an SSR/client hydration mismatch — see the comment in that file
   if tempted to make it "actually random").
-- New `NavBar.tsx` — persistent `[ SURVEIL ]` brand + Dashboard link, added
+- New `NavBar.tsx` — persistent `[ OCULUS ]` brand + Dashboard link, added
   globally via `ThemeRegistry.tsx`, which now wraps every page in a
   `height: 100dvh` flex column (nav + `flex:1, minHeight:0` content area).
 - Landing page (`app/page.tsx`) rebuilt to match the reference layout:
-  corner brackets, bracketed `[ SURVEIL ]` tagline, huge glowing "SURVEIL"
+  corner brackets, bracketed `[ OCULUS ]` tagline, huge glowing "OCULUS"
   title + "PENTESTING" subtitle, `SCAN · VERIFY · REPORT` strapline, pill
   CTA with a blinking cursor-block, feature cards restyled to match.
   Deliberately did NOT add a light/dark toggle despite the reference having
@@ -3171,7 +3924,7 @@ install but can't use it"):**
   dnsx, katana, gowitness)** installs to `~/go/bin` by default, which
   isn't on `PATH` for a lot of setups — `is_available()` couldn't find it,
   so the app silently used simulated output. Fixed: `resolve_binary()` in
-  `surveil/tools/base.py` now also checks `$GOBIN`/`$GOPATH/bin` and
+  `oculus/tools/base.py` now also checks `$GOBIN`/`$GOPATH/bin` and
   resolves to the full path when found there.
 - **Amass timeout mismatch**: amass's own `-timeout 10` flag means 10
   *minutes*, but the wrapper's subprocess kill timeout was a blanket 120
@@ -3241,8 +3994,8 @@ clean 400. `tsc`/`eslint`/`next build` clean.
 - Split the frontend: `/` is now a landing page (hero, feature cards, "Open
   Dashboard" CTA), the engagement list moved from `/` to `/engagements`.
   Engagement detail's back-link updated accordingly.
-- Added `surveil install-tools` — a new CLI command (backed by
-  `surveil/tool_installer.py`) that interactively installs a *subset* of
+- Added `oculus install-tools` — a new CLI command (backed by
+  `oculus/tool_installer.py`) that interactively installs a *subset* of
   the 16 tool binaries rather than forcing all-or-nothing. The 7 tools
   `findings_extractor.py` auto-parses (`nmap`, `httpx`, `whatweb`,
   `nuclei`, `wafw00f`, `subfinder`, `nikto`) are pre-selected as the
@@ -3251,7 +4004,7 @@ clean 400. `tsc`/`eslint`/`next build` clean.
   reports honestly when none apply, rather than guessing. `./install-tools.sh`
   wraps it (venv setup, matches the `run-*.sh` script family).
 - Added `install_hints: dict[str, str]` to every tool wrapper
-  (`surveil/tools/*_tool.py`, base attr on `BaseTool`) — single source of
+  (`oculus/tools/*_tool.py`, base attr on `BaseTool`) — single source of
   truth consumed by both the installer and the web UI (`/api/tools` now
   returns `available` + `install_hints` per tool; `RunToolDialog` shows a
   warning with copyable install commands when the selected tool isn't
@@ -3285,9 +4038,9 @@ remembering — don't trust remembered package names without checking):**
 - `tsc --noEmit`, `eslint`, `next build` clean (new `/engagements` static
   route confirmed in build output).
 - Browser pass: landing page renders (hero, feature cards, animations),
-  "Open Dashboard" navigates to `/engagements`, "← surveil" navigates
+  "Open Dashboard" navigates to `/engagements`, "← oculus" navigates
   back — zero console errors.
-- CLI: `surveil install-tools` tested end-to-end non-interactively (piped
+- CLI: `oculus install-tools` tested end-to-end non-interactively (piped
   stdin) — table renders correctly with real `is_available()` status per
   tool, selection toggling (`n`/numbers/empty-line-confirm) works, EOF
   during the prompt aborts gracefully (click's `Aborted!`), and a real
@@ -3380,7 +4133,7 @@ remembering — don't trust remembered package names without checking):**
 ## 2026-08-13 — Web app: FastAPI backend + Next.js frontend
 
 **Done:**
-- Added `backend/` — FastAPI app wrapping the existing `surveil` package
+- Added `backend/` — FastAPI app wrapping the existing `oculus` package
   (`state`, `orchestrator`, `models`, `report`, `tools`) with no changes
   to that package. Routes: engagements CRUD, checklist item actions
   (mark-done/skip/reset/notes), findings CRUD, tool registry + command
@@ -3398,7 +4151,7 @@ remembering — don't trust remembered package names without checking):**
 - Added README.md "Web app" section with setup instructions; added
   `frontend/README.md`, `frontend/.env.example`.
 - Both backend and frontend read/write the same
-  `~/.surveil/engagements/` JSON store as the CLI/TUI — no new storage
+  `~/.oculus/engagements/` JSON store as the CLI/TUI — no new storage
   layer, all three interfaces share state.
 - No auth (matches the CLI's single-user/local trust model, per explicit
   user decision — see "Decisions" below).

@@ -102,7 +102,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
               </Typography>
               {config.wordlist_dir_env && !config.wordlist_dir && (
                 <Typography variant="caption" color="text.secondary" display="block" mt={0.5}>
-                  SURVEIL_WORDLIST_DIR env var is set to {config.wordlist_dir_env} — the
+                  OCULUS_WORDLIST_DIR env var is set to {config.wordlist_dir_env} — the
                   setting above, once saved, takes priority over it.
                 </Typography>
               )}

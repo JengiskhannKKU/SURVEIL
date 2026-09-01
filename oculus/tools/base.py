@@ -240,6 +240,14 @@ class BaseTool(ABC):
     # TUI shows a wordlist picker for these instead of just a free-text edit.
     uses_wordlist: bool = False
 
+    # For a tool that takes more than one wordlist by different flags (hydra's
+    # -L usernames / -P passwords) — uses_wordlist above assumes exactly one
+    # -w flag, which doesn't fit this shape at all. Maps flag -> the
+    # wordlists.CATEGORY_KEYWORDS category to recommend for that flag's
+    # picker (e.g. {"-L": "usernames", "-P": "passwords"}). Empty for every
+    # other tool; a tool should set at most one of uses_wordlist / this.
+    wordlist_slots: dict[str, str] = {}
+
     # True for tools that do subdomain/DNS enumeration against a domain
     # name (subfinder, amass, dnsx) — structurally meaningless against a
     # bare IP target (there's no such thing as "subdomains of an IP"), so
@@ -365,7 +373,7 @@ class BaseTool(ABC):
 
         Otherwise *default_command* is used if given — this is the plain
         Fast/Full command with the checklist item's own recommendation
-        already swapped in (see surveil.checklist.apply_tool_overrides,
+        already swapped in (see oculus.checklist.apply_tool_overrides,
         called by Orchestrator.run_tool before this), so e.g. nuclei
         actually gets the item-specific -tags value on a real run and not
         just in the preview text. Unlike *override_command*, it still

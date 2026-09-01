@@ -11,16 +11,16 @@ dist/
 *.txt
 Proposal.pdf
 
-# The blanket *.txt rule above would otherwise also hide surveil's own
-# small hand-curated bundled wordlists (surveil/data/wordlists/*.txt —
+# The blanket *.txt rule above would otherwise also hide oculus's own
+# small hand-curated bundled wordlists (oculus/data/wordlists/*.txt —
 # admin.txt, usernames.txt, etc.), which genuinely need to be committed;
 # they're project assets, not scratch/downloaded files.
-!surveil/data/wordlists/*.txt
+!oculus/data/wordlists/*.txt
 
 # Wordlists installed on demand from github.com/danielmiessler/SecLists
-# via the web UI's "SecLists (GitHub)" picker tab (surveil/seclists_remote.py)
+# via the web UI's "SecLists (GitHub)" picker tab (oculus/seclists_remote.py)
 # — downloaded per checkout, not meant to be committed.
-surveil/data/wordlists_downloaded/
+oculus/data/wordlists_downloaded/
 
 # hydra writes this resume-state file into the process's cwd (the project
 # root, when run via the web UI's backend) on a real run — local scan

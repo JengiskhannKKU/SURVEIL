@@ -1,10 +1,10 @@
-"""Persisted app-wide settings (~/.surveil/config.json).
+"""Persisted app-wide settings (~/.oculus/config.json).
 
-Separate from engagement state (~/.surveil/engagements/) — this is for
+Separate from engagement state (~/.oculus/engagements/) — this is for
 settings that apply across all engagements, currently just the wordlist
 directory override. Set via the web UI's Settings dialog or by editing
-the file directly; takes priority over the SURVEIL_WORDLIST_DIR env var
-(surveil/wordlists.py) since it's the more explicit, most-recently-set
+the file directly; takes priority over the OCULUS_WORDLIST_DIR env var
+(oculus/wordlists.py) since it's the more explicit, most-recently-set
 value.
 """
 from __future__ import annotations
@@ -13,10 +13,13 @@ import json
 from pathlib import Path
 from typing import Optional
 
-_CONFIG_PATH = Path.home() / ".surveil" / "config.json"
+from ._home import ensure_home
+
+_CONFIG_PATH = Path.home() / ".oculus" / "config.json"
 
 
 def _load_raw() -> dict:
+    ensure_home()
     if not _CONFIG_PATH.is_file():
         return {}
     try:
@@ -26,6 +29,7 @@ def _load_raw() -> dict:
 
 
 def _save_raw(data: dict) -> None:
+    ensure_home()
     _CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
     _CONFIG_PATH.write_text(json.dumps(data, indent=2))
 

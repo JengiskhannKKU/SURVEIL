@@ -39,20 +39,43 @@ export interface ChecklistItem {
   notes: string;
 }
 
+export interface ManualPathEntry {
+  path: string;
+  status: number | null;
+  note: string;
+  added_at: string;
+}
+
+export interface ManualPortEntry {
+  port: number;
+  protocol: string;
+  service: string;
+  note: string;
+  added_at: string;
+}
+
 export interface Engagement {
   id: string;
   name: string;
   target: string;
+  icon: string;
+  methodology: string;
   scope_notes: string;
   created_at: string;
   updated_at: string;
   checklist_items: ChecklistItem[];
+  manual_paths: ManualPathEntry[];
+  removed_paths: string[];
+  manual_ports: ManualPortEntry[];
+  removed_ports: string[];
 }
 
 export interface EngagementSummary {
   id: string;
   name: string;
   target: string;
+  icon: string;
+  methodology: string;
   created_at: string;
   progress: string;
   findings: number;
@@ -66,6 +89,11 @@ export interface ToolInfo {
   description: string;
   example: string;
   uses_wordlist: boolean;
+  // Flag -> recommended wordlist category, for a tool that takes more
+  // than one wordlist by different flags (hydra's -L usernames / -P
+  // passwords) — see oculus/tools/base.py's wordlist_slots. Empty for
+  // every tool that isn't shaped like this.
+  wordlist_slots: Record<string, string>;
   available: boolean;
   install_hints: Record<string, string>;
   modes: Record<string, string>;

@@ -3,7 +3,7 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "surveil"
+name = "oculus"
 version = "0.4.0"
 description = "Deterministic, OWASP WSTG checklist-driven web application penetration testing tool"
 readme = "README.md"
@@ -23,10 +23,10 @@ dev = ["pytest>=7.0", "pytest-asyncio"]
 web = ["fastapi>=0.110", "uvicorn[standard]>=0.29", "websockets>=12.0"]
 
 [project.scripts]
-surveil = "surveil.cli:main"
+oculus = "oculus.cli:main"
 
 [tool.setuptools.packages.find]
-include = ["surveil*"]
+include = ["oculus*"]
 
 [tool.setuptools.package-data]
-surveil = ["data/wordlists/*.txt"]
+oculus = ["data/wordlists/*.txt"]

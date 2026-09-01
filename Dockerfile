@@ -25,7 +25,7 @@ RUN go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest 
 # ---- Stage 2: runtime image ----
 FROM python:3.11-slim-bookworm
 
-LABEL org.opencontainers.image.title="surveil" \
+LABEL org.opencontainers.image.title="oculus" \
       org.opencontainers.image.description="Deterministic, OWASP WSTG checklist-driven web application penetration testing tool"
 
 # System enumeration tools available directly from Debian repos, plus
@@ -35,6 +35,11 @@ LABEL org.opencontainers.image.title="surveil" \
 #   - bsdextrautils / procps: `hexdump` and `ps`, both used by testssl.sh
 #   - libcurl4: required at runtime by the `ffi`/`typhoeus` gems wpscan depends on
 #   - sqlmap / hydra: both packaged directly for Debian, no build step needed
+#   - docker.io: the `docker` CLI the `zap` tool wrapper shells out to
+#     (oculus/tools/zap_tool.py runs `docker run zaproxy/zap-stable ...`)
+#     — this is the *client* only, talking to the host's own Docker daemon
+#     over the socket docker-compose.yml mounts in at
+#     /var/run/docker.sock; no dockerd runs inside this container itself.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         nmap \
         whatweb \
@@ -55,6 +60,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         python3-pip \
         pipx \
         ca-certificates \
+        docker.io \
     && rm -rf /var/lib/apt/lists/*
 
 # nikto — not packaged for Debian bookworm; install from source.
@@ -91,9 +97,9 @@ RUN git clone --depth 1 https://github.com/commixproject/commix.git /opt/commix 
 
 WORKDIR /app
 COPY pyproject.toml README.md ./
-COPY surveil ./surveil
+COPY oculus ./oculus
 # backend/ isn't a pip-installed package (see pyproject.toml's
-# packages.find, which only includes "surveil*") — it's imported as
+# packages.find, which only includes "oculus*") — it's imported as
 # "backend.main:app" straight off disk by the `backend` docker-compose
 # service, so PYTHONPATH=/app below is what makes that resolve.
 COPY backend ./backend
@@ -109,12 +115,12 @@ RUN nuclei -update-templates || true
 
 ENV PYTHONPATH=/app
 
-# Engagement state is persisted under $HOME/.surveil — mount a
+# Engagement state is persisted under $HOME/.oculus — mount a
 # volume here to keep engagements/reports across container restarts.
 ENV HOME=/data
 RUN mkdir -p /data && chmod 777 /data
 VOLUME ["/data"]
 WORKDIR /data
 
-ENTRYPOINT ["surveil"]
+ENTRYPOINT ["oculus"]
 CMD ["--help"]

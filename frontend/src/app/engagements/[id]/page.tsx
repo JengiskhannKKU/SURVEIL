@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useCallback, useEffect, useMemo, useState } from "react";
+import { use, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import Box from "@mui/material/Box";
@@ -12,13 +12,19 @@ import DescriptionOutlinedIcon from "@mui/icons-material/DescriptionOutlined";
 import ArticleOutlinedIcon from "@mui/icons-material/ArticleOutlined";
 import VisibilityOutlinedIcon from "@mui/icons-material/VisibilityOutlined";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
+import AccountTreeOutlinedIcon from "@mui/icons-material/AccountTreeOutlined";
+import SettingsEthernetIcon from "@mui/icons-material/SettingsEthernet";
 import { api } from "@/lib/api";
 import { Checklist } from "@/components/Checklist";
 import { ItemDetail } from "@/components/ItemDetail";
 import { ReportView } from "@/components/ReportView";
 import { ProgressBar, SeverityBar } from "@/components/SeverityBar";
+import { PathsDialog } from "@/components/PathsDialog";
+import { PortsDialog } from "@/components/PortsDialog";
 import { useToast } from "@/lib/toast";
 import { severityCounts } from "@/lib/severity";
+import { collectEngagementPaths } from "@/lib/engagementPaths";
+import { collectEngagementPorts } from "@/lib/engagementPorts";
 import type { ChecklistItem, Engagement, ToolInfo } from "@/lib/types";
 
 function HeaderSkeleton() {
@@ -43,6 +49,8 @@ export default function EngagementPage({
   const [tools, setTools] = useState<ToolInfo[]>([]);
   const [error, setError] = useState("");
   const [showReport, setShowReport] = useState(false);
+  const [showPaths, setShowPaths] = useState(false);
+  const [showPorts, setShowPorts] = useState(false);
 
   useEffect(() => {
     api
@@ -143,6 +151,158 @@ export default function EngagementPage({
   );
   const selected = engagement?.checklist_items.find((i) => i.id === selectedId) ?? null;
 
+  // Discovered paths/endpoints, aggregated across every checklist item's
+  // tool output (ffuf/gobuster/katana) for this whole engagement — backs
+  // the "Paths" summary button below. Recomputes from `engagement` on
+  // every change, which already happens live: the 3s polling loop above
+  // while a tool is running (and RunToolDialog's onDone/onStart callbacks
+  // the rest of the time) keep `engagement` current, so this and the
+  // notification effect below just ride that existing real-time plumbing
+  // rather than adding a second one.
+  const pathEntries = useMemo(
+    () =>
+      engagement
+        ? collectEngagementPaths(
+            engagement.checklist_items,
+            engagement.manual_paths,
+            engagement.removed_paths
+          )
+        : [],
+    [engagement]
+  );
+
+  // Same idea, for open ports (nmap's table, naabu's bare "host:port"
+  // lines) — backs the "Ports" summary button below.
+  const portEntries = useMemo(
+    () =>
+      engagement
+        ? collectEngagementPorts(
+            engagement.checklist_items,
+            engagement.manual_ports,
+            engagement.removed_ports
+          )
+        : [],
+    [engagement]
+  );
+
+  async function handleAddPath(path: string, status: number | null, note: string) {
+    if (!engagement) return;
+    try {
+      const updated = await api.addManualPath(engagement.id, path, status, note);
+      setEngagement(updated);
+      toast.success(`Added ${path.startsWith("/") ? path : `/${path}`}`);
+    } catch {
+      toast.error("Failed to add path");
+      throw new Error("add path failed");
+    }
+  }
+
+  function handleRemovePath(path: string) {
+    if (!engagement) return;
+    api
+      .removePath(engagement.id, path)
+      // Once hidden, `removed_paths` on the returned engagement makes
+      // `collectEngagementPaths()` exclude this path entirely — so it
+      // simply won't be in `pathEntries` on the next recompute, and the
+      // notification effect below never sees it to re-toast as "new".
+      .then((updated) => {
+        setEngagement(updated);
+        toast.success(`Removed ${path}`);
+      })
+      .catch(() => toast.error("Failed to remove path"));
+  }
+
+  function handleRestorePath(path: string) {
+    if (!engagement) return;
+    api
+      .restorePath(engagement.id, path)
+      .then((updated) => {
+        setEngagement(updated);
+        toast.success(`Restored ${path}`);
+      })
+      .catch(() => toast.error("Failed to restore path"));
+  }
+
+  async function handleAddPort(port: number, protocol: string, service: string, note: string) {
+    if (!engagement) return;
+    try {
+      const updated = await api.addManualPort(engagement.id, port, protocol, service, note);
+      setEngagement(updated);
+      toast.success(`Added ${port}/${protocol}`);
+    } catch {
+      toast.error("Failed to add port");
+      throw new Error("add port failed");
+    }
+  }
+
+  function handleRemovePort(port: number, protocol: string) {
+    if (!engagement) return;
+    api
+      .removePort(engagement.id, port, protocol)
+      .then((updated) => {
+        setEngagement(updated);
+        toast.success(`Removed ${port}/${protocol}`);
+      })
+      .catch(() => toast.error("Failed to remove port"));
+  }
+
+  function handleRestorePort(key: string) {
+    if (!engagement) return;
+    const [portStr, protocol] = key.split("/");
+    api
+      .restorePort(engagement.id, Number(portStr), protocol)
+      .then((updated) => {
+        setEngagement(updated);
+        toast.success(`Restored ${key}`);
+      })
+      .catch(() => toast.error("Failed to restore port"));
+  }
+
+  // Toasts when a run turns up paths this session hasn't seen yet. `null`
+  // means "not yet initialized" — the very first computation (on initial
+  // load, or after switching engagements) seeds the known set silently so
+  // opening a page with 40 pre-existing paths doesn't toast 40 times.
+  const knownPathsRef = useRef<Set<string> | null>(null);
+  useEffect(() => {
+    knownPathsRef.current = null;
+  }, [id]);
+  useEffect(() => {
+    const current = new Set(pathEntries.map((e) => e.path));
+    if (knownPathsRef.current === null) {
+      knownPathsRef.current = current;
+      return;
+    }
+    const newly = pathEntries.filter((e) => !knownPathsRef.current!.has(e.path));
+    if (newly.length > 0) {
+      const tools = [...new Set(newly.map((e) => e.tool))].join(", ");
+      toast.info(
+        `${newly.length} new path${newly.length === 1 ? "" : "s"} discovered (${tools})`
+      );
+    }
+    knownPathsRef.current = current;
+  }, [pathEntries, toast]);
+
+  // Same notification pattern, for newly discovered open ports.
+  const knownPortsRef = useRef<Set<string> | null>(null);
+  useEffect(() => {
+    knownPortsRef.current = null;
+  }, [id]);
+  useEffect(() => {
+    const current = new Set(portEntries.map((e) => `${e.port}/${e.protocol}`));
+    if (knownPortsRef.current === null) {
+      knownPortsRef.current = current;
+      return;
+    }
+    const newly = portEntries.filter((e) => !knownPortsRef.current!.has(`${e.port}/${e.protocol}`));
+    if (newly.length > 0) {
+      const tools = [...new Set(newly.map((e) => e.tool))].join(", ");
+      toast.info(
+        `${newly.length} new port${newly.length === 1 ? "" : "s"} discovered (${tools})`
+      );
+    }
+    knownPortsRef.current = current;
+  }, [portEntries, toast]);
+
   if (error) {
     return (
       <Box p={4}>
@@ -204,6 +364,22 @@ export default function EngagementPage({
             </Stack>
           </Box>
           <Stack direction="row" spacing={1}>
+            <Button
+              variant="outlined"
+              size="small"
+              startIcon={<AccountTreeOutlinedIcon />}
+              onClick={() => setShowPaths(true)}
+            >
+              Paths{pathEntries.length > 0 ? ` (${pathEntries.length})` : ""}
+            </Button>
+            <Button
+              variant="outlined"
+              size="small"
+              startIcon={<SettingsEthernetIcon />}
+              onClick={() => setShowPorts(true)}
+            >
+              Ports{portEntries.length > 0 ? ` (${portEntries.length})` : ""}
+            </Button>
             <Button
               variant="contained"
               size="small"
@@ -283,6 +459,28 @@ export default function EngagementPage({
 
       {showReport && (
         <ReportView engagementId={engagement.id} onClose={() => setShowReport(false)} />
+      )}
+
+      {showPaths && (
+        <PathsDialog
+          entries={pathEntries}
+          removedPaths={engagement.removed_paths}
+          onAdd={handleAddPath}
+          onRemove={handleRemovePath}
+          onRestore={handleRestorePath}
+          onClose={() => setShowPaths(false)}
+        />
+      )}
+
+      {showPorts && (
+        <PortsDialog
+          entries={portEntries}
+          removedPorts={engagement.removed_ports}
+          onAdd={handleAddPort}
+          onRemove={handleRemovePort}
+          onRestore={handleRestorePort}
+          onClose={() => setShowPorts(false)}
+        />
       )}
     </Box>
   );

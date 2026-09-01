@@ -12,7 +12,7 @@ class GowitnessTool(BaseTool):
     description = (
         "Capture a screenshot of the target's web page for visual triage. "
         "Saved to ./screenshots/ (relative to wherever the backend process "
-        "runs) — surveil doesn't display the image itself yet, just the "
+        "runs) — oculus doesn't display the image itself yet, just the "
         "text summary line gowitness prints (status code, title, whether a "
         "screenshot was captured)."
     )
@@ -60,6 +60,6 @@ class GowitnessTool(BaseTool):
 2026-08-27 16:00:04 INFO result 🤖 target={url} status-code=200 title="{self.target.split('.')[0].capitalize()} — Welcome" have-screenshot=true
 
 ⚠  Notable findings:
-   Screenshot saved to ./screenshots/ for visual review (not yet displayed in surveil's UI)
+   Screenshot saved to ./screenshots/ for visual review (not yet displayed in oculus's UI)
 
 [SIMULATED — gowitness not found on this machine]"""

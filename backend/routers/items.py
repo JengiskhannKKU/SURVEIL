@@ -5,9 +5,9 @@ import re
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from surveil import state
-from surveil.models import ChecklistItem, Engagement, Status
-from surveil.orchestrator import Orchestrator
+from oculus import state
+from oculus.models import ChecklistItem, Engagement, Status
+from oculus.orchestrator import Orchestrator
 
 from .. import ws
 from ..deps import get_item, load_engagement

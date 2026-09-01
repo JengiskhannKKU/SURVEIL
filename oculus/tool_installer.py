@@ -1,6 +1,6 @@
 """Interactive installer for the enumeration tool binaries.
 
-Reuses each tool wrapper's `install_hints` (surveil/tools/*_tool.py) as the
+Reuses each tool wrapper's `install_hints` (oculus/tools/*_tool.py) as the
 single source of truth for install commands — nothing here is duplicated
 into a shell script. Lets the tester pick a subset rather than install all
 18 at once, with a recommended starter set pre-selected: the 7 tools whose
@@ -80,7 +80,7 @@ def run_interactive(console: Console) -> None:
         console.print(table)
 
     console.print(
-        "[bold]surveil — tool installer[/bold]\n"
+        "[bold]oculus — tool installer[/bold]\n"
         "Recommended tools (the ones auto-finding extraction understands) are "
         "pre-selected below.\n"
         "Type numbers to toggle (e.g. [cyan]1 3 5[/cyan]), [cyan]a[/cyan]=all, "

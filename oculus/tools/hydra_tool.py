@@ -19,6 +19,10 @@ class HydraTool(BaseTool):
         "\"/login:user=^USER^&pass=^PASS^:F=incorrect\"' or 'ftp://target')."
     )
     uses_wordlist = False  # takes two lists (-L/-P), not the single -w the picker assumes
+    # -L (usernames) / -P (passwords) each get their own wordlist picker,
+    # pre-filtered to the matching category (see BaseTool.wordlist_slots
+    # and wordlists.CATEGORY_KEYWORDS, which already recognizes both).
+    wordlist_slots = {"-L": "usernames", "-P": "passwords"}
     example = "hydra -L usernames.txt -P passwords.txt -f -t 4 ssh://example.com"
     install_hints = {
         "brew": "brew install hydra",

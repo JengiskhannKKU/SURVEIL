@@ -12,10 +12,10 @@ from .seclists_remote import CACHE_DIR as _SECLISTS_DOWNLOAD_CACHE
 # common install locations below, and used as the default for ffuf/gobuster
 # instead of whatever those tools' hardcoded defaults assume. Accepts a
 # directory (searched recursively for *.txt) or a single file path.
-# The web UI's Settings dialog sets this persistently (~/.surveil/
-# config.json, see surveil/config.py) instead, which takes priority over
+# The web UI's Settings dialog sets this persistently (~/.oculus/
+# config.json, see oculus/config.py) instead, which takes priority over
 # this env var if both are set.
-WORDLIST_DIR_ENV = "SURVEIL_WORDLIST_DIR"
+WORDLIST_DIR_ENV = "OCULUS_WORDLIST_DIR"
 
 # Common locations across Kali/Debian (dirb/seclists packages), Homebrew,
 # and manual SecLists checkouts. Most dev machines will have none of
@@ -29,7 +29,7 @@ _SEARCH_ROOTS = [
     Path.home() / "SecLists",
     Path.home() / ".local/share/wordlists",
     # Files individually downloaded via the "Browse SecLists (GitHub)"
-    # picker (surveil/seclists_remote.py) land in a "seclists" subdirectory
+    # picker (oculus/seclists_remote.py) land in a "seclists" subdirectory
     # here — registering the *parent* (not CACHE_DIR itself) means a
     # downloaded file's relative path starts with "seclists/...", which
     # _category_for() below already special-cases into "SecLists/<folder>"
@@ -39,7 +39,7 @@ _SEARCH_ROOTS = [
     _SECLISTS_DOWNLOAD_CACHE.parent,
 ]
 
-# Small wordlists shipped with surveil itself, so ffuf/gobuster have a
+# Small wordlists shipped with oculus itself, so ffuf/gobuster have a
 # real, working default on any OS out of the box — their own conventional
 # default (/usr/share/wordlists/dirb/common.txt) is a Kali/Debian package
 # path that doesn't exist on macOS or a bare Linux box, and running either
@@ -151,7 +151,7 @@ def _category_for(path: Path, root: Path) -> str:
 def discover_wordlists(limit: int = 500) -> list[tuple[str, str]]:
     """Return (label, path) pairs for wordlists found on this host.
 
-    Scans SURVEIL_WORDLIST_DIR/the configured Settings-dialog directory (if
+    Scans OCULUS_WORDLIST_DIR/the configured Settings-dialog directory (if
     set) plus a fixed, shallow set of common install directories (no
     exhaustive filesystem walk) — see `_SEARCH_ROOTS`. Directory/file
     brute-force-relevant wordlists (see `_DIR_BRUTEFORCE_KEYWORDS`) sort
@@ -192,7 +192,7 @@ def discover_wordlists_grouped(recommended_category: str | None = None) -> list[
             label = str(path)
         groups.setdefault(category, []).append((label, str(path)))
 
-    # Always offer surveil's own bundled wordlists too (see WORDLIST_CATEGORY
+    # Always offer oculus's own bundled wordlists too (see WORDLIST_CATEGORY
     # in checklist.py) — the only wordlists guaranteed to exist on a machine
     # with no Kali/SecLists install (e.g. this dev laptop), so the dialog is
     # never empty.
@@ -233,12 +233,12 @@ def discover_wordlists_grouped(recommended_category: str | None = None) -> list[
 def default_wordlist() -> str:
     """Best available default wordlist path for tools that need one.
 
-    Order: the persisted config (~/.surveil/config.json, set via the web
-    UI's Settings dialog) or SURVEIL_WORDLIST_DIR env var — whichever is
+    Order: the persisted config (~/.oculus/config.json, set via the web
+    UI's Settings dialog) or OCULUS_WORDLIST_DIR env var — whichever is
     set, config wins if both are (used directly if it's a file, or the
     first .txt found under it if it's a directory) -> first wordlist
     discovered in the common install locations -> the wordlist bundled
-    with surveil, which always exists regardless of host/OS.
+    with oculus, which always exists regardless of host/OS.
     """
     configured = _configured_root()
     if configured:
@@ -264,7 +264,7 @@ def recommend_wordlist(category: str | None) -> str:
 
     Order: a discovered wordlist whose path matches the category's
     keywords (CATEGORY_KEYWORDS) -> a category-specific wordlist bundled
-    with surveil -> the general default_wordlist(). *category* being None
+    with oculus -> the general default_wordlist(). *category* being None
     or unrecognized (e.g. a custom tester-added checklist item) just falls
     straight through to default_wordlist().
     """

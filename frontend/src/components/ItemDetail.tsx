@@ -12,8 +12,16 @@ import ToggleButton from "@mui/material/ToggleButton";
 import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
 import TextField from "@mui/material/TextField";
 import InputAdornment from "@mui/material/InputAdornment";
+import Dialog from "@mui/material/Dialog";
+import DialogContent from "@mui/material/DialogContent";
+import IconButton from "@mui/material/IconButton";
+import Tooltip from "@mui/material/Tooltip";
 import SearchIcon from "@mui/icons-material/Search";
 import HelpOutlineIcon from "@mui/icons-material/HelpOutline";
+import OpenInFullIcon from "@mui/icons-material/OpenInFull";
+import ZoomInIcon from "@mui/icons-material/ZoomIn";
+import ZoomOutIcon from "@mui/icons-material/ZoomOut";
+import CloseIcon from "@mui/icons-material/Close";
 import { motion } from "framer-motion";
 import { api } from "@/lib/api";
 import { StatusBadge } from "@/components/Badge";
@@ -34,6 +42,17 @@ import { detectAndFormat } from "@/lib/prettyFormat";
 import type { PrettyKind } from "@/lib/prettyFormat";
 import { useToast } from "@/lib/toast";
 import type { ChecklistItem, ToolInfo } from "@/lib/types";
+
+// A plain icon-only IconButton with no border reads as inert/decorative
+// next to bordered controls like the ToggleButtonGroup beside it (entry
+// 38's expand/zoom/close row) — this outlines it the same way so it
+// visibly reads as clickable, with the app's teal accent on hover.
+const BORDERED_ICON_BUTTON_SX = {
+  border: "1px solid rgba(255,255,255,0.14)",
+  borderRadius: 1,
+  "&:hover": { borderColor: "primary.main", bgcolor: "rgba(94,234,212,0.08)" },
+  "&.Mui-disabled": { borderColor: "rgba(255,255,255,0.06)" },
+};
 
 const PRETTY_KIND_LABEL: Record<PrettyKind, string> = {
   json: "JSON",
@@ -78,6 +97,12 @@ export function ItemDetail({
   // permission" without hand-reading the whole dump.
   const [filterQuery, setFilterQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<number | null>(null);
+  // Popup for reading a result at a larger, adjustable scale — the inline
+  // panel below is capped at a small maxHeight/font size so the rest of
+  // the checklist item stays usable, which makes a long/dense result
+  // (a big nmap scan, a huge ffuf tree) hard to actually read in place.
+  const [showExpanded, setShowExpanded] = useState(false);
+  const [zoom, setZoom] = useState(1);
 
   function selectOutputTab(name: string) {
     setActiveOutput(name);
@@ -135,6 +160,93 @@ export function ItemDetail({
     (outputView === "tree" && discoveredTree) || (outputView === "pretty" && prettyResult)
       ? outputView
       : "raw";
+
+  // Shared between the inline panel and the expanded popup — same content,
+  // just a different font size / max height so the popup can actually be
+  // used for reading a large result up close.
+  function renderOutputBody(fontSize: number, maxHeight: number | string) {
+    if (!activeOutput) return null;
+    if (effectiveOutputView === "raw") {
+      return (
+        <Box
+          component="pre"
+          sx={{
+            m: 0,
+            maxHeight,
+            overflow: "auto",
+            borderRadius: 1,
+            bgcolor: "#000",
+            border: "1px solid rgba(255,255,255,0.08)",
+            px: 1.5,
+            py: 1,
+            fontFamily: "var(--font-geist-mono), monospace",
+            fontSize,
+            lineHeight: 1.6,
+            color: "rgba(255,255,255,0.8)",
+          }}
+        >
+          {displayedRawOutput.trim().length > 0 ? (
+            <HighlightedOutput text={displayedRawOutput} />
+          ) : (
+            <Typography variant="body2" color="text.secondary">
+              No output lines match this filter.
+            </Typography>
+          )}
+        </Box>
+      );
+    }
+    if (effectiveOutputView === "tree" && discoveredTree) {
+      return (
+        <Box
+          sx={{
+            borderRadius: 1,
+            bgcolor: "#000",
+            border: "1px solid rgba(255,255,255,0.08)",
+            px: 1,
+            py: 0.5,
+            maxHeight,
+            overflow: "auto",
+            fontSize,
+          }}
+        >
+          <DirectoryTree
+            root={discoveredTree}
+            onRunHere={runToolAt}
+            emptyMessage={
+              filterQuery || statusFilter !== null
+                ? "No discovered paths match this filter."
+                : undefined
+            }
+          />
+        </Box>
+      );
+    }
+    if (effectiveOutputView === "pretty" && prettyResult) {
+      return (
+        <Box
+          component="pre"
+          sx={{
+            m: 0,
+            maxHeight,
+            overflow: "auto",
+            borderRadius: 1,
+            bgcolor: "#000",
+            border: "1px solid rgba(255,255,255,0.08)",
+            px: 1.5,
+            py: 1,
+            fontFamily: "var(--font-geist-mono), monospace",
+            fontSize,
+            lineHeight: 1.6,
+            color: "rgba(255,255,255,0.8)",
+            whiteSpace: "pre",
+          }}
+        >
+          <PrettyOutput text={prettyResult.formatted} kind={prettyResult.kind} />
+        </Box>
+      );
+    }
+    return null;
+  }
 
   function runToolAt(path: string) {
     setRunAtPath(path);
@@ -339,21 +451,28 @@ export function ItemDetail({
                 <Typography variant="subtitle2" fontWeight={700}>
                   Tool output
                 </Typography>
-                <ToggleButtonGroup
-                  size="small"
-                  exclusive
-                  value={outputView}
-                  onChange={(_, v) => v && setOutputView(v)}
-                  sx={{ "& .MuiToggleButton-root": { px: 1.25, py: 0.25, fontSize: 11, textTransform: "none" } }}
-                >
-                  <ToggleButton value="raw">Raw</ToggleButton>
-                  {discoveredTree && <ToggleButton value="tree">Tree</ToggleButton>}
-                  {prettyResult && (
-                    <ToggleButton value="pretty">
-                      Pretty {PRETTY_KIND_LABEL[prettyResult.kind]}
-                    </ToggleButton>
-                  )}
-                </ToggleButtonGroup>
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <ToggleButtonGroup
+                    size="small"
+                    exclusive
+                    value={outputView}
+                    onChange={(_, v) => v && setOutputView(v)}
+                    sx={{ "& .MuiToggleButton-root": { px: 1.25, py: 0.25, fontSize: 11, textTransform: "none" } }}
+                  >
+                    <ToggleButton value="raw">Raw</ToggleButton>
+                    {discoveredTree && <ToggleButton value="tree">Tree</ToggleButton>}
+                    {prettyResult && (
+                      <ToggleButton value="pretty">
+                        Pretty {PRETTY_KIND_LABEL[prettyResult.kind]}
+                      </ToggleButton>
+                    )}
+                  </ToggleButtonGroup>
+                  <Tooltip title="Expand to a larger, zoomable view">
+                    <IconButton size="medium" onClick={() => setShowExpanded(true)} sx={BORDERED_ICON_BUTTON_SX}>
+                      <OpenInFullIcon sx={{ fontSize: 15 }} />
+                    </IconButton>
+                  </Tooltip>
+                </Stack>
               </Stack>
               <Tabs
                 value={activeOutput}
@@ -407,76 +526,7 @@ export function ItemDetail({
                 )}
               </Stack>
 
-              {activeOutput && effectiveOutputView === "raw" && (
-                <Box
-                  component="pre"
-                  sx={{
-                    m: 0,
-                    maxHeight: 320,
-                    overflow: "auto",
-                    borderRadius: 1,
-                    bgcolor: "#000",
-                    border: "1px solid rgba(255,255,255,0.08)",
-                    px: 1.5,
-                    py: 1,
-                    fontFamily: "var(--font-geist-mono), monospace",
-                    fontSize: 12,
-                    lineHeight: 1.6,
-                    color: "rgba(255,255,255,0.8)",
-                  }}
-                >
-                  {displayedRawOutput.trim().length > 0 ? (
-                    <HighlightedOutput text={displayedRawOutput} />
-                  ) : (
-                    <Typography variant="body2" color="text.secondary">
-                      No output lines match this filter.
-                    </Typography>
-                  )}
-                </Box>
-              )}
-              {activeOutput && effectiveOutputView === "tree" && discoveredTree && (
-                <Box
-                  sx={{
-                    borderRadius: 1,
-                    bgcolor: "#000",
-                    border: "1px solid rgba(255,255,255,0.08)",
-                    px: 1,
-                    py: 0.5,
-                  }}
-                >
-                  <DirectoryTree
-                    root={discoveredTree}
-                    onRunHere={runToolAt}
-                    emptyMessage={
-                      filterQuery || statusFilter !== null
-                        ? "No discovered paths match this filter."
-                        : undefined
-                    }
-                  />
-                </Box>
-              )}
-              {activeOutput && effectiveOutputView === "pretty" && prettyResult && (
-                <Box
-                  component="pre"
-                  sx={{
-                    m: 0,
-                    maxHeight: 480,
-                    overflow: "auto",
-                    borderRadius: 1,
-                    bgcolor: "#000",
-                    border: "1px solid rgba(255,255,255,0.08)",
-                    px: 1.5,
-                    py: 1,
-                    fontFamily: "var(--font-geist-mono), monospace",
-                    fontSize: 12,
-                    lineHeight: 1.6,
-                    color: "rgba(255,255,255,0.8)",
-                    whiteSpace: "pre",
-                  }}
-                >
-                  <PrettyOutput text={prettyResult.formatted} kind={prettyResult.kind} />
-                </Box>
-              )}
+              {renderOutputBody(12, effectiveOutputView === "pretty" ? 480 : 320)}
             </Box>
           )}
 
@@ -536,6 +586,111 @@ export function ItemDetail({
             if (item.status !== "running") onChange({ ...item, status: "running" });
           }}
         />
+      )}
+
+      {showExpanded && (
+        <Dialog
+          open
+          onClose={() => setShowExpanded(false)}
+          fullWidth
+          maxWidth="lg"
+          slotProps={{ paper: { sx: { height: "85vh" } } }}
+        >
+          <Stack
+            direction="row"
+            alignItems="center"
+            justifyContent="space-between"
+            sx={{ px: 2.5, py: 1.5, borderBottom: "1px solid", borderColor: "divider" }}
+          >
+            <Typography variant="subtitle1" fontWeight={700}>
+              {activeOutput} output
+            </Typography>
+            <Stack direction="row" spacing={0.5} alignItems="center">
+              <Tooltip title="Zoom out">
+                <span>
+                  <IconButton
+                    size="small"
+                    disabled={zoom <= 0.75}
+                    onClick={() => setZoom((z) => Math.max(0.75, +(z - 0.25).toFixed(2)))}
+                    sx={BORDERED_ICON_BUTTON_SX}
+                  >
+                    <ZoomOutIcon fontSize="small" />
+                  </IconButton>
+                </span>
+              </Tooltip>
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                sx={{ minWidth: 38, textAlign: "center", fontFamily: "var(--font-geist-mono)" }}
+              >
+                {Math.round(zoom * 100)}%
+              </Typography>
+              <Tooltip title="Zoom in">
+                <span>
+                  <IconButton
+                    size="small"
+                    disabled={zoom >= 2.5}
+                    onClick={() => setZoom((z) => Math.min(2.5, +(z + 0.25).toFixed(2)))}
+                    sx={BORDERED_ICON_BUTTON_SX}
+                  >
+                    <ZoomInIcon fontSize="small" />
+                  </IconButton>
+                </span>
+              </Tooltip>
+              <IconButton
+                size="small"
+                onClick={() => setShowExpanded(false)}
+                sx={{ ...BORDERED_ICON_BUTTON_SX, ml: 1 }}
+              >
+                <CloseIcon fontSize="small" />
+              </IconButton>
+            </Stack>
+          </Stack>
+          <DialogContent sx={{ display: "flex", flexDirection: "column", overflow: "hidden", p: 2.5 }}>
+            <Stack direction="row" alignItems="center" spacing={1} flexWrap="wrap" useFlexGap mb={1.5}>
+              <TextField
+                size="small"
+                placeholder="Filter output…"
+                value={filterQuery}
+                onChange={(e) => setFilterQuery(e.target.value)}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <SearchIcon fontSize="small" sx={{ color: "text.secondary" }} />
+                    </InputAdornment>
+                  ),
+                  sx: { fontSize: 12.5 },
+                }}
+                sx={{ width: 220 }}
+              />
+              {availableStatuses.length > 0 && (
+                <ToggleButtonGroup
+                  size="small"
+                  exclusive
+                  value={statusFilter === null ? "all" : statusFilter}
+                  onChange={(_, v) => setStatusFilter(v === "all" || v === null ? null : v)}
+                  sx={{ "& .MuiToggleButton-root": { px: 1, py: 0.25, fontSize: 11, textTransform: "none" } }}
+                >
+                  <ToggleButton value="all">All</ToggleButton>
+                  {availableStatuses.map((s) => (
+                    <ToggleButton
+                      key={s}
+                      value={s}
+                      sx={{
+                        color: s === 200 ? "#22c55e" : s === 401 || s === 403 ? "#f59e0b" : undefined,
+                      }}
+                    >
+                      {s}
+                    </ToggleButton>
+                  ))}
+                </ToggleButtonGroup>
+              )}
+            </Stack>
+            <Box flex={1} sx={{ overflow: "hidden" }}>
+              {renderOutputBody(12 * zoom, "100%")}
+            </Box>
+          </DialogContent>
+        </Dialog>
       )}
 
       {showToolsHelp && (

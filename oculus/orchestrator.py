@@ -36,7 +36,7 @@ class Orchestrator:
         - Sets item status to DONE on success, FAILED on error (including a
           tester-requested cancel, which comes back as a non-zero exit code
           same as a timeout does — see CANCELLED_EXIT_CODE in
-          surveil.tools.base).
+          oculus.tools.base).
         - Records elapsed time.
         - If *custom_command* is given, it replaces the tool's default
           command line and always executes for real (see BaseTool.run).

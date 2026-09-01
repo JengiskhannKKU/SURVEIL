@@ -18,7 +18,7 @@ frontend/node_modules
 frontend/.next
 frontend/out
 
-# Wordlists installed on demand (see surveil/seclists_remote.py) and
+# Wordlists installed on demand (see oculus/seclists_remote.py) and
 # HISTORY.md — neither is needed inside the image.
-surveil/data/wordlists_downloaded
+oculus/data/wordlists_downloaded
 HISTORY.md

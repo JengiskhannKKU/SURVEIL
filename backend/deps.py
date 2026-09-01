@@ -3,8 +3,8 @@ from __future__ import annotations
 
 from fastapi import HTTPException
 
-from surveil import state
-from surveil.models import ChecklistItem, Engagement
+from oculus import state
+from oculus.models import ChecklistItem, Engagement
 
 
 def load_engagement(eng_id: str) -> Engagement:

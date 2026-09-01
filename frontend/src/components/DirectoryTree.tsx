@@ -11,6 +11,7 @@ import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import FolderOutlinedIcon from "@mui/icons-material/FolderOutlined";
 import InsertDriveFileOutlinedIcon from "@mui/icons-material/InsertDriveFileOutlined";
 import PlayCircleOutlineIcon from "@mui/icons-material/PlayCircleOutline";
+import CloseIcon from "@mui/icons-material/Close";
 import Chip from "@mui/material/Chip";
 import type { TreeNode } from "@/lib/pathTree";
 
@@ -44,10 +45,12 @@ function Node({
   node,
   depth,
   onRunHere,
+  onRemove,
 }: {
   node: TreeNode;
   depth: number;
   onRunHere: (path: string) => void;
+  onRemove?: (path: string) => void;
 }) {
   const [open, setOpen] = useState(depth < 1);
   const hasChildren = node.children.length > 0;
@@ -63,7 +66,7 @@ function Node({
           py: 0.25,
           borderRadius: 0.5,
           "&:hover": { bgcolor: "rgba(255,255,255,0.04)" },
-          "&:hover .run-here-btn": { opacity: 1 },
+          "&:hover .row-hover-btn": { opacity: 1 },
         }}
       >
         {hasChildren ? (
@@ -86,23 +89,55 @@ function Node({
         >
           {node.name}
         </Typography>
+        {node.observed && node.manual && (
+          <Chip
+            label="manual"
+            size="small"
+            sx={{
+              height: 18,
+              fontSize: 10,
+              color: "#a855f7",
+              borderColor: "#a855f7",
+              bgcolor: "transparent",
+            }}
+            variant="outlined"
+          />
+        )}
         {node.observed && <StatusChip status={node.status} />}
         <Box flex={1} />
         <Tooltip title={`Run a tool against ${node.path}`}>
           <IconButton
             size="small"
-            className="run-here-btn"
+            className="row-hover-btn"
             onClick={() => onRunHere(node.path)}
             sx={{ p: 0.25, opacity: 0, transition: "opacity 0.1s" }}
           >
             <PlayCircleOutlineIcon fontSize="small" sx={{ color: "#22c55e" }} />
           </IconButton>
         </Tooltip>
+        {onRemove && node.observed && (
+          <Tooltip title={`Remove ${node.path}`}>
+            <IconButton
+              size="small"
+              className="row-hover-btn"
+              onClick={() => onRemove(node.path)}
+              sx={{ p: 0.25, opacity: 0, transition: "opacity 0.1s" }}
+            >
+              <CloseIcon fontSize="small" sx={{ color: "#ef4444" }} />
+            </IconButton>
+          </Tooltip>
+        )}
       </Stack>
       {hasChildren && open && (
         <Box>
           {node.children.map((child) => (
-            <Node key={child.path} node={child} depth={depth + 1} onRunHere={onRunHere} />
+            <Node
+              key={child.path}
+              node={child}
+              depth={depth + 1}
+              onRunHere={onRunHere}
+              onRemove={onRemove}
+            />
           ))}
         </Box>
       )}
@@ -113,11 +148,15 @@ function Node({
 export function DirectoryTree({
   root,
   onRunHere,
+  onRemove,
   emptyMessage = "No directory/file paths could be parsed from this output.",
+  maxHeight = 320,
 }: {
   root: TreeNode;
   onRunHere: (path: string) => void;
+  onRemove?: (path: string) => void;
   emptyMessage?: string;
+  maxHeight?: number | string;
 }) {
   if (root.children.length === 0) {
     return (
@@ -127,9 +166,9 @@ export function DirectoryTree({
     );
   }
   return (
-    <Box sx={{ maxHeight: 320, overflow: "auto" }}>
+    <Box sx={{ maxHeight, overflow: "auto" }}>
       {root.children.map((child) => (
-        <Node key={child.path} node={child} depth={0} onRunHere={onRunHere} />
+        <Node key={child.path} node={child} depth={0} onRunHere={onRunHere} onRemove={onRemove} />
       ))}
     </Box>
   );

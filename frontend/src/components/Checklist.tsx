@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import Box from "@mui/material/Box";
 import TextField from "@mui/material/TextField";
@@ -60,6 +60,17 @@ export function Checklist({
   const [query, setQuery] = useState("");
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [showAdd, setShowAdd] = useState(false);
+  // `categories` is empty on this component's first render (the parent
+  // engagement page hasn't fetched yet) — collapsing everything has to
+  // wait until the real category list actually arrives, but should only
+  // run that one time, not every time `categories` re-renders afterward
+  // (which would stomp a tab the tester deliberately reopened).
+  const didDefaultCollapse = useRef(false);
+  useEffect(() => {
+    if (didDefaultCollapse.current || categories.length === 0) return;
+    didDefaultCollapse.current = true;
+    setCollapsed(new Set(categories));
+  }, [categories]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();

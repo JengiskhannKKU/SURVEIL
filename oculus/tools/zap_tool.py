@@ -42,7 +42,7 @@ class ZapTool(BaseTool):
             # -I: exit 0 even when the passive scan finds WARN/FAIL alerts —
             # finding things is the whole point of running this, and
             # without -I a "successful" scan that found issues would report
-            # a nonzero exit code, which surveil's own success/failure
+            # a nonzero exit code, which oculus's own success/failure
             # status tracking would misread as "the tool run failed"
             # rather than "the tool ran fine and found something."
             "-I",

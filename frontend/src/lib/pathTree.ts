@@ -1,7 +1,8 @@
 // Parses discovered directory/file paths out of ffuf/gobuster/katana output
 // (both the real tools' formats and this project's own mock_output()
-// formats — see surveil/tools/ffuf_tool.py, gobuster_tool.py, katana_tool.py)
+// formats — see oculus/tools/ffuf_tool.py, gobuster_tool.py, katana_tool.py)
 // and builds them into a tree for the "Tree view" toggle in ItemDetail.
+import { NOISE_LINE_RE } from "./logFilter";
 
 export interface TreeNode {
   name: string;
@@ -9,17 +10,25 @@ export interface TreeNode {
   children: TreeNode[];
   observed: boolean; // this exact path was an actual result, not just an inferred parent segment
   status: number | null; // HTTP status code for this exact path, if the tool's output carried one
+  manual: boolean; // added by hand (see engagementPaths.ts) rather than parsed from a tool's output
 }
 
 // ffuf's own "-v" verbose format: a "[Status: 200, Size: ..., ...]" line
 // immediately followed by "| URL | https://target/admin" (sometimes with
 // " -> https://.../admin/" appended for a redirect). Real ffuf -mc/-v output
-// matches this shape (see surveil/tools/ffuf_tool.py) — the status line is
+// matches this shape (see oculus/tools/ffuf_tool.py) — the status line is
 // captured separately and paired with the URL line that follows it.
 const FFUF_STATUS_RE = /^\[Status:\s*(\d+)/;
 const FFUF_MOCK_URL_RE = /^\|\s*URL\s*\|\s*(\S+)/;
 // gobuster: "/admin                (Status: 301) [Size: 178] [--> .../admin/]"
 const GOBUSTER_RE = /^(\/\S*)\s+\(Status:\s*(\d+)/;
+// nikto: "+ /path/: some finding description." or, when the finding has
+// an OSVDB id, "+ OSVDB-3092: /path/: some finding description." — no
+// status code in this output format at all, so these entries carry
+// status: null. Gated to nikto specifically (like the ffuf bare-path
+// fallback below) since "+ <word>:" alone is too generic a shape to
+// safely assume means "path" for every tool's output.
+const NIKTO_RE = /^\+\s*(?:OSVDB-\d+:\s*)?(\/[^\s:]+):/;
 // katana / ffuf verbose: a bare absolute URL alone on its own line.
 const BARE_URL_RE = /^(https?:\/\/\S+)$/;
 // Real ffuf with -s (silent) prints just the matched value, bare, one per
@@ -27,7 +36,7 @@ const BARE_URL_RE = /^(https?:\/\/\S+)$/;
 // Only still seen on runs saved before -v replaced -s; carries no status.
 const BARE_PATH_RE = /^[\w.\-/]+$/;
 
-const IGNORE_LINE_RE = /^(::|_{3,}|v\d|\[SIMULATED|Duration:|Progress:)/;
+const IGNORE_LINE_RE = NOISE_LINE_RE;
 
 function stripUrlToPath(url: string): string {
   try {
@@ -69,6 +78,14 @@ export function parseDiscoveredPaths(
       continue;
     }
 
+    if (toolName === "nikto") {
+      m = line.match(NIKTO_RE);
+      if (m) {
+        paths.set(m[1], null);
+        continue;
+      }
+    }
+
     m = line.match(BARE_URL_RE);
     if (m) {
       paths.set(stripUrlToPath(m[1]), null);
@@ -90,11 +107,20 @@ export function parseDiscoveredPaths(
     .map(([path, status]) => ({ path, status }));
 }
 
-export function buildPathTree(entries: { path: string; status: number | null }[]): TreeNode {
-  const root: TreeNode = { name: "/", path: "", children: [], observed: false, status: null };
+export function buildPathTree(
+  entries: { path: string; status: number | null; manual?: boolean }[]
+): TreeNode {
+  const root: TreeNode = {
+    name: "/",
+    path: "",
+    children: [],
+    observed: false,
+    status: null,
+    manual: false,
+  };
   const index = new Map<string, TreeNode>([["", root]]);
 
-  for (const { path, status } of entries) {
+  for (const { path, status, manual } of entries) {
     const segments = path.split("/").filter(Boolean);
     let current = root;
     let currentPath = "";
@@ -102,13 +128,21 @@ export function buildPathTree(entries: { path: string; status: number | null }[]
       currentPath += `/${seg}`;
       let node = index.get(currentPath);
       if (!node) {
-        node = { name: seg, path: currentPath, children: [], observed: false, status: null };
+        node = {
+          name: seg,
+          path: currentPath,
+          children: [],
+          observed: false,
+          status: null,
+          manual: false,
+        };
         index.set(currentPath, node);
         current.children.push(node);
       }
       if (i === segments.length - 1) {
         node.observed = true;
         node.status = status;
+        node.manual = manual ?? false;
       }
       current = node;
     });

@@ -784,9 +784,9 @@ class FindingDetailModal(ModalScreen[str]):
 # Main TUI App
 # ============================================================
 class ChecklistApp(App[None]):
-    """surveil TUI."""
+    """oculus TUI."""
 
-    TITLE    = "surveil"
+    TITLE    = "oculus"
     CSS      = APP_CSS
 
     BINDINGS = [
@@ -1220,7 +1220,7 @@ class ChecklistApp(App[None]):
 # Engagement Picker — choose a saved engagement to open
 # ============================================================
 class EngagementPickerApp(App[Optional[str]]):
-    """Standalone picker shown by `surveil tui` (no --id) when more than
+    """Standalone picker shown by `oculus tui` (no --id) when more than
     one saved engagement exists. Exits with the chosen engagement ID, or
     None if the user quit without picking one.
 
@@ -1229,7 +1229,7 @@ class EngagementPickerApp(App[Optional[str]]):
     just the current row if none are marked) after a confirmation.
     """
 
-    TITLE = "surveil — Select Engagement"
+    TITLE = "oculus — Select Engagement"
     CSS   = APP_CSS
 
     BINDINGS = [
@@ -1274,7 +1274,7 @@ class EngagementPickerApp(App[Optional[str]]):
     def _update_hint(self) -> None:
         hint = self.query_one("#picker-hint", Static)
         if not self._summaries:
-            hint.update(" No saved engagements remain. Ctrl+Q to quit, then run 'surveil new'.")
+            hint.update(" No saved engagements remain. Ctrl+Q to quit, then run 'oculus new'.")
             return
         marked_note = f"  •  {len(self._marked)} marked for deletion" if self._marked else ""
         hint.update(

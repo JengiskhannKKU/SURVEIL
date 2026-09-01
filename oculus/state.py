@@ -6,13 +6,15 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
+from ._home import ensure_home
 from .models import Engagement
 
 
-_STORE = Path.home() / ".surveil" / "engagements"
+_STORE = Path.home() / ".oculus" / "engagements"
 
 
 def _ensure_store() -> None:
+    ensure_home()
     _STORE.mkdir(parents=True, exist_ok=True)
 
 
@@ -52,6 +54,8 @@ def list_all() -> list[dict]:
                 "id":         eng.id,
                 "name":       eng.name,
                 "target":     eng.target,
+                "icon":       eng.icon,
+                "methodology": eng.methodology,
                 "created_at": eng.created_at.strftime("%Y-%m-%d %H:%M"),
                 "progress":   f"{eng.done_items}/{eng.total_items}",
                 "findings":   eng.total_findings,

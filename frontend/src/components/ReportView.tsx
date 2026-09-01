@@ -21,7 +21,7 @@ import { api } from "@/lib/api";
 import { GREEN, GREEN_LIGHT } from "@/lib/theme";
 
 // The report is one long markdown string with top-level "## " sections
-// (see surveil/report.py: Executive Summary, Checklist Coverage,
+// (see oculus/report.py: Executive Summary, Checklist Coverage,
 // Detailed Findings, Appendix — Raw Tool Output). Splitting it client-side
 // and rendering each as a collapsible Accordion — rather than one
 // unbroken scroll — is what actually makes a 97-item checklist + a raw

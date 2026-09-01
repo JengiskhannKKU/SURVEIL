@@ -13,7 +13,7 @@ import CheckIcon from "@mui/icons-material/Check";
 // Which OS(es) each package-manager key actually targets — the manager
 // name alone (e.g. "go") doesn't tell a tester whether it'll work on
 // their machine the way "brew"/"apt" obviously do. Covers every key
-// currently used across surveil/tools/*.py's install_hints; an unknown
+// currently used across oculus/tools/*.py's install_hints; an unknown
 // future key falls back to "Cross-platform" rather than guessing wrong.
 const MGR_OS: Record<string, string> = {
   brew: "macOS",

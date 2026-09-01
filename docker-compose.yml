@@ -6,16 +6,26 @@ services:
   # else (expected).
   backend:
     build: .
-    image: surveil:latest
+    image: oculus:latest
     working_dir: /app
     entrypoint: ["python", "-m", "uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000"]
     ports:
       - "8000:8000"
     volumes:
       - surveil-data:/data
+      # Lets the `zap` tool wrapper's `docker run zaproxy/zap-stable ...`
+      # (see oculus/tools/zap_tool.py) reach the *host's* Docker daemon
+      # from inside this container — without it, `docker` isn't reachable
+      # at all in here and zap always falls back to simulated output (see
+      # entry 27/37 in HISTORY.md). Note this grants the backend container
+      # effectively root-equivalent control over the host (the classic
+      # Docker-socket-mount tradeoff) — acceptable for a local single-user
+      # pentest tool, not something to do on a shared/multi-tenant host.
+      - /var/run/docker.sock:/var/run/docker.sock
 
   frontend:
     build: ./frontend
+    image: oculus-frontend:latest
     ports:
       - "3000:3000"
     depends_on:
@@ -24,23 +34,32 @@ services:
   # CLI/TUI: opt-in only (not started by a plain `docker compose up`),
   # since it needs an interactive terminal and isn't part of "the app"
   # in the web sense. Run one-off commands with:
-  #   docker compose run --rm surveil <args>
+  #   docker compose run --rm oculus <args>
   # or the interactive TUI with:
-  #   docker compose run --rm surveil tui
-  surveil:
+  #   docker compose run --rm oculus tui
+  oculus:
     build: .
-    image: surveil:latest
+    image: oculus:latest
     stdin_open: true
     tty: true
     volumes:
       - surveil-data:/data
-    entrypoint: ["surveil"]
+    entrypoint: ["oculus"]
     command: ["--help"]
     profiles: ["cli"]
 
 volumes:
   # Shared between backend and the CLI service — both resolve engagement
-  # state under $HOME/.surveil (HOME=/data in the image), so an
+  # state under $HOME/.oculus (HOME=/data in the image), so an
   # engagement created via the web UI is also visible to `docker compose
-  # run --rm surveil ...` against the same volume, and vice versa.
+  # run --rm oculus ...` against the same volume, and vice versa.
+  #
+  # Deliberately still named "surveil-data" (the project's old name) —
+  # unlike every other renamed identifier in this repo, a Docker named
+  # volume can't be renamed by just editing this key; changing it here
+  # would make Compose provision a brand-new *empty* volume and silently
+  # orphan every engagement already sitting in the existing one. The
+  # in-container ~/.surveil -> ~/.oculus migration (oculus/_home.py)
+  # handles the *filesystem path* inside the volume; this handles the
+  # volume identity itself. Not user-visible anywhere in the app.
   surveil-data:

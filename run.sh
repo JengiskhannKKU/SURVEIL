@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run the whole surveil web app: backend + frontend together.
+# Run the whole oculus web app: backend + frontend together.
 #
 # Usage: ./run.sh [backend_port] [frontend_port]
 #   backend_port  - defaults to 8000

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run the whole surveil web app in Docker: backend + frontend, no local
+# Run the whole oculus web app in Docker: backend + frontend, no local
 # Python/Node install needed — just Docker.
 #
 # Usage: ./run-docker.sh [up|down|logs|build]
@@ -12,13 +12,13 @@
 # only serves /api/* and /ws/* on :8000; opening that port directly in a
 # browser 404s on everything else (expected, not a bug).
 #
-# Engagement data persists in the `surveil-data` Docker volume across
+# Engagement data persists in the `oculus-data` Docker volume across
 # `down`/`up` cycles — it's only gone if you `docker compose down -v`.
 #
 # The CLI/TUI isn't started by this script (it needs an interactive
 # terminal and isn't part of "the web app") — run it directly with:
-#   docker compose run --rm surveil <args>
-#   docker compose run --rm surveil tui
+#   docker compose run --rm oculus <args>
+#   docker compose run --rm oculus tui
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

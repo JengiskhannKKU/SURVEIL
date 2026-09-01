@@ -6,15 +6,15 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from surveil import seclists_remote
-from surveil.checklist import (
+from oculus import seclists_remote
+from oculus.checklist import (
     CATEGORY_LABELS,
     NUCLEI_TAGS,
     WORDLIST_CATEGORY,
     apply_tool_overrides,
 )
-from surveil.tools import TOOL_REGISTRY
-from surveil.wordlists import (
+from oculus.tools import TOOL_REGISTRY
+from oculus.wordlists import (
     CATEGORY_KEYWORDS,
     discover_wordlists,
     discover_wordlists_grouped,
@@ -35,6 +35,7 @@ def list_tools() -> list[dict]:
             "description": cls.description,
             "example": cls.example,
             "uses_wordlist": cls.uses_wordlist,
+            "wordlist_slots": cls.wordlist_slots,
             "available": cls(target="").is_available(),
             "install_hints": cls.install_hints,
             "modes": cls.modes,
@@ -71,8 +72,8 @@ def preview_command(
     nuclei_tags = NUCLEI_TAGS.get(item_id or "") if tool_name == "nuclei" else None
 
     # The actual command swap (wordlist category / nuclei tags / curl-wget
-    # overrides) lives in surveil.checklist.apply_tool_overrides() — shared
-    # with the real execution path (surveil.orchestrator.Orchestrator) so a
+    # overrides) lives in oculus.checklist.apply_tool_overrides() — shared
+    # with the real execution path (oculus.orchestrator.Orchestrator) so a
     # recommendation actually takes effect on an unedited run, not just in
     # this preview text.
     command = apply_tool_overrides(
@@ -117,15 +118,18 @@ def list_wordlists() -> list[dict]:
 
 
 @router.get("/wordlists/grouped")
-def list_wordlists_grouped(item_id: Optional[str] = None) -> dict:
+def list_wordlists_grouped(item_id: Optional[str] = None, category: Optional[str] = None) -> dict:
     """Every wordlist found on this host, grouped by category (SecLists'
     own Discovery/Fuzzing/Passwords/... folders, Kali's sibling dirb/
     dirbuster/wfuzz/... dirs, etc.) — powers the "Select wordlist" dialog's
     card layout. If *item_id* has a recommended category (see
     checklist.WORDLIST_CATEGORY), the matching group(s) sort first and are
-    flagged `recommended: true`.
+    flagged `recommended: true`. *category* overrides that item_id lookup
+    outright — for a tool with its own fixed wordlist_slots category (e.g.
+    hydra's -L/-P pickers, always "usernames"/"passwords" regardless of
+    which checklist item hydra happens to be running under).
     """
-    category = WORDLIST_CATEGORY.get(item_id or "")
+    category = category or WORDLIST_CATEGORY.get(item_id or "")
     return {
         "recommended_category": category,
         "recommended_category_label": CATEGORY_LABELS.get(category) if category else None,
@@ -134,7 +138,9 @@ def list_wordlists_grouped(item_id: Optional[str] = None) -> dict:
 
 
 @router.get("/wordlists/remote/browse")
-def browse_remote_wordlists(q: Optional[str] = None, item_id: Optional[str] = None) -> dict:
+def browse_remote_wordlists(
+    q: Optional[str] = None, item_id: Optional[str] = None, category: Optional[str] = None
+) -> dict:
     """Every wordlist file in github.com/danielmiessler/SecLists, grouped by
     its top-level folder — for picking exactly one file to install rather
     than cloning the whole (multi-GB) repo. *q* filters by substring on the
@@ -149,7 +155,8 @@ def browse_remote_wordlists(q: Optional[str] = None, item_id: Optional[str] = No
     useful signal on its own since SecLists' folders are broad topics, not
     per-test categories; the file's own name is what actually indicates fit
     (".../Discovery/Web-Content/admin-panels.txt" for an admin-interfaces
-    test, for instance).
+    test, for instance). *category* overrides the item_id lookup outright,
+    same reasoning as list_wordlists_grouped() above.
     """
     try:
         files = seclists_remote.list_remote_wordlists()
@@ -160,7 +167,7 @@ def browse_remote_wordlists(q: Optional[str] = None, item_id: Optional[str] = No
     if query:
         files = [f for f in files if query in f["path"].lower()]
 
-    category = WORDLIST_CATEGORY.get(item_id or "")
+    category = category or WORDLIST_CATEGORY.get(item_id or "")
     keywords = CATEGORY_KEYWORDS.get(category or "", (category,) if category else ())
 
     def is_recommended(path: str) -> bool:

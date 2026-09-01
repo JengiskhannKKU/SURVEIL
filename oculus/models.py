@@ -1,4 +1,4 @@
-"""surveil — Data models."""
+"""oculus — Data models."""
 from __future__ import annotations
 
 import math
@@ -91,14 +91,65 @@ class ChecklistItem(BaseModel):
     notes: str = ""
 
 
+class ManualPathEntry(BaseModel):
+    """A path/endpoint a tester adds by hand to the engagement-wide Paths/
+    Endpoints tree (see entry 41's aggregation), for something found
+    outside an auto-run tool — manual testing, a report from someone
+    else, a path noticed in a screenshot. Distinct from the tool-parsed
+    entries in ChecklistItem.tool_outputs, which are never mutated."""
+    path: str
+    status: Optional[int] = None
+    note: str = ""
+    added_at: datetime = Field(default_factory=datetime.now)
+
+
+class ManualPortEntry(BaseModel):
+    """A port a tester adds by hand to the engagement-wide Ports summary —
+    same rationale as ManualPathEntry, for a port found outside an
+    auto-run tool (nmap/naabu)."""
+    port: int
+    protocol: str = "tcp"
+    service: str = ""
+    note: str = ""
+    added_at: datetime = Field(default_factory=datetime.now)
+
+
 class Engagement(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4())[:8])
     name: str
     target: str
+    # Key into frontend/src/lib/engagementIcons.tsx's fixed icon set — a
+    # free-text field would need sanitizing wherever it's rendered, and a
+    # curated set (web/api/mobile/cloud/...) covers what a pentest target
+    # actually is far better than an arbitrary icon library would anyway.
+    icon: str = "web"
+    # Testing strategy/methodology tag chosen at creation (see
+    # frontend/src/lib/methodologies.ts) — "wstg" (default), "oscp", or
+    # "other". Every option currently builds the same real OWASP WSTG
+    # checklist below (checklist.build_checklist()); this is a tag for
+    # now, not yet a different checklist generator — a genuine distinct
+    # OSCP-style checklist needs its own properly-sourced content, not a
+    # guessed one, and is a deliberate follow-up rather than part of this
+    # change.
+    methodology: str = "wstg"
     scope_notes: str = ""
     created_at: datetime = Field(default_factory=datetime.now)
     updated_at: datetime = Field(default_factory=datetime.now)
     checklist_items: list[ChecklistItem] = []
+    # Paths/Endpoints tree (entry 41) additions — manually added entries,
+    # plus a hide-list for auto-discovered paths a tester wants gone from
+    # the tree (a false positive, an irrelevant static asset, ...). Can't
+    # actually edit the underlying tool_outputs text a path was parsed
+    # from, so "removing" an auto-discovered path just hides it here
+    # instead — see paths.py's remove_path().
+    manual_paths: list[ManualPathEntry] = []
+    removed_paths: list[str] = []
+    # Same pattern as manual_paths/removed_paths, for the Ports summary —
+    # removed_ports keys are "port/protocol" strings (e.g. "3306/tcp") to
+    # disambiguate the rare case of the same port number open on both
+    # tcp and udp.
+    manual_ports: list[ManualPortEntry] = []
+    removed_ports: list[str] = []
 
     # ------------------------------------------------------------------
     # Computed helpers

@@ -1,4 +1,4 @@
-"""CLI entry point for surveil."""
+"""CLI entry point for oculus."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -21,9 +21,9 @@ console = Console()
 # Root group
 # ============================================================
 @click.group()
-@click.version_option(__version__, prog_name="surveil")
+@click.version_option(__version__, prog_name="oculus")
 def main() -> None:
-    """surveil\n
+    """oculus\n
     Deterministic, OWASP WSTG checklist-driven web application
     penetration testing with structured finding management and
     professional report generation.
@@ -31,7 +31,7 @@ def main() -> None:
 
 
 # ============================================================
-# surveil new
+# oculus new
 # ============================================================
 @main.command()
 @click.option("--target", "-t", required=True, help="Target hostname or IP (e.g. example.com)")
@@ -57,15 +57,15 @@ def new(target: str, name: str, notes: str) -> None:
             f"  Target:  [bold]{engagement.target}[/bold]\n"
             f"  Items:   {engagement.total_items} OWASP WSTG checklist items\n"
             f"  Saved:   [dim]{path}[/dim]\n\n"
-            f"[dim]Run  [bold]surveil tui[/bold]  to open the interactive checklist.[/dim]",
-            title="[bold]surveil — New Engagement[/bold]",
+            f"[dim]Run  [bold]oculus tui[/bold]  to open the interactive checklist.[/dim]",
+            title="[bold]oculus — New Engagement[/bold]",
             border_style="green",
         )
     )
 
 
 # ============================================================
-# surveil list
+# oculus list
 # ============================================================
 @main.command("list")
 def list_engagements() -> None:
@@ -74,7 +74,7 @@ def list_engagements() -> None:
 
     rows = state.list_all()
     if not rows:
-        console.print("[yellow]No engagements found. Run [bold]surveil new --target <host>[/bold] to start.[/yellow]")
+        console.print("[yellow]No engagements found. Run [bold]oculus new --target <host>[/bold] to start.[/yellow]")
         return
 
     table = Table(
@@ -95,7 +95,7 @@ def list_engagements() -> None:
 
 
 # ============================================================
-# surveil tui
+# oculus tui
 # ============================================================
 @main.command()
 @click.option("--id", "eng_id", default="", help="Engagement ID (skips the picker and opens it directly)")
@@ -117,7 +117,7 @@ def tui(eng_id: str) -> None:
     else:
         summaries = state.list_all()
         if not summaries:
-            console.print("[yellow]No engagement found. Run [bold]surveil new --target <host>[/bold] first.[/yellow]")
+            console.print("[yellow]No engagement found. Run [bold]oculus new --target <host>[/bold] first.[/yellow]")
             raise SystemExit(1)
         if len(summaries) == 1:
             engagement = state.load(summaries[0]["id"])
@@ -132,7 +132,7 @@ def tui(eng_id: str) -> None:
 
 
 # ============================================================
-# surveil status
+# oculus status
 # ============================================================
 @main.command()
 @click.option("--id", "eng_id", default="", help="Engagement ID (defaults to latest)")
@@ -192,7 +192,7 @@ def status(eng_id: str) -> None:
 
 
 # ============================================================
-# surveil report
+# oculus report
 # ============================================================
 @main.command()
 @click.option("--id",     "eng_id", default="",   help="Engagement ID (defaults to latest)")
@@ -232,7 +232,7 @@ def report(eng_id: str, output: str, format: str) -> None:
 
 
 # ============================================================
-# surveil add-finding  (quick CLI shortcut)
+# oculus add-finding  (quick CLI shortcut)
 # ============================================================
 @main.command("add-finding")
 @click.option("--id",       "eng_id",  default="",  help="Engagement ID")
@@ -289,13 +289,13 @@ def add_finding(
 
 
 # ============================================================
-# surveil delete
+# oculus delete
 # ============================================================
 @main.command()
 @click.argument("eng_ids", nargs=-1, required=True)
 @click.option("--yes", "-y", is_flag=True, help="Skip the confirmation prompt")
 def delete(eng_ids: tuple[str, ...], yes: bool) -> None:
-    """Delete one or more engagements by ID (e.g. surveil delete abc123 def456)."""
+    """Delete one or more engagements by ID (e.g. oculus delete abc123 def456)."""
     from . import state
 
     ids = list(dict.fromkeys(eng_ids))  # de-dupe, preserve order
@@ -323,7 +323,7 @@ def delete(eng_ids: tuple[str, ...], yes: bool) -> None:
 
 
 # ============================================================
-# surveil install-tools
+# oculus install-tools
 # ============================================================
 @main.command("install-tools")
 def install_tools() -> None:

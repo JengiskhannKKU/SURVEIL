@@ -51,7 +51,7 @@ class AmassTool(BaseTool):
         if "did not respond" in output.lower() and "engine" in output.lower():
             return output + """
 
-[surveil note] This isn't a slow scan timing out — it's OWASP Amass v5's
+[oculus note] This isn't a slow scan timing out — it's OWASP Amass v5's
 new client/server architecture. `amass enum` now requires a separately
 running `amass engine` process (default: http://127.0.0.1:4000) and
 fails almost immediately if it can't reach one. To fix, either:

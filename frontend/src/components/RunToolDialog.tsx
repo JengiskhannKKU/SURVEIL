@@ -14,12 +14,16 @@ import FormControlLabel from "@mui/material/FormControlLabel";
 import Switch from "@mui/material/Switch";
 import Typography from "@mui/material/Typography";
 import Alert from "@mui/material/Alert";
+import InputAdornment from "@mui/material/InputAdornment";
+import ToggleButton from "@mui/material/ToggleButton";
+import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import CheckIcon from "@mui/icons-material/Check";
 import RestartAltIcon from "@mui/icons-material/RestartAlt";
 import ListAltIcon from "@mui/icons-material/ListAlt";
 import HelpOutlineIcon from "@mui/icons-material/HelpOutline";
 import StopIcon from "@mui/icons-material/Stop";
+import SearchIcon from "@mui/icons-material/Search";
 import IconButton from "@mui/material/IconButton";
 import { motion } from "framer-motion";
 import { api, WS_BASE } from "@/lib/api";
@@ -30,6 +34,7 @@ import { WordlistPickerDialog } from "@/components/WordlistPickerDialog";
 import { ToolHelpDialog } from "@/components/ToolHelpDialog";
 import { ToolLogo } from "@/components/ToolLogo";
 import { isIpAddress } from "@/lib/target";
+import { filterNoiseLines } from "@/lib/logFilter";
 import type { ChecklistItem, ToolInfo, WsMessage } from "@/lib/types";
 
 export function RunToolDialog({
@@ -67,10 +72,23 @@ export function RunToolDialog({
   const [defaultCommand, setDefaultCommand] = useState("");
   const [wordlistPath, setWordlistPath] = useState("");
   const [wordlistPickerOpen, setWordlistPickerOpen] = useState(false);
+  // For a tool with wordlist_slots (multiple wordlists by different flags,
+  // e.g. hydra's -L usernames / -P passwords) instead of the single -w
+  // uses_wordlist assumes — keyed by flag, mirroring wordlistPath/
+  // wordlistPickerOpen above but per-flag.
+  const [slotPaths, setSlotPaths] = useState<Record<string, string>>({});
+  const [openSlotFlag, setOpenSlotFlag] = useState<string | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
   const [recommendedCategoryLabel, setRecommendedCategoryLabel] = useState<string | null>(null);
   const [nucleiTags, setNucleiTags] = useState<string | null>(null);
   const [lines, setLines] = useState<string[]>([]);
+  // A long-running tool (ffuf against a big wordlist especially) streams a
+  // repeating progress ticker — "Progress:/req/sec/Duration:" lines — that
+  // can number in the thousands and bury any real finding underneath them.
+  // "Filtered" hides those (see logFilter.ts); a plain substring search
+  // narrows further on top of whichever view is active.
+  const [logView, setLogView] = useState<"raw" | "filtered">("raw");
+  const [logQuery, setLogQuery] = useState("");
   const [running, setRunning] = useState(false);
   const [finished, setFinished] = useState(false);
   const [error, setError] = useState("");
@@ -83,6 +101,13 @@ export function RunToolDialog({
   const tool = availableTools.find((t) => t.name === toolName);
   const hasModes = Object.keys(tool?.modes ?? {}).length > 0;
   const wordlistName = wordlistPath ? wordlistPath.split("/").pop() : "tool default";
+
+  const displayedLines = useMemo(() => {
+    let out = logView === "filtered" ? filterNoiseLines(lines) : lines;
+    const q = logQuery.trim().toLowerCase();
+    if (q) out = out.filter((l) => l.toLowerCase().includes(q));
+    return out;
+  }, [lines, logView, logQuery]);
 
   // item.status === "running" but this dialog's own `running` is still
   // false means a run was started earlier (possibly from a Run Tool
@@ -117,7 +142,7 @@ export function RunToolDialog({
 
   useEffect(() => {
     outputRef.current?.scrollTo({ top: outputRef.current.scrollHeight });
-  }, [lines]);
+  }, [displayedLines]);
 
   useEffect(() => {
     return () => wsRef.current?.close();
@@ -136,9 +161,22 @@ export function RunToolDialog({
     });
   }
 
+  function applySlotWordlist(flag: string, path: string) {
+    setSlotPaths((prev) => ({ ...prev, [flag]: path }));
+    const flagRe = new RegExp(`${flag}\\s+(\\S+)`);
+    const target = path || defaultCommand.match(flagRe)?.[1];
+    if (!target) return;
+    setCommand((prev) => {
+      const re = new RegExp(`${flag}\\s+\\S+`);
+      if (re.test(prev)) return prev.replace(re, `${flag} ${target}`);
+      return `${prev} ${flag} ${target}`;
+    });
+  }
+
   function resetCommand() {
     setCommand(defaultCommand);
     setWordlistPath("");
+    setSlotPaths({});
   }
 
   function copyCommand() {
@@ -377,6 +415,32 @@ export function RunToolDialog({
               </Box>
             </Button>
           )}
+          {tool &&
+            Object.entries(tool.wordlist_slots).map(([flag, category]) => {
+              const path = slotPaths[flag];
+              const label = category.charAt(0).toUpperCase() + category.slice(1);
+              const name = path ? path.split("/").pop() : "tool default";
+              return (
+                <Button
+                  key={flag}
+                  variant="outlined"
+                  size="small"
+                  disabled={running}
+                  startIcon={<ListAltIcon fontSize="small" />}
+                  onClick={() => setOpenSlotFlag(flag)}
+                  sx={{
+                    textTransform: "none",
+                    fontFamily: "var(--font-geist-mono)",
+                    fontSize: 13,
+                    maxWidth: 240,
+                  }}
+                >
+                  <Box component="span" sx={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {label}: {name}
+                  </Box>
+                </Button>
+              );
+            })}
         </Stack>
 
         {tool && (
@@ -488,6 +552,42 @@ export function RunToolDialog({
           </Alert>
         )}
 
+        {lines.length > 0 && (
+          <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap mb={1}>
+            <ToggleButtonGroup
+              size="small"
+              exclusive
+              value={logView}
+              onChange={(_, v) => v && setLogView(v)}
+              sx={{ "& .MuiToggleButton-root": { px: 1.25, py: 0.25, fontSize: 11, textTransform: "none" } }}
+            >
+              <ToggleButton value="raw">Raw</ToggleButton>
+              <ToggleButton value="filtered">Filtered</ToggleButton>
+            </ToggleButtonGroup>
+            <TextField
+              size="small"
+              placeholder="Filter output…"
+              value={logQuery}
+              onChange={(e) => setLogQuery(e.target.value)}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchIcon fontSize="small" sx={{ color: "text.secondary" }} />
+                  </InputAdornment>
+                ),
+                sx: { fontSize: 12.5 },
+              }}
+              sx={{ width: 200 }}
+            />
+            {logView === "filtered" && (
+              <Typography variant="caption" color="text.secondary">
+                Hiding progress/status ticker lines ({lines.length - filterNoiseLines(lines).length}{" "}
+                hidden)
+              </Typography>
+            )}
+          </Stack>
+        )}
+
         <Box
           ref={outputRef}
           sx={{
@@ -508,8 +608,12 @@ export function RunToolDialog({
             <Typography variant="caption" color="text.disabled">
               Output will stream here…
             </Typography>
+          ) : displayedLines.length === 0 ? (
+            <Typography variant="caption" color="text.disabled">
+              No output lines match this filter.
+            </Typography>
           ) : (
-            lines.map((l, i) => <HighlightedLine key={i} line={l} />)
+            displayedLines.map((l, i) => <HighlightedLine key={i} line={l} />)
           )}
         </Box>
 
@@ -537,6 +641,20 @@ export function RunToolDialog({
           onSelect={(path) => {
             applyWordlist(path);
             setWordlistPickerOpen(false);
+          }}
+        />
+      )}
+
+      {openSlotFlag && tool && (
+        <WordlistPickerDialog
+          itemId={item.id}
+          categoryOverride={tool.wordlist_slots[openSlotFlag]}
+          title={`Select ${tool.wordlist_slots[openSlotFlag]} wordlist`}
+          currentPath={slotPaths[openSlotFlag] ?? ""}
+          onClose={() => setOpenSlotFlag(null)}
+          onSelect={(path) => {
+            applySlotWordlist(openSlotFlag, path);
+            setOpenSlotFlag(null);
           }}
         />
       )}

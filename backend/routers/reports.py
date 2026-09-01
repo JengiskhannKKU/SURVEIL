@@ -6,7 +6,7 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 
-from surveil.report import generate_docx, generate_markdown
+from oculus.report import generate_docx, generate_markdown
 
 from ..deps import load_engagement
 
@@ -35,7 +35,7 @@ def get_report(eng_id: str, format: str = "md"):
         raise HTTPException(status_code=400, detail="format must be 'md' or 'docx'")
 
     engagement = load_engagement(eng_id)
-    out_dir = Path(tempfile.mkdtemp(prefix="surveil-report-"))
+    out_dir = Path(tempfile.mkdtemp(prefix="oculus-report-"))
     out_path = out_dir / f"report_{engagement.id}.{format}"
 
     if format == "md":

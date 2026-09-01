@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Run the surveil FastAPI backend.
+# Run the oculus FastAPI backend.
 #
 # Usage: ./run-backend.sh [port]
 #   port  - defaults to 8000
 #
-# Creates ./venv if it doesn't exist yet and installs surveil + the
+# Creates ./venv if it doesn't exist yet and installs oculus + the
 # "web" extra (fastapi/uvicorn/websockets) into it before starting.
 set -euo pipefail
 
@@ -26,7 +26,7 @@ fi
 source venv/bin/activate
 
 if ! python -c "import fastapi, uvicorn" >/dev/null 2>&1; then
-	echo "Installing surveil + web extras into venv..."
+	echo "Installing oculus + web extras into venv..."
 	pip install -e ".[web]" -q
 fi
 

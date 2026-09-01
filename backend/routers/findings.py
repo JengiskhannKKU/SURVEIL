@@ -3,9 +3,9 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from surveil import state
-from surveil.models import Finding, Severity
-from surveil.scoring import score_from_vector, severity_from_score
+from oculus import state
+from oculus.models import Finding, Severity
+from oculus.scoring import score_from_vector, severity_from_score
 
 from ..deps import get_item, load_engagement
 

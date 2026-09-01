@@ -1,6 +1,6 @@
-# surveil — web frontend
+# oculus — web frontend
 
-Next.js (App Router, TypeScript) UI for `surveil`, talking to the FastAPI
+Next.js (App Router, TypeScript) UI for `oculus`, talking to the FastAPI
 backend in `../backend/`. See the repo root `README.md` ("Web app" section)
 for the full setup — backend install/run, env vars, and how this fits with
 the CLI/TUI.
@@ -47,6 +47,6 @@ Open http://localhost:3000.
   `HighlightedOutput` (terminal-style line coloring for tool output), `GridBackground`,
   `BinaryColumns` (decorative side columns), `NavBar`, `ThemeRegistry`
 - `src/lib/api.ts` — typed fetch client for the backend REST API
-- `src/lib/types.ts` — TypeScript types mirroring `surveil/models.py`
+- `src/lib/types.ts` — TypeScript types mirroring `oculus/models.py`
 - `src/lib/theme.ts` — MUI theme (palette, component overrides)
 - `src/lib/toast.tsx` — toast notifications (MUI `Alert` + Framer Motion), `useToast()` hook
