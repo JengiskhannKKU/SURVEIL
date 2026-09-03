@@ -225,6 +225,7 @@ export const api = {
       recommended_category: string | null;
       recommended_category_label: string | null;
       nuclei_tags: string | null;
+      other_discovered_services: string[];
     }>(
       `/api/tools/${tool}/command?target=${encodeURIComponent(target)}&fast=${fast}` +
         (mode ? `&mode=${encodeURIComponent(mode)}` : "") +

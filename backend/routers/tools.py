@@ -12,6 +12,7 @@ from oculus.checklist import (
     NUCLEI_TAGS,
     WORDLIST_CATEGORY,
     apply_tool_overrides,
+    discovered_service_candidates,
 )
 from oculus.tools import TOOL_REGISTRY
 from oculus.wordlists import (
@@ -95,12 +96,24 @@ def preview_command(
         uses_wordlist=tool_cls.uses_wordlist, engagement=engagement,
     )
 
+    # For searchsploit/metasploit: every *other* service+version this
+    # engagement's nmap runs found, besides whichever one the override
+    # above already picked for `command` — shown in the Run Tool dialog
+    # as "also found: ..." so the tester knows a lookup for one of these
+    # is worth trying too, not just the auto-picked default (a target can
+    # genuinely have more than one exploitable service — this app's own
+    # test target did, ftp/ssh/http all had a version).
+    other_services: list[str] = []
+    if tool_name in ("searchsploit", "metasploit") and engagement is not None:
+        other_services = discovered_service_candidates(engagement)[1:]
+
     return {
         "command": command,
         "available": tool.is_available(),
         "recommended_category": category,
         "recommended_category_label": CATEGORY_LABELS.get(category) if category else None,
         "nuclei_tags": nuclei_tags,
+        "other_discovered_services": other_services,
     }
 
 

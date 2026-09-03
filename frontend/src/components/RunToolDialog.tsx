@@ -81,6 +81,7 @@ export function RunToolDialog({
   const [helpOpen, setHelpOpen] = useState(false);
   const [recommendedCategoryLabel, setRecommendedCategoryLabel] = useState<string | null>(null);
   const [nucleiTags, setNucleiTags] = useState<string | null>(null);
+  const [otherDiscoveredServices, setOtherDiscoveredServices] = useState<string[]>([]);
   // This dialog's `lines` is local component state, wiped whenever the
   // dialog unmounts — closing it (e.g. after a run finishes) and
   // reopening it for the same item used to show a blank terminal even
@@ -151,6 +152,7 @@ export function RunToolDialog({
         setDefaultCommand(cmd);
         setRecommendedCategoryLabel(res.recommended_category_label);
         setNucleiTags(res.nuclei_tags);
+        setOtherDiscoveredServices(res.other_discovered_services);
       })
       .catch(() => toast.error("Could not reach the backend to preview the command."));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -497,6 +499,20 @@ export function RunToolDialog({
                 to widen or narrow it.
               </Alert>
             )}
+            {(toolName === "searchsploit" || toolName === "metasploit") &&
+              otherDiscoveredServices.length > 0 && (
+                <Alert severity="success" variant="outlined">
+                  Searching for the most likely candidate found by nmap. Other services on this
+                  target worth a lookup too:{" "}
+                  {otherDiscoveredServices.map((s, i) => (
+                    <span key={s}>
+                      {i > 0 && ", "}
+                      <code>{s}</code>
+                    </span>
+                  ))}
+                  . Edit the command below to try one of these instead.
+                </Alert>
+              )}
             {tool.domain_only && isIpAddress(target) && (
               <Alert severity="warning" variant="outlined">
                 <strong>{tool.name}</strong> does subdomain/DNS enumeration against a{" "}

@@ -6,6 +6,118 @@ was verified, and what the next agent should pick up.
 
 ---
 
+## 2026-09-03 (58) — feat: searchsploit/metasploit auto-search by discovered service+version
+
+**Done (user, continuing entry 57's live-testing session: "checklists
+อื่นได้เลยครับ ผมอยากรู้ว่าผมครอบคลุมภาพใหญ่ในการใช้การยัง สามารถไปถึง
+exploit หรือช่วยหา exploit ได้จิงไหม" — asked to keep testing further
+into Vulnerability Analysis/Exploitation and report whether OCULUS
+actually gets a tester to a real exploit):**
+
+- Continued live-testing against the same real, authorized HTB target
+  (Cap, 10.129.34.27): `whatweb` (gunicorn/jQuery 2.2.4), `ffuf`
+  (`/data`), `katana` — crawled real app links `ffuf`'s wordlist never
+  would (`/capture`, `/data/4`, `/netstat`, `/ip`) — `nuclei` (clean,
+  its misconfig/exposure/headers/tech tag set has nothing for a small
+  custom Flask app), and `searchsploit`/`metasploit`.
+- Found the same "bare target as the default search term" gap in both
+  `searchsploit_tool.py` and `metasploit_tool.py` — both already knew
+  and documented this as an honest placeholder (their own docstrings
+  say so), but confirmed live it's a genuine dead end for OSCP-VULN-02/
+  04 as shipped: `searchsploit --disable-colour 10.129.34.27` (the
+  real unedited default) returns "No Results" every time, since
+  searchsploit searches by product name, not target — while the exact
+  same tool given the real string ("vsftpd 3.0.3", already sitting in
+  this engagement's own nmap output from entry 57) finds a real match
+  (`vsftpd 3.0.3 - Remote Denial of Service`). Confirmed the user
+  wanted this connected automatically (AskUserQuestion: auto-pick the
+  "most interesting" service when several were found, over a new
+  frontend dropdown or leaving it alone).
+- `oculus/checklist.py`: same `apply_tool_overrides()` mechanism as
+  entry 57's nmap fix, extended with `_apply_exploit_lookup_override()`
+  for `OSCP-VULN-02` (searchsploit) and `OSCP-VULN-04` (metasploit)
+  only — deliberately NOT `OSCP-PRIVL-02/03`/`OSCP-PRIVW-02/03` (the
+  other items mapped to these two tools), since those are OS/kernel
+  exploit lookups where a network-service string would be actively
+  wrong. `_discovered_service_version()` parses every `<service>
+  <version>` this engagement's own nmap output has already reported,
+  and picks the "most interesting" one via a heuristic: any named
+  service other than `_LOW_PRIORITY_SERVICES` (ssh/http/https/domain/
+  tcpwrapped — near-always already-patched or too generic a name to
+  search by) wins over those, lowest port number breaks remaining
+  ties. Falls back to the original bare-target placeholder when
+  nothing's been scanned yet. Still fully editable by the tester in
+  the Run Tool dialog either way.
+
+**Verified:**
+- `python3 -m py_compile oculus/checklist.py`; `build_checklist()` /
+  `build_oscp_checklist()` still build clean.
+- `_discovered_service_version()` tested directly against the real
+  engagement's saved nmap output: correctly picked `"ftp vsftpd
+  3.0.3"` over ssh/http; tested against a fresh engagement with zero
+  nmap output: correctly returns None (command falls back unchanged).
+- Rebuilt (`docker compose build backend`) and recreated (`docker
+  compose up -d backend`) the live backend container.
+- Hit the real `GET /api/tools/searchsploit/command` and
+  `/api/tools/metasploit/command` endpoints (now taking an `eng_id`
+  query param — same plumbing entry 57 added for the nmap override)
+  against the live engagement: both return the overridden command.
+- Re-ran `searchsploit` for real via the same WebSocket the UI uses:
+  unedited default command is now `searchsploit --disable-colour ftp
+  vsftpd 3.0.3`, finds the real DoS module.
+- Confirmed visually in the actual browser (Claude-in-Chrome finally
+  connected this session): opened OSCP-VULN-02 in the real UI, hit
+  "Run tool" with nothing edited, got the real exploit-db hit
+  displayed in Tool output.
+
+**Follow-up in the same session (user: "เป็น default ก่อนครับ แต่ที่
+script มี highlight ไว้ได้ไหมครับว่าควรลองอันไหนบ้าง" — keep the
+auto-pick as the default, but surface which *other* discovered services
+are worth trying too):**
+- `oculus/checklist.py`: refactored `_discovered_service_version()` into
+  `discovered_service_candidates()` (public) — returns *every* distinct
+  service+version nmap found on the engagement, "most interesting
+  first" (same preferred/low-priority ordering as before), not just the
+  one the override picks. `_apply_exploit_lookup_override()` now just
+  takes `candidates[0]`.
+- `backend/routers/tools.py`'s `GET /api/tools/{tool}/command` response
+  gained `other_discovered_services` — every candidate besides the one
+  already in `command`, populated only for searchsploit/metasploit.
+- `frontend/src/lib/api.ts` / `RunToolDialog.tsx`: new hint Alert
+  (same visual pattern as the existing wordlist-category/nuclei-tags
+  hints) — "Searching for the most likely candidate found by nmap.
+  Other services on this target worth a lookup too: ssh OpenSSH ...,
+  http gunicorn. Edit the command below to try one of these instead."
+- Verified: `tsc`/`eslint`/`next build` clean; rebuilt+recreated both
+  containers; hit the real preview endpoint (`other_discovered_services`
+  correctly lists ssh/http, excluding the auto-picked ftp entry);
+  confirmed visually in the browser — opened OSCP-VULN-02's Run Tool
+  dialog, the green hint renders with both other services listed
+  exactly as designed.
+
+**Next steps for the next agent:**
+1. The "most interesting service" heuristic is genuinely just a
+   heuristic (skip ssh/http, else lowest port) — it happened to be
+   exactly right on this target (ftp) but hasn't been tested against
+   a target with, say, two non-web services open at once.
+2. `OSCP-EXPLOIT-01` ("Attempt Identified Exploit") is intentionally
+   `tools=[]` (confirmed correct, not a gap) — actual exploitation is
+   too target-specific for a generic wrapper; OCULUS's own design
+   philosophy here is "get the tester to the right exploit, let them
+   run it themselves," which this entry's fix now actually delivers on
+   for the searchsploit/metasploit half of that.
+3. `nuclei`'s fixed tag set (misconfig,exposure,headers,tech) won't
+   catch anything on a small custom-built app (confirmed: zero hits,
+   both fast and full mode, against a real Flask app) — this is a
+   limitation of what those tags cover, not a bug, but worth the next
+   agent knowing nuclei's default scope is narrower than "scan
+   everything."
+4. The IDOR-shaped `/data/<id>` endpoint katana found on the live
+   target was left for the user to investigate themselves — this
+   entry evaluated OCULUS's tooling, not the target.
+
+---
+
 ## 2026-09-03 (57) — Three real gaps found by actually running the OSCP checklist against a live HTB target
 
 **Done (user: ran the app themselves against a real, authorized HTB

@@ -219,6 +219,109 @@ def _apply_nmap_override(
     return cmd
 
 
+# nmap's table line for a service with a detected version, e.g.
+# "21/tcp   open  ftp     vsftpd 3.0.3" — SERVICE is always one token,
+# VERSION is everything after it on the same line (nmap's own NSE script
+# output is on separate, indented "|" lines, never appended here).
+_NMAP_SERVICE_LINE_RE = re.compile(r"^(\d+)/(?:tcp|udp)\s+open\S*\s+(\S+)\s+(.+)$", re.MULTILINE)
+
+# Service names too generic/likely-patched to make a good default
+# exploit-db/Metasploit search term on their own — SSH is near-always
+# already at a current, unexploitable point release, and "http" is a
+# transport, not a product name (the real product — Apache, a CMS, ... —
+# usually isn't in nmap's own SERVICE column). Skipped first so a more
+# specific hit (ftp, smb, a database, ...) wins when several services were
+# found; still used as a last resort if nothing else is available.
+_LOW_PRIORITY_SERVICES = frozenset({"ssh", "http", "https", "domain", "tcpwrapped"})
+
+# Items whose searchsploit/metasploit default is meant to search by the
+# most interesting service+version this engagement's own nmap runs
+# already found, instead of the bare target IP/hostname — confirmed
+# against a real target that the un-overridden default
+# (`searchsploit --disable-colour 10.129.34.27`) returns "No Results"
+# every time (searchsploit/metasploit both search by product name, not
+# target), while the exact same tool given the real product string
+# ("vsftpd 3.0.3", read off this engagement's own nmap output) finds a
+# real match. OSCP-PRIVL-02/03 and OSCP-PRIVW-02/03 (the other checklist
+# items mapped to these two tools) are deliberately NOT included here —
+# those are OS/kernel exploit lookups, not network-service lookups, and
+# a vsftpd version string would be actively wrong as their default.
+_EXPLOIT_LOOKUP_ITEMS = frozenset({"OSCP-VULN-02", "OSCP-VULN-04"})
+
+
+def discovered_service_candidates(engagement: Engagement) -> list[str]:
+    """Every distinct `<service> <version>` string nmap has already found
+    anywhere on this engagement, "most interesting first" — a named
+    service other than _LOW_PRIORITY_SERVICES sorted by port, then the
+    low-priority ones (ssh/http/...) the same way. Used both to pick
+    OSCP-VULN-02/04's actual default (see _apply_exploit_lookup_override,
+    which just takes the first entry) and to show the tester every *other*
+    candidate as a hint in the Run Tool dialog — the auto-pick is a
+    reasonable starting point, not the only service worth a lookup; a
+    target with several open services (this one included — ftp, ssh, http
+    all had a version) genuinely can have more than one exploitable
+    product. Empty list if nmap hasn't found anything with a version yet.
+    """
+    candidates: list[tuple[int, str, str]] = []  # (port, service, version)
+    for other in engagement.checklist_items:
+        output = other.tool_outputs.get("nmap", "")
+        if not output:
+            continue
+        for m in _NMAP_SERVICE_LINE_RE.finditer(output):
+            port_str, service, version = m.groups()
+            candidates.append((int(port_str), service, version.strip()))
+    if not candidates:
+        return []
+    preferred = sorted(
+        (c for c in candidates if c[1].lower() not in _LOW_PRIORITY_SERVICES),
+        key=lambda c: c[0],
+    )
+    low_priority = sorted(
+        (c for c in candidates if c[1].lower() in _LOW_PRIORITY_SERVICES),
+        key=lambda c: c[0],
+    )
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for _, service, version in preferred + low_priority:
+        label = f"{service} {version}"
+        if label not in seen:
+            seen.add(label)
+            ordered.append(label)
+    return ordered
+
+
+def _apply_exploit_lookup_override(
+    command: list[str], tool_name: str, item_id: str, engagement: Engagement | None
+) -> list[str]:
+    """Swap OSCP-VULN-02/04's bare-target search term for the most
+    interesting service+version this engagement's nmap runs already found
+    (see discovered_service_candidates — this just takes its first entry).
+    Falls back to the original placeholder when nothing's been scanned
+    yet, or nmap found nothing with a version.
+    """
+    if item_id not in _EXPLOIT_LOOKUP_ITEMS or engagement is None:
+        return command
+    candidates = discovered_service_candidates(engagement)
+    if not candidates:
+        return command
+    service_version = candidates[0]
+    cmd = list(command)
+    if tool_name == "searchsploit":
+        # build_command()'s shape: [..., "--disable-colour", <target>] —
+        # the bare target is always the last token.
+        if cmd and cmd[-1] == engagement.target:
+            cmd = cmd[:-1] + service_version.split()
+    elif tool_name == "metasploit":
+        # The target is embedded inside one shell-script argument
+        # (`-x "search <target>; exit"`), not a standalone token.
+        needle = f"search {engagement.target}; exit"
+        for i, tok in enumerate(cmd):
+            if tok == needle:
+                cmd[i] = f"search {service_version}; exit"
+                break
+    return cmd
+
+
 def apply_tool_overrides(
     tool_name: str,
     item_id: str,
@@ -228,8 +331,8 @@ def apply_tool_overrides(
     engagement: Engagement | None = None,
 ) -> list[str]:
     """Swap this checklist item's recommended wordlist category / nuclei
-    tags / curl-wget path+flags / nmap discovered-ports into *command*, if
-    any of those apply.
+    tags / curl-wget path+flags / nmap discovered-ports / searchsploit &
+    metasploit discovered-service into *command*, if any of those apply.
 
     Shared by the Run Tool dialog's command-preview endpoint AND the real
     execution path (oculus.orchestrator.Orchestrator.run_tool) — the
@@ -241,10 +344,12 @@ def apply_tool_overrides(
     the text shown in the dialog, not what actually executed, unless the
     tester happened to edit the command field first.
 
-    *engagement*, when given, lets the nmap override (see
-    _apply_nmap_override) look at this engagement's own already-recorded
-    scan output; omitted entirely (None) short-circuits that branch to a
-    no-op, for any caller that doesn't have an engagement loaded.
+    *engagement*, when given, lets the nmap-discovered-ports override (see
+    _apply_nmap_override) and the searchsploit/metasploit-discovered-
+    service override (see _apply_exploit_lookup_override) look at this
+    engagement's own already-recorded scan output; omitted entirely (None)
+    short-circuits both branches to a no-op, for any caller that doesn't
+    have an engagement loaded.
     """
     cmd = list(command)
     if uses_wordlist:
@@ -262,6 +367,8 @@ def apply_tool_overrides(
         cmd = _apply_wget_override(cmd, item_id)
     elif tool_name == "nmap":
         cmd = _apply_nmap_override(cmd, item_id, engagement)
+    elif tool_name in ("searchsploit", "metasploit"):
+        cmd = _apply_exploit_lookup_override(cmd, tool_name, item_id, engagement)
     return cmd
 
 
