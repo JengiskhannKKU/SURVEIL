@@ -6,6 +6,90 @@ was verified, and what the next agent should pick up.
 
 ---
 
+## 2026-09-03 (60) — Real foothold found on the test target + 2 real bugs fixed along the way
+
+**Done (user, continuing the live-testing session: asked whether recon/
+enum/vuln-analysis so far was enough to reach a foothold on the real
+test target):**
+- Manually reviewed the target's homepage source (`curl` — the app has
+  no login/auth at all) and found `/download/<id>`, a route only
+  reachable via an `onclick="location.href=..."` in the page's own JS
+  — neither `ffuf` (wordlist doesn't guess "/download") nor `katana`
+  (doesn't execute/parse inline `onclick` JS, only real `<a href>`/
+  `<script src>`/etc.) had surfaced it despite both already having run
+  against this target.
+- Confirmed IDOR: `/download/0` through `/download/7` all return `200`
+  with zero authentication, each a different `.pcap`. `/download/0`
+  contains a captured FTP session — real, live-extracted via OCULUS's
+  own `tshark` tool (entry 59): `USER nathan` / `PASS
+  Buck3tH4TF0RM3!`, cleartext.
+- Recorded this properly *in the app* (not just this transcript): a
+  **Critical** Finding ("Broken Access Control on /download/<id>...",
+  CWE-639) and the `.pcap` itself as Evidence, both on
+  `OSCP-EXPLOIT-01`, via the same `POST .../findings` and `POST
+  .../evidence` endpoints the UI itself uses.
+- User asked why `tshark` was only listed under `OSCP-POST-01` (Post-
+  Exploitation) — fair critique: this whole finding happened *before*
+  any shell, not after, so "post-exploitation loot collection" was the
+  wrong primary home for it. Added `tshark` to `OSCP-EXPLOIT-01` too
+  (kept on `OSCP-POST-01` as well — a pcap actually found sitting on an
+  already-compromised host is still a real, separate scenario), updated
+  both descriptions to say which case each one covers.
+- **Real bug found and fixed while demonstrating this live in the
+  browser**: editing the Run Tool dialog's Command field to a
+  shell-quoted argument (`tshark -Y "ftp.request.command || http.request"`
+  — the natural way to write a multi-word filter) and hitting Run threw
+  a real tshark error ("Display filters were specified both with '-Y'
+  and with additional command-line arguments"). Root cause:
+  `backend/ws.py` parsed a tester-edited command with plain
+  `.split()` — pure whitespace splitting, no quote awareness — which
+  tears a quoted multi-word argument into separate tokens with the
+  literal `"` characters still stuck to them. `oculus/tui.py` (the
+  CLI/TUI) already does this correctly with `shlex.split()`/
+  `shlex.join()` for the exact same edit-command flow; `ws.py` was the
+  one path that got it wrong. Fixed to match: `shlex.split()`.
+
+**Verified:**
+- `python3 -m py_compile`/import checks on `checklist.py`; both build
+  functions still build clean.
+- Rebuilt (`docker compose build backend`) and recreated (`docker
+  compose up -d backend`) the live backend container after both the
+  checklist re-categorization and the `shlex` fix.
+- Confirmed the real IDOR/credential chain end-to-end against the live,
+  authorized test target: downloaded 4 different capture IDs with no
+  auth, ran OCULUS's real `TsharkTool` against the one with FTP
+  traffic, got the real credential back.
+- Confirmed the Finding + Evidence both actually persisted via the
+  live API (`GET` the engagement back, both present) and confirmed
+  visually in the browser (Finding card, evidence file card, "Run
+  tool" button all rendering correctly on `OSCP-EXPLOIT-01`).
+- Confirmed the `shlex` fix with a clean, literal WebSocket call (not
+  the flaky browser `type` action, which — separately confirmed via
+  reading the actual DOM input value with a JS eval — had dropped
+  several characters mid-command, a synthetic-input artifact, not an
+  app bug): the exact same quoted-filter command that failed before now
+  runs with `exit_code: 0` and returns the real extracted credential.
+
+**Next steps for the next agent:**
+1. The recovered credential (`nathan` / `Buck3tH4TF0RM3!`) has NOT been
+   tried against the target's real SSH/FTP services yet — left for the
+   user, deliberately not attempted on their behalf.
+2. Confirmed this session: an existing engagement's checklist items are
+   snapshotted at creation time and never retroactively pick up new
+   tools/description changes added to `checklist.py` later (already
+   flagged once for `linpeas` in the previous entry, now hit again for
+   `tshark`'s re-categorization onto `OSCP-EXPLOIT-01`) — still not
+   fixed. A real sync/merge-into-existing-engagement mechanism would
+   need its own design pass (what happens to a tester's own manual
+   edits to an item's tools/description if a sync would overwrite
+   them?) rather than a quick patch.
+3. Only `backend/ws.py`'s custom-command path was fixed for the shlex
+   issue — worth a quick grep for any other place a raw tester-typed
+   command string might still get naively `.split()` if this app grows
+   another such entry point later.
+
+---
+
 ## 2026-09-03 (59) — feat: linpeas/winPEAS and tshark tools
 
 **Done (user, after the live-testing rounds in entries 57-58: "จากที่

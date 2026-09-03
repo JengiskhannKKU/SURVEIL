@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import shlex
 import threading
 from datetime import datetime
 
@@ -65,7 +66,20 @@ async def run_tool_ws(websocket: WebSocket, eng_id: str, item_id: str) -> None:
     tool_name = config.get("tool")
     fast = bool(config.get("fast", False))
     custom_command_raw = config.get("custom_command")
-    custom_command = custom_command_raw.split() if custom_command_raw else None
+    # shlex.split(), not .split() — a tester editing the Command field
+    # naturally writes normal shell-quoting for a multi-word argument
+    # (e.g. tshark's `-Y "ftp.request.command || http.request"`, or
+    # hydra's http-post-form syntax); a plain whitespace .split() tears
+    # the quoted string into separate tokens with the literal `"`
+    # characters still attached to them, which the real tool then sees
+    # as extra/malformed arguments instead of the one intended value.
+    # Confirmed via a real run: tshark rejected exactly this shape with
+    # "Display filters were specified both with '-Y' and with additional
+    # command-line arguments." The CLI/TUI (oculus/tui.py) already uses
+    # shlex.split()/shlex.join() for this same edit-command flow — this
+    # brings the web backend in line with that existing, correct behavior
+    # instead of leaving it as the one path that gets it wrong.
+    custom_command = shlex.split(custom_command_raw) if custom_command_raw else None
 
     if not tool_name:
         await websocket.send_json({"type": "error", "message": "Missing 'tool' in start message"})

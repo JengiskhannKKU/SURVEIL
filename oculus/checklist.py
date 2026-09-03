@@ -2110,11 +2110,16 @@ def build_oscp_checklist() -> list[ChecklistItem]:
                 "Weaponize and run the exploit found above (a public PoC adapted to "
                 "this target, or a manual technique). Inherently manual and specific "
                 "to what was actually found — no generic tool automates \"exploit the "
-                "thing.\" Set up a listener (e.g. `nc -lvnp <port>`) before firing it."
+                "thing.\" Set up a listener (e.g. `nc -lvnp <port>`) before firing it. "
+                "`tshark` here isn't the exploit itself — it's for the common case where "
+                "the actual \"exploit\" is a broken-access-control endpoint that hands "
+                "back someone else's captured traffic (a downloadable pcap, an IDOR-"
+                "exposed capture ID, ...): extract the cleartext credential from it, "
+                "*then* attempt it against the real service."
             ),
             category="Exploitation",
             category_code="EXPLOIT",
-            tools=[],
+            tools=["tshark"],
         ),
         ChecklistItem(
             id="OSCP-EXPLOIT-02",
@@ -2265,11 +2270,11 @@ def build_oscp_checklist() -> list[ChecklistItem]:
             name="Credential Harvesting & Loot Collection",
             description=(
                 "Collect credentials, config files, and other loot from the "
-                "compromised host — often the key to reaching further hosts. "
-                "`tshark` here doesn't collect anything itself: it reads a .pcap "
-                "already obtained some other way (downloaded from the target, saved "
-                "as this item's own evidence, captured during a MITM) and pulls out "
-                "cleartext FTP/HTTP/POP/IMAP/SMTP credentials from it."
+                "compromised host itself — often the key to reaching further hosts. "
+                "`tshark` here doesn't collect anything itself: same tool as "
+                "OSCP-EXPLOIT-01's, listed again here for the *post*-shell case — a "
+                ".pcap actually found sitting on the compromised host's own disk "
+                "(loot, not something pulled pre-shell off the target's web app)."
             ),
             category="Post-Exploitation",
             category_code="POST",
