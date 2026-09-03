@@ -55,7 +55,17 @@ LABEL org.opencontainers.image.title="oculus" \
 #     package only provides rpcclient/smbclient; net/nmblookup are a
 #     *separate* package, samba-common-bin (confirmed via `dpkg -L
 #     smbclient` genuinely not listing them, not assumed).
-RUN apt-get update && apt-get install -y --no-install-recommends \
+#   - tshark: oculus/tools/tshark_tool.py's offline pcap-credential-
+#     extraction tool. The wireshark-common package's postinst normally
+#     asks an interactive debconf question (whether non-root users can
+#     capture live traffic) that hangs a non-interactive `docker build`
+#     forever — preseeded to "false" below (this tool only ever reads an
+#     already-captured file with `-r`, never a live interface, so that
+#     capability isn't needed anyway) and DEBIAN_FRONTEND=noninteractive
+#     set for just this install so the preseed actually takes effect
+#     instead of still prompting.
+RUN echo "wireshark-common wireshark-common/install-setuid boolean false" | debconf-set-selections
+RUN DEBIAN_FRONTEND=noninteractive apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
         nmap \
         whatweb \
         wafw00f \
@@ -81,6 +91,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         samba-common-bin \
         default-mysql-client \
         redis-tools \
+        tshark \
     && rm -rf /var/lib/apt/lists/*
 
 # nikto — not packaged for Debian bookworm; install from source.
@@ -137,6 +148,18 @@ RUN git clone --depth 1 https://github.com/testssl/testssl.sh.git /opt/testssl.s
 RUN git clone --depth 1 https://github.com/commixproject/commix.git /opt/commix \
     && printf '#!/bin/sh\nexec python3 /opt/commix/commix.py "$@"\n' > /usr/local/bin/commix \
     && chmod +x /usr/local/bin/commix
+
+# linpeas.sh / winPEASx64.exe — the standard OSCP privilege-escalation
+# enumeration scripts (see oculus/tools/linpeas_tool.py, which serves
+# this directory over HTTP for a tester to pull onto their own foothold
+# shell — not something run inside this container against the network
+# target at all). Static script/binary releases, no package to install;
+# grabbed straight from the upstream project's "latest" GitHub release,
+# same pattern as searchsploit/nikto above.
+RUN mkdir -p /opt/peas \
+    && curl -fsSL -o /opt/peas/linpeas.sh https://github.com/carlospolop/PEASS-ng/releases/latest/download/linpeas.sh \
+    && curl -fsSL -o /opt/peas/winPEASx64.exe https://github.com/carlospolop/PEASS-ng/releases/latest/download/winPEASx64.exe \
+    && chmod +x /opt/peas/linpeas.sh
 
 WORKDIR /app
 COPY pyproject.toml README.md ./

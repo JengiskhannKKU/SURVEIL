@@ -30,6 +30,8 @@ from .enum4linux_tool import Enum4linuxTool
 from .mysql_tool import MysqlTool
 from .ftp_tool import FtpTool
 from .redis_tool import RedisTool
+from .tshark_tool import TsharkTool
+from .linpeas_tool import LinpeasTool
 
 TOOL_REGISTRY: dict[str, type] = {
     "nmap":      NmapTool,
@@ -62,6 +64,8 @@ TOOL_REGISTRY: dict[str, type] = {
     "mysql":      MysqlTool,
     "ftp":        FtpTool,
     "redis":      RedisTool,
+    "tshark":     TsharkTool,
+    "linpeas":    LinpeasTool,
 }
 
 __all__ = [
@@ -76,5 +80,6 @@ __all__ = [
     "CurlTool", "WgetTool", "ZapTool", "SearchsploitTool",
     "MetasploitTool", "Enum4linuxTool",
     "MysqlTool", "FtpTool", "RedisTool",
+    "TsharkTool", "LinpeasTool",
     "TOOL_REGISTRY",
 ]
