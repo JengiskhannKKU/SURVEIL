@@ -225,6 +225,8 @@ export function FindingsPanel({
                         borderRadius: 1,
                         bgcolor: "rgba(0,0,0,0.4)",
                         fontSize: 12,
+                        whiteSpace: "pre-wrap",
+                        overflowWrap: "anywhere",
                         overflowX: "auto",
                       }}
                     >

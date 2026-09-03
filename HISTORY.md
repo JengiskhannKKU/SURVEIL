@@ -6,6 +6,37 @@ was verified, and what the next agent should pick up.
 
 ---
 
+## 2026-09-03 (61) — Fix: Finding evidence text overflowing its box
+
+**Done (user: "แก้ ui ตรงที่ add findings หน่อยคับ ... ข้อความเขาเลยกรอบมา"
+— pasted a long, single-line finding evidence string and reported it
+running outside its box in the UI):**
+- `frontend/src/components/FindingsPanel.tsx`: a Finding's `evidence`
+  field renders in a `<Box component="pre">` for monospace formatting
+  (appropriate for genuine multi-line raw tool output) — but `<pre>`'s
+  default `white-space: pre` never wraps, only breaks on an explicit
+  `\n`. A long *single-line* prose evidence string (exactly the shape
+  entry 60's finding used) had nowhere to break and ran straight off
+  the box's right edge instead of wrapping, with only a horizontal-
+  scroll affordance (`overflowX: auto`) to reach the rest of it.
+- Fixed by adding `whiteSpace: "pre-wrap"` (keeps `<pre>`'s newline-
+  preserving behavior for real multi-line output, but now also wraps
+  at whitespace when a line is too long) and `overflowWrap: "anywhere"`
+  (lets it break mid-token too, for a long unbroken string like a
+  backtick-quoted command with no spaces in a long segment).
+  `overflowX: auto` left in place as a harmless fallback.
+
+**Verified:**
+- `tsc`/`eslint` clean on the changed file; `next build` clean.
+- Rebuilt (`docker compose build frontend`) and recreated (`docker
+  compose up -d frontend`) the live frontend container.
+- Confirmed visually in the browser against the actual Finding this
+  bug report was about (entry 60's "Broken Access Control on
+  /download/<id>..." finding on `OSCP-EXPLOIT-01`): the evidence text
+  now wraps cleanly within the panel instead of running off-screen.
+
+---
+
 ## 2026-09-03 (60) — Real foothold found on the test target + 2 real bugs fixed along the way
 
 **Done (user, continuing the live-testing session: asked whether recon/
