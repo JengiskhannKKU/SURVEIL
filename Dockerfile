@@ -40,6 +40,13 @@ LABEL org.opencontainers.image.title="oculus" \
 #     — this is the *client* only, talking to the host's own Docker daemon
 #     over the socket docker-compose.yml mounts in at
 #     /var/run/docker.sock; no dockerd runs inside this container itself.
+#   - chromium: gowitness v3's default `chromedp` driver execs a real
+#     Chrome-compatible binary directly (confirmed via a real run: `exec:
+#     "google-chrome": executable file not found in $PATH`) rather than
+#     reliably auto-downloading one itself despite what its own --chrome-
+#     path help text implies — Debian's `chromium` package provides that
+#     binary; oculus/tools/gowitness_tool.py locates it and passes
+#     --chrome-path explicitly so gowitness doesn't have to guess.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         nmap \
         whatweb \
@@ -61,12 +68,24 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         pipx \
         ca-certificates \
         docker.io \
+        chromium \
     && rm -rf /var/lib/apt/lists/*
 
 # nikto — not packaged for Debian bookworm; install from source.
 RUN git clone --depth 1 https://github.com/sullo/nikto.git /opt/nikto \
     && ln -s /opt/nikto/program/nikto.pl /usr/local/bin/nikto \
     && chmod +x /opt/nikto/program/nikto.pl
+
+# exploitdb (provides `searchsploit`, the OSCP checklist's exploit-lookup-
+# by-service/version step) — confirmed NOT packaged for Debian bookworm
+# (`apt install exploitdb` really does fail with "Unable to locate
+# package" on this exact base image, tried before falling back to this);
+# install from the official repo instead, same pattern as nikto/testssl
+# above. `searchsploit` is a self-contained script that locates its own
+# sibling exploits/ database directory via its own path, so a plain
+# symlink into PATH is enough — no separate config step needed.
+RUN git clone --depth 1 https://gitlab.com/exploit-database/exploitdb.git /opt/exploitdb \
+    && ln -s /opt/exploitdb/searchsploit /usr/local/bin/searchsploit
 
 # Go-based tools built in the previous stage.
 COPY --from=gotools /root/go/bin/subfinder /usr/local/bin/subfinder

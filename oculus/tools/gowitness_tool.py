@@ -1,9 +1,34 @@
 """gowitness tool wrapper — screenshot capture of web pages."""
 from __future__ import annotations
 
+import shutil
 import subprocess
+from pathlib import Path
 
 from .base import BaseTool, _subprocess_env, base_url, resolve_binary
+
+# gowitness v3's default `chromedp` driver `exec`s a real Chrome-compatible
+# binary directly — confirmed via a real run against this app's own Docker
+# image: "exec: \"google-chrome\": executable file not found in $PATH".
+# Despite --chrome-path's own help text implying it downloads one by
+# default, that didn't happen here, so locate a real binary ourselves and
+# pass it explicitly rather than relying on gowitness to find/fetch one.
+_CHROME_BINARY_NAMES = ("google-chrome", "google-chrome-stable", "chromium", "chromium-browser")
+_CHROME_APP_PATHS = (
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+    "/Applications/Chromium.app/Contents/MacOS/Chromium",
+)
+
+
+def _find_chrome() -> str | None:
+    for name in _CHROME_BINARY_NAMES:
+        found = shutil.which(name)
+        if found:
+            return found
+    for path in _CHROME_APP_PATHS:
+        if Path(path).is_file():
+            return path
+    return None
 
 
 class GowitnessTool(BaseTool):
@@ -29,7 +54,11 @@ class GowitnessTool(BaseTool):
         # thread count, a different flag) are both real v3 flags, confirmed
         # against `gowitness scan single --help`.
         timeout = "10" if fast else "30"
-        return ["gowitness", "scan", "single", "-u", url, "-T", timeout]
+        cmd = ["gowitness", "scan", "single", "-u", url, "-T", timeout]
+        chrome = _find_chrome()
+        if chrome:
+            cmd += ["--chrome-path", chrome]
+        return cmd
 
     def run_help(self) -> str:
         # BaseTool's default runs [self.binary, self.help_flag] — under v3

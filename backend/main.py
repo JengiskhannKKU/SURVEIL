@@ -11,7 +11,14 @@ app = FastAPI(title="oculus web", version="0.1.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    # A fixed allow_origins=[":3000"] used to be here — broke the moment
+    # the frontend ran on any other port, which run-frontend.sh/run.sh
+    # both explicitly support as their whole point (`./run-frontend.sh
+    # 3001 8000`, confirmed via a real report: the browser's preflight
+    # OPTIONS request got a 400 back for exactly this reason, port
+    # mismatch). Regex instead — any port on localhost/127.0.0.1, still
+    # scoped to local dev only, not opened to the wider internet.
+    allow_origin_regex=r"^http://(localhost|127\.0\.0\.1)(:\d+)?$",
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],

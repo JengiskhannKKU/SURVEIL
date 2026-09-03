@@ -10,9 +10,15 @@ from rich.table import Table
 from rich import box
 
 from . import __version__
-from .checklist import build_checklist
+from .checklist import build_checklist, build_oscp_checklist
 from .models import Engagement, Finding, Severity
 from .scoring import score_from_vector, severity_from_score
+
+# Mirrors backend/routers/engagements.py's _CHECKLIST_BUILDERS.
+_CHECKLIST_BUILDERS = {
+    "wstg": build_checklist,
+    "oscp": build_oscp_checklist,
+}
 
 console = Console()
 
@@ -37,25 +43,33 @@ def main() -> None:
 @click.option("--target", "-t", required=True, help="Target hostname or IP (e.g. example.com)")
 @click.option("--name",   "-n", default="",    help="Engagement name (defaults to target)")
 @click.option("--notes",  "-N", default="",    help="Scope notes")
-def new(target: str, name: str, notes: str) -> None:
+@click.option(
+    "--methodology", "-m", default="wstg",
+    type=click.Choice(["wstg", "oscp"]),
+    help="Checklist to build: 'wstg' (OWASP WSTG, default) or 'oscp' (phase-based OSCP/PEN-200-style).",
+)
+def new(target: str, name: str, notes: str, methodology: str) -> None:
     """Create a new engagement with the full OWASP WSTG checklist."""
     from . import state
 
+    build = _CHECKLIST_BUILDERS[methodology]
     engagement = Engagement(
         target=target,
         name=name or target,
+        methodology=methodology,
         scope_notes=notes,
-        checklist_items=build_checklist(),
+        checklist_items=build(),
     )
     path = state.save(engagement)
 
+    label = "OWASP WSTG" if methodology == "wstg" else "OSCP-style"
     console.print(
         Panel(
             f"[bold green]✓ Engagement created[/bold green]\n\n"
             f"  ID:      [cyan]{engagement.id}[/cyan]\n"
             f"  Name:    {engagement.name}\n"
             f"  Target:  [bold]{engagement.target}[/bold]\n"
-            f"  Items:   {engagement.total_items} OWASP WSTG checklist items\n"
+            f"  Items:   {engagement.total_items} {label} checklist items\n"
             f"  Saved:   [dim]{path}[/dim]\n\n"
             f"[dim]Run  [bold]oculus tui[/bold]  to open the interactive checklist.[/dim]",
             title="[bold]oculus — New Engagement[/bold]",

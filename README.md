@@ -11,7 +11,7 @@
 <p align="center">
   <img alt="Python 3.9+" src="https://img.shields.io/badge/python-3.9%2B-5eead4?style=flat-square&labelColor=0a0d0d">
   <img alt="OWASP WSTG v4.2" src="https://img.shields.io/badge/OWASP%20WSTG-v4.2%20%C2%B7%2097%20items-5eead4?style=flat-square&labelColor=0a0d0d">
-  <img alt="24 tools wrapped" src="https://img.shields.io/badge/tools%20wrapped-24-5eead4?style=flat-square&labelColor=0a0d0d">
+  <img alt="25 tools wrapped" src="https://img.shields.io/badge/tools%20wrapped-25-5eead4?style=flat-square&labelColor=0a0d0d">
   <img alt="Offline-first" src="https://img.shields.io/badge/offline--first-yes-5eead4?style=flat-square&labelColor=0a0d0d">
   <img alt="CLI · TUI · Web" src="https://img.shields.io/badge/interfaces-CLI%20%C2%B7%20TUI%20%C2%B7%20Web-5eead4?style=flat-square&labelColor=0a0d0d">
 </p>
@@ -88,9 +88,9 @@ Full details: [Run with Docker](#run-with-docker).
 
 | Layer | What it does |
 |---|---|
-| **Tool Orchestration** | Wraps 24 tools via subprocess — `nmap`, `httpx`, `whatweb`, `wafw00f`, `subfinder`, `nuclei`, `arjun`, `dnsx`, `gowitness`, `wpscan`, `amass`, `ffuf`, `gobuster`, `katana`, `nikto`, `testssl`, `sqlmap`, `hydra`, `naabu`, `dalfox`, `commix`, `curl`, `wget`, `zap` (see `TOOL_REGISTRY` in `oculus/tools/__init__.py`). Falls back to realistic simulated output when a tool isn't installed (demo mode). Every tool supports a **Fast** and a **Full** command variant, and its exact command line is editable before running. |
+| **Tool Orchestration** | Wraps 25 tools via subprocess — `nmap`, `httpx`, `whatweb`, `wafw00f`, `subfinder`, `nuclei`, `arjun`, `dnsx`, `gowitness`, `wpscan`, `amass`, `ffuf`, `gobuster`, `katana`, `nikto`, `testssl`, `sqlmap`, `hydra`, `naabu`, `dalfox`, `commix`, `curl`, `wget`, `zap`, `searchsploit` (see `TOOL_REGISTRY` in `oculus/tools/__init__.py`). Falls back to realistic simulated output when a tool isn't installed (demo mode). Every tool supports a **Fast** and a **Full** command variant, and its exact command line is editable before running. |
 | **Checklist & State Engine** | The full OWASP WSTG v4.2 table of contents — all 12 sections, 97 items — with status tracking, a Textual TUI, JSON persistence, and a saved-engagement picker. |
-| **Auto-Finding Extraction** | `oculus/findings_extractor.py` parses raw output from 17 of the 24 tools into `Finding` objects (auto CVSS scoring, OWASP/CWE mapping) flagged `verified=False` — a starting point to confirm or dismiss, not a blank checklist. |
+| **Auto-Finding Extraction** | `oculus/findings_extractor.py` parses raw output from 17 of the 25 tools into `Finding` objects (auto CVSS scoring, OWASP/CWE mapping) flagged `verified=False` — a starting point to confirm or dismiss, not a blank checklist. |
 | **Reporting Engine** | CVSS v3.1 base score calculator, OWASP/CWE metadata, Markdown and `.docx` export, plus an in-app **View Report** panel (web app) that renders the same Markdown report live instead of only downloading it. |
 
 ---
@@ -350,6 +350,10 @@ Raw tool output streams into the Tool Output panel live as it runs (and replays 
 
 ## Checklist Coverage
 
+Choosing a **methodology** when creating an engagement picks which checklist gets built (`backend/routers/engagements.py`'s `_CHECKLIST_BUILDERS` / `oculus/checklist.py`) — this only happens at creation time, not re-applied afterward.
+
+### OWASP WSTG (default)
+
 The full OWASP WSTG v4.2 table of contents — 97 items across all 12 sections:
 
 | Category | Items |
@@ -369,13 +373,30 @@ The full OWASP WSTG v4.2 table of contents — 97 items across all 12 sections:
 
 Many Business Logic, Session Management, and Client-side items are inherently manual/logic-driven — no CLI tool can judge whether a workflow can legitimately be circumvented. Those items list `tools=[]` or the closest thing that provides supporting evidence (e.g. `httpx` for a cookie's flags) rather than a tool that "does" the test; see the docstring at the top of `oculus/checklist.py`.
 
+### OSCP-style
+
+A genuinely different, phase-based checklist (`build_oscp_checklist()`), not a relabeled copy of the WSTG one — 25 items across 8 phases, grounded in OffSec's own PEN-200 phase breakdown and community OSCP methodology writeups rather than guessed structure:
+
+| Phase | Items |
+|---|---|
+| Reconnaissance (RECON) | OSCP-RECON-01 … 03 |
+| Enumeration (ENUM) | OSCP-ENUM-01 … 08 |
+| Vulnerability Analysis (VULN) | OSCP-VULN-01 … 03 |
+| Exploitation (EXPLOIT) | OSCP-EXPLOIT-01 … 03 |
+| Privilege Escalation — Linux (PRIVL) | OSCP-PRIVL-01, 02 |
+| Privilege Escalation — Windows (PRIVW) | OSCP-PRIVW-01, 02 |
+| Post-Exploitation (POST) | OSCP-POST-01, 02 |
+| Proof & Reporting (PROOF) | OSCP-PROOF-01, 02 |
+
+Automated with real wrapped tools wherever this app's architecture genuinely allows it (it runs recon/enumeration tools against a target over the network, same as the WSTG checklist above) — `tools=[]` guidance-only where it structurally can't be: exploitation, privilege-escalation *enumeration* (LinPEAS/WinPEAS run **on** an already-compromised host, not against a target from here), and post-exploitation. Privilege escalation is split into separate Linux/Windows checklists since the two use entirely different techniques/tools, even though OffSec's own phase list doesn't formally split them.
+
 ---
 
 ## Tool Wrappers
 
-Each wrapper tries the real binary first. If not installed, it returns realistic simulated output so the demo always works. All 23 are registered in `TOOL_REGISTRY` (`oculus/tools/__init__.py`) and invokable from both the CLI and TUI. Every wrapper carries a `description` and `example` (shown as the guide in the Run Tool dialog) and a Fast/Full `build_command(fast=...)` variant.
+Each wrapper tries the real binary first. If not installed, it returns realistic simulated output so the demo always works. All 25 are registered in `TOOL_REGISTRY` (`oculus/tools/__init__.py`) and invokable from both the CLI and TUI. Every wrapper carries a `description` and `example` (shown as the guide in the Run Tool dialog) and a Fast/Full `build_command(fast=...)` variant.
 
-With 97 checklist items, the full item ↔ tool mapping is best read directly from each `ChecklistItem`'s `tools=[...]` in `oculus/checklist.py` rather than kept in sync by hand here — the table below is a representative sample per tool, not exhaustive.
+With 97 WSTG + 25 OSCP checklist items, the full item ↔ tool mapping is best read directly from each `ChecklistItem`'s `tools=[...]` in `oculus/checklist.py` rather than kept in sync by hand here — the table below is a representative sample per tool, not exhaustive. Example item IDs below are WSTG's unless prefixed `OSCP-`.
 
 | Tool | Purpose | Example Checklist Items |
 |---|---|---|
@@ -403,8 +424,9 @@ With 97 checklist items, the full item ↔ tool mapping is best read directly fr
 | `nikto` | Web server vulnerability scanning | CONF-02, CONF-09, ERRH-01 |
 | `testssl` | TLS/SSL configuration analysis | CONF-07, ATHN-01, CRYP-01/03, SESS-09 |
 | `hydra` | Brute-force login testing | ATHN-02, ATHN-03 |
+| `searchsploit` | Offline exploit-db lookup by product/version (OSCP-only — no WSTG item covers it) | OSCP-VULN-02, OSCP-PRIVL-02, OSCP-PRIVW-02 |
 
-Auto-finding extraction (`oculus/findings_extractor.py`) covers 17 of the 24 tools: `nmap`, `httpx`, `whatweb`, `nuclei`, `wafw00f`, `subfinder`, `nikto`, `sqlmap`, `hydra`, `wpscan`, `dnsx`, `ffuf`, `gobuster`, `naabu`, `dalfox`, `commix`, `zap`. The remaining 5 (`amass`, `arjun`, `gowitness`, `katana`, `testssl`) store and show their output but don't auto-parse it into findings yet — `testssl`'s output in particular is fixed-width columnar text that needs a different parsing approach than the line/regex matching the others use. `curl`/`wget` are deliberately not in either bucket — they're general-purpose manual-inspection tools, not something with a fixed "finding shape" to extract.
+Auto-finding extraction (`oculus/findings_extractor.py`) covers 17 of the 25 tools: `nmap`, `httpx`, `whatweb`, `nuclei`, `wafw00f`, `subfinder`, `nikto`, `sqlmap`, `hydra`, `wpscan`, `dnsx`, `ffuf`, `gobuster`, `naabu`, `dalfox`, `commix`, `zap`. The remaining 6 (`amass`, `arjun`, `gowitness`, `katana`, `testssl`, `searchsploit`) store and show their output but don't auto-parse it into findings yet — `testssl`'s output in particular is fixed-width columnar text that needs a different parsing approach than the line/regex matching the others use. `curl`/`wget` are deliberately not in either bucket — they're general-purpose manual-inspection tools, not something with a fixed "finding shape" to extract.
 
 > **`zap` is architecturally different from every other wrapped tool** —
 > it runs via `docker run zaproxy/zap-stable zap-baseline.py`, not a
@@ -426,7 +448,7 @@ Auto-finding extraction (`oculus/findings_extractor.py`) covers 17 of the 24 too
 
 ### Installing the tool binaries
 
-None of the 24 tools are required — each falls back to simulated demo output when its binary isn't found. To get real output, install what you need with:
+None of the 25 tools are required — each falls back to simulated demo output when its binary isn't found. To get real output, install what you need with:
 
 ```bash
 ./install-tools.sh

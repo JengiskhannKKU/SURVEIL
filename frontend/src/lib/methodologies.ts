@@ -1,31 +1,42 @@
-// Testing strategy/methodology chosen at engagement creation. Every
-// option currently builds the exact same real OWASP WSTG checklist
-// underneath (oculus/checklist.py's build_checklist()) — this is a tag
-// stored on the engagement for now, not yet a different checklist
-// generator. A genuine distinct OSCP-style checklist needs its own
-// properly-sourced content rather than a guessed one, so it's a
-// deliberate follow-up, not part of this feature.
+// Testing strategy/methodology chosen at engagement creation — decides
+// which checklist gets built (see backend/routers/engagements.py's
+// _CHECKLIST_BUILDERS / oculus/checklist.py's build_checklist() vs.
+// build_oscp_checklist()). Only consulted at creation time, not re-applied
+// afterward.
+import type { ComponentType } from "react";
+import type { SvgIconProps } from "@mui/material/SvgIcon";
+import SecurityIcon from "@mui/icons-material/Security";
+import TerminalIcon from "@mui/icons-material/Terminal";
+import TuneIcon from "@mui/icons-material/Tune";
+
 export interface MethodologyMeta {
   label: string;
   description: string;
+  Icon: ComponentType<SvgIconProps>;
+  color: string;
 }
 
 export const METHODOLOGIES: Record<string, MethodologyMeta> = {
   wstg: {
     label: "OWASP WSTG",
     description: "The full 97-item OWASP Web Security Testing Guide v4.2 checklist.",
+    Icon: SecurityIcon,
+    color: "#5eead4",
   },
   oscp: {
     label: "OSCP-style",
     description:
-      "OSCP/PWK-style engagement. Builds the same OWASP WSTG checklist for now — a distinct " +
-      "OSCP-style checklist is a planned follow-up, not yet implemented.",
+      "OSCP/PEN-200-style engagement",
+    Icon: TerminalIcon,
+    color: "#f97316",
   },
   other: {
     label: "Other / Custom",
     description:
       "Any other methodology. Builds the same OWASP WSTG checklist as a starting point — add " +
       "or remove checklist items freely to match your own strategy.",
+    Icon: TuneIcon,
+    color: "#a855f7",
   },
 };
 

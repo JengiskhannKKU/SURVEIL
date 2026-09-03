@@ -156,9 +156,7 @@ export default function LandingPage() {
                 pt: 1,
               }}
             >
-              Work the OWASP WSTG checklist with real tool execution, not guesswork.
-              <br />
-              Track findings, verify evidence, and generate CVSS-scored reports.
+              Hello hacker.
             </Typography>
           </FadeIn>
 

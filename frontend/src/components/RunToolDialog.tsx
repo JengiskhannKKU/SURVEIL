@@ -81,7 +81,15 @@ export function RunToolDialog({
   const [helpOpen, setHelpOpen] = useState(false);
   const [recommendedCategoryLabel, setRecommendedCategoryLabel] = useState<string | null>(null);
   const [nucleiTags, setNucleiTags] = useState<string | null>(null);
-  const [lines, setLines] = useState<string[]>([]);
+  // This dialog's `lines` is local component state, wiped whenever the
+  // dialog unmounts — closing it (e.g. after a run finishes) and
+  // reopening it for the same item used to show a blank terminal even
+  // though the real output was saved and sitting right there in
+  // `item.tool_outputs`. Seed from that saved output instead of starting
+  // blank (a lazy initializer, not an effect, since this only needs to
+  // run once per mount — the tool-switch case is handled directly in the
+  // Select's onChange below, not by reacting to `toolName` changing).
+  const [lines, setLines] = useState<string[]>(() => savedLinesFor(toolName));
   // A long-running tool (ffuf against a big wordlist especially) streams a
   // repeating progress ticker — "Progress:/req/sec/Duration:" lines — that
   // can number in the thousands and bury any real finding underneath them.
@@ -124,6 +132,14 @@ export function RunToolDialog({
     // eslint-disable-next-line react-hooks/set-state-in-effect -- resetting local UI state when the selected tool changes
     setMode("full");
   }, [toolName]);
+
+  // Loads this tool's last-known saved output (if any) — shared by the
+  // dialog's initial `lines` value and by switching the tool dropdown
+  // mid-session (see the Select's onChange below).
+  function savedLinesFor(name: string): string[] {
+    const saved = item.tool_outputs[name];
+    return saved ? saved.split("\n") : [];
+  }
 
   useEffect(() => {
     if (!toolName) return;
@@ -332,7 +348,16 @@ export function RunToolDialog({
             label="Tool"
             value={toolName}
             disabled={running}
-            onChange={(e) => setToolName(e.target.value)}
+            onChange={(e) => {
+              const next = e.target.value;
+              setToolName(next);
+              // Show that tool's own last-known output, not whatever the
+              // previously-selected tool's terminal happened to have.
+              setLines(savedLinesFor(next));
+              setFinished(false);
+              setCancelled(false);
+              setError("");
+            }}
             slotProps={{ select: { renderValue: (v) => String(v) } }}
             sx={{ minWidth: 160 }}
           >

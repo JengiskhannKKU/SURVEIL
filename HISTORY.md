@@ -6,6 +6,389 @@ was verified, and what the next agent should pick up.
 
 ---
 
+## 2026-09-03 (50) — Fix: CORS 400 when frontend runs on a non-3000 port
+
+**Done (user report: a real `./run.sh 8000 3001` session — frontend dev
+server on a custom port, per entry 47's own recommendation for real-time
+local changes — logged `OPTIONS /api/engagements HTTP/1.1" 400 Bad
+Request` repeatedly):**
+- Root cause, found directly in `backend/main.py`, not guessed:
+  `CORSMiddleware`'s `allow_origins` was a **hardcoded** two-entry list —
+  `http://localhost:3000` and `http://127.0.0.1:3000` — literally
+  nothing else. The moment the frontend runs on any other port (exactly
+  what `run-frontend.sh`/`run.sh` both take a port argument to support,
+  entry 50's own report being a real example), the browser's CORS
+  preflight `OPTIONS` request gets rejected before the real `GET`/`POST`
+  ever has a chance to run.
+- Swapped the fixed list for `allow_origin_regex=r"^http://(localhost|
+  127\.0\.0\.1)(:\d+)?$"` — any port on localhost/127.0.0.1, still
+  scoped to local dev only (not opened to the wider internet).
+
+**Verified:**
+- Started a real standalone `uvicorn` instance (not the Docker one) on a
+  throwaway port and sent real preflight `OPTIONS` requests with `curl`:
+  `Origin: http://localhost:3001` → `200 OK` with `access-control-allow-
+  origin: http://localhost:3001` (previously would have been the exact
+  400 in the bug report); `Origin: http://localhost:3000` → still `200
+  OK` (no regression to the original working case); `Origin:
+  http://evil.example.com` → still `400 Bad Request` (confirmed the fix
+  didn't accidentally open this up to arbitrary origins — still scoped
+  to localhost only).
+- Rebuilt (`docker compose build backend`) and recreated
+  (`docker compose up -d backend`) the live container; re-ran the same
+  real preflight check against the live `:8000` — same correct `200` +
+  matching `access-control-allow-origin` header. Confirmed all 6 real
+  engagements survived the rebuild.
+
+**Next steps for the next agent:**
+1. None outstanding for this fix — it's a small, fully-verified change.
+   If a genuinely non-localhost frontend origin is ever needed (e.g.
+   accessing the dev server from another device on the LAN, which
+   `run-frontend.sh`'s own "Network: http://192.168.x.x:PORT" line from
+   `next dev` already advertises), the regex would need widening beyond
+   localhost/127.0.0.1 — not done here since the reported bug was
+   specifically about local custom ports, not LAN access.
+
+---
+
+## 2026-09-03 (49) — New Engagement popup redesign: dropdown icon, card methodology, real delete confirm
+
+**Done (user request: "redesign at when add engagements at pop-up,
+icons to dropdown, and checklists style for select by cards components,
+and when remove implement ui"):**
+- `IconPicker` (New Engagement dialog): was a wrapping row of 12 plain
+  icon-only buttons — replaced with a proper MUI `Select` dropdown.
+  Closed state shows the selected icon + label via `renderValue`; each
+  `MenuItem` shows its own icon (in that icon's color) + label via
+  `ListItemIcon`/`ListItemText`. Same 12 options from
+  `engagementIcons.tsx`, just a compact single-control picker instead of
+  a grid that ate a lot of dialog vertical space.
+- `MethodologyPicker`: was three small chip-style buttons with the
+  selected one's description shown as a separate line below — replaced
+  with three actual card components (one per methodology), each showing
+  an icon in a colored tile, the label, and its own description text
+  directly on the card face, selected state shown via a colored border +
+  glow (the same visual language `EngagementCard`'s hover state already
+  uses elsewhere on this page). `frontend/src/lib/methodologies.ts`
+  gained an `Icon`/`color` per methodology (`SecurityIcon` teal for
+  WSTG, `TerminalIcon` orange for OSCP, `TuneIcon` purple for Other) to
+  back the new card icon tiles.
+- Delete confirmation: `handleDelete()` called the browser's native
+  `confirm()` — replaced with a real `Dialog` (`deleteTarget` state
+  holding the id/name to delete, opened by the card's delete button,
+  matching this app's own dialog styling instead of an unstyled native
+  popup). Shows what's actually being deleted and what's lost (checklist
+  items, findings, tool output), with a disabled-while-in-flight
+  Cancel/Delete pair instead of the old fire-and-forget `handleDelete`.
+
+**Verified:**
+- `npx tsc --noEmit`, `eslint`, `next build` all clean.
+- Rebuilt (`docker compose build frontend`) and recreated
+  (`docker compose up -d frontend`) the live frontend container;
+  confirmed `GET /engagements` still returns 200 and all 6 real
+  engagements survived the redeploy (this entry touches no backend/
+  data-layer code — a sanity check on the redeploy itself, not a test of
+  the UI changes).
+- Browser E2E (opening New Engagement, using the icon dropdown and
+  methodology cards, deleting an engagement through the new confirm
+  dialog) **not** performed — same outstanding Claude-in-Chrome
+  connection issue noted in prior entries.
+
+**Next steps for the next agent:**
+1. Browser E2E still outstanding — worth a manual click-through once the
+   extension connection issue is sorted, especially the methodology
+   cards' responsive stacking on mobile widths (`xs: "column"`) and the
+   Select dropdown's keyboard navigation.
+2. The checklist-item delete flow in `ItemDetail.tsx` still uses the
+   same native `confirm()` this entry replaced on the engagements page —
+   left alone since the request's "when remove implement ui" read as
+   scoped to the engagement-delete flow specifically (paired with "add
+   engagement" earlier in the same sentence), not a request to sweep
+   every `confirm()` in the app. Worth the same treatment if asked.
+
+---
+
+## 2026-09-03 (48) — Real OSCP-style checklist + searchsploit tool
+
+**Done (user request: "implement OSCP-style checklists and script" —
+the deliberate follow-up flagged back in entry 45, when methodology
+selection first shipped as a tag-only feature over building a real
+distinct checklist under time pressure. Scoped via AskUserQuestion
+first: a genuinely different phase-based structure reusing existing
+tools where the architecture allows it and guidance-only where it
+can't, plus `searchsploit` as the one new tool wrapper):**
+- Researched the real OSCP/PEN-200 methodology (a fork agent ran
+  WebSearch against OffSec's own PEN-200 materials plus several
+  widely-cited community methodology writeups) rather than authoring the
+  phase structure from memory — confirmed phase ordering (Recon →
+  Enumeration → Vulnerability Analysis → Exploitation → Privilege
+  Escalation → Post-Exploitation → Proof/Reporting, with "enumeration"
+  conventionally ~80% of real exam/lab time) and that Linux/Windows
+  privesc, while one phase in OffSec's own materials, is treated as two
+  separate checklists in essentially every practical writeup since the
+  tools/techniques don't overlap at all.
+- New `oculus/checklist.py`: `build_oscp_checklist()` — 25 items across
+  8 categories (RECON/ENUM/VULN/EXPLOIT/PRIVL/PRIVW/POST/PROOF), a real
+  distinct structure, not a relabeled copy of `build_checklist()`'s WSTG
+  categories. Automated with tools already wrapped here wherever this
+  app's own architecture allows it (nmap/naabu for port scans,
+  ffuf/gobuster/katana for web enum, hydra for credential testing,
+  nuclei/nikto/zap for vuln scanning, sqlmap/commix for exploitation
+  where a web app is in scope) — `tools=[]` guidance-only where it
+  structurally can't be (SMB/SNMP enum with no wrapped tool yet,
+  exploitation, privesc *enumeration* — LinPEAS/WinPEAS run **on** an
+  already-compromised host, this app only ever reaches a target over the
+  network — and post-exploitation), with real concrete commands named in
+  the description text for each manual item rather than a vague "do this
+  by hand."
+- New `oculus/tools/searchsploit_tool.py` — the one genuinely new tool
+  wrapper. Architecturally unlike every other tool here: it doesn't scan
+  the target at all, just greps a local offline exploit-db mirror by
+  product/version — so `build_command()` defaults to searching the bare
+  target string as an honest placeholder (documented as such in the
+  description) rather than pretending there's a meaningful default,
+  since a real search needs whatever service/version enumeration
+  actually found. `--disable-colour` added after a real run showed
+  searchsploit emits ANSI highlight codes on stdout even when piped (not
+  a TTY) — this app has no ANSI-stripping anywhere in its output
+  pipeline, so left on that would've shown as literal escape-code junk
+  in the UI.
+- `backend/routers/engagements.py`: new `_CHECKLIST_BUILDERS` dict
+  (`{"wstg": build_checklist, "oscp": build_oscp_checklist}`) —
+  `create_engagement()` now actually picks the right builder based on
+  the `methodology` field instead of always building WSTG regardless of
+  what was selected (the real change from entry 45's tag-only version).
+  `oculus/cli.py`'s `new` command gained a matching `--methodology`
+  option (mirrors the same builder dict) — the CLI had no way at all to
+  create an OSCP engagement before this, a real gap now closed alongside
+  the web path rather than left web-only.
+- `oculus/report.py`: the Markdown report's executive-summary sentence
+  was hardcoded to always claim "OWASP WSTG checklist-driven" regardless
+  of what methodology actually built the engagement — a real inaccuracy
+  an OSCP-methodology report would otherwise have shipped with. New
+  `_methodology_label()` (mirrors `frontend/src/lib/methodologies.ts`'s
+  labels) makes it say what actually happened.
+- `frontend/src/lib/methodologies.ts`: OSCP's description updated from
+  "a planned follow-up, not yet implemented" to actually describe the
+  real checklist now built. `toolLogos.ts` gained a `searchsploit` badge.
+- `Dockerfile`: added `exploitdb` (provides `searchsploit`) — first tried
+  as a plain `apt install` alongside sqlmap/hydra (same pattern those
+  use), which **actually failed on a real build** (`E: Unable to locate
+  package exploitdb` — not packaged for Debian bookworm's default repos,
+  an assumption caught by actually running the build rather than
+  trusting it). Switched to a `git clone` install from the official
+  exploitdb repo, same pattern already used for nikto/testssl.sh/commix.
+- `README.md`: tool count 24 → 25 everywhere it was cited, `searchsploit`
+  added to the Tool Wrappers table, and the Checklist Coverage section
+  now documents both checklists (previously WSTG-only) with the real
+  phase/category breakdown for OSCP.
+
+**Verified:**
+- `_validate_tool_references()` (the import-time guard that already
+  existed for the WSTG checklist) extended to validate
+  `build_oscp_checklist()`'s tool references too, not just trusted by
+  inspection — both checklists' items checked together against the real
+  `TOOL_REGISTRY` on every import.
+- Direct Python check against the real running container:
+  `build_oscp_checklist()` → 25 items, 8 real distinct categories,
+  correct tool mappings per item (dumped and read every item ID +
+  category + tools list).
+- `generate_markdown()` on a real `Engagement(methodology="oscp", ...)`
+  → confirmed the executive summary now says "OSCP/PEN-200-style
+  checklist-driven" instead of the previously-hardcoded WSTG claim.
+- `npx tsc --noEmit`, `eslint`, `next build` all clean.
+- **Full Docker rebuild + real live verification**, not just unit-level:
+  first build attempt genuinely failed on the `exploitdb` apt package
+  (caught and fixed as described above, not assumed to work). Rebuilt
+  clean afterward; confirmed `which searchsploit chromium` inside the
+  live container, confirmed all 5 real pre-existing engagements survived
+  the rebuild. Ran a **real** `searchsploit --disable-colour "vsftpd
+  2.3.4"` through the actual `SearchsploitTool.run()` code path —
+  genuine exploit-db hits for the real, well-known vsftpd 2.3.4 backdoor
+  CVE, exit code 0, no ANSI codes in the output. Created a real
+  engagement via `POST /api/engagements` with `"methodology":"oscp"` —
+  confirmed all 25 items with correct IDs/categories/tools came back,
+  confirmed the engagement's own page loads (200) through the live
+  frontend container, then deleted the test engagement. Confirmed via
+  `GET /api/tools/searchsploit/command` that the live command preview
+  endpoint (the same one the Run Tool dialog calls) reflects
+  `--disable-colour` — caught and fixed a real staleness gap here too:
+  the first check against the live server showed the *old* command
+  without the flag, because editing the file on disk doesn't reload an
+  already-running (non-`--reload`) uvicorn process — required an actual
+  rebuild+recreate to confirm, not just re-reading the source file.
+
+**Next steps for the next agent:**
+1. `searchsploit` isn't in `findings_extractor.py`'s auto-extraction set
+   — its output (a title/path table) has a genuinely parseable shape,
+   unlike testssl's fixed-width columns, so this would be a reasonable
+   follow-up if a tester wants matched exploits to land as findings
+   automatically rather than just reading the raw output.
+2. OSCP-ENUM-04 (SMB enum) and OSCP-ENUM-08 (SNMP/other) are guidance-
+   only because no SMB/SNMP tool is wrapped here yet
+   (`smbclient`/`enum4linux`/`crackmapexec`, `snmpwalk`) — real gaps, not
+   fabricated ones; wrapping one of these would be a natural next
+   OSCP-checklist improvement, following the same pattern `searchsploit`
+   just established.
+3. Browser E2E (creating an OSCP engagement via the actual New Engagement
+   dialog, confirming the methodology picker's description text renders,
+   running searchsploit from the Run Tool dialog) not performed — same
+   outstanding Claude-in-Chrome connection issue noted in prior entries.
+
+---
+
+## 2026-09-01 (47) — Fix: Run Tool dialog output vanishes on close/reopen
+
+**Done (user report: "when collapse the result then open again it
+dissapear" — confirmed via AskUserQuestion this meant the Run Tool
+dialog specifically, not the checklist sidebar or a Tree view node):**
+- Root cause: `RunToolDialog`'s streamed output (`lines` state) is local
+  component state, and the parent only renders the dialog at all while
+  `showRun` is true (`{showRun && <RunToolDialog .../>}` in
+  `ItemDetail.tsx`) — closing it unmounts the component entirely,
+  discarding `lines`. Reopening creates a **brand-new** instance that
+  always started from `useState<string[]>([])`, regardless of whether
+  the tool had already finished and its output was sitting right there,
+  saved, in `item.tool_outputs`.
+- `RunToolDialog.tsx`: `lines`' initial value is now a lazy `useState`
+  initializer (`() => savedLinesFor(toolName)`) that seeds it from
+  `item.tool_outputs[toolName]` when present, instead of always starting
+  blank — so reopening the dialog for an item that already ran shows
+  that run's real saved output immediately.
+- New `savedLinesFor(name)` helper is also called directly from the tool
+  `<Select>`'s `onChange` (not a `toolName`-watching `useEffect` — that
+  approach was tried first but tripped this repo's `react-hooks/set-
+  state-in-effect` lint rule, same class of issue as `ItemDetail.tsx`'s
+  `selectOutputTab` fix back in entry 35) so switching the tool dropdown
+  mid-session shows *that* tool's own last-known output instead of
+  leaving the previously-selected tool's stale terminal content on
+  screen. The tool `<Select>` is already `disabled={running}`, so
+  neither path can ever fire mid-stream and clobber a live run —
+  `run()`'s own `setLines([])` at the start of a fresh run still
+  correctly clears whatever was just restored.
+
+**Verified:**
+- `npx tsc --noEmit`, `eslint`, `next build` all clean — the initial
+  `useEffect`-based version of this fix genuinely failed lint
+  (`Calling setState synchronously within an effect can trigger
+  cascading renders`), confirmed by running eslint against it before
+  switching to the lazy-initializer + onChange-handler approach that
+  passes clean.
+- Rebuilt (`docker compose build frontend`) and recreated
+  (`docker compose up -d frontend`) the live frontend container;
+  confirmed `GET /api/engagements` still returns all 4 real engagements
+  afterward (this fix touches no backend/data-layer code, so this was a
+  sanity check that the redeploy itself didn't disturb anything, not a
+  test of the fix).
+- Browser E2E (opening Run Tool, running a real tool, closing the
+  dialog, reopening it, confirming the output is still there; also
+  switching the tool dropdown mid-session to confirm the other tool's
+  own last output shows instead) **not** performed — same outstanding
+  Claude-in-Chrome connection issue noted in prior entries.
+
+**Next steps for the next agent:**
+1. Browser E2E still outstanding — worth a manual click-through once the
+   extension connection issue is sorted.
+2. This only restores output for a tool that has **already run and
+   finished** (or failed/was cancelled) at least once for this item —
+   reopening the dialog while a run is genuinely still in progress
+   server-side still shows the `alreadyRunningElsewhere` warning banner
+   instead of resuming the live stream, exactly as documented as a known
+   gap back in entry 25. Not attempted here; a real fix for that needs a
+   run-registry/pub-sub the backend doesn't have yet, not a frontend-only
+   change like this one.
+
+---
+
+## 2026-09-01 (46) — Fix: gowitness `exec: "google-chrome": ... not found`
+
+**Done (user report: a real `gowitness scan single -u http://192.168.2.11
+-T 30` run failed with `failed to initialize chrome context: exec:
+"google-chrome": executable file not found in $PATH`):**
+- Root cause: gowitness v3's default `chromedp` driver `exec`s a real
+  Chrome-compatible binary directly — this Docker image never installed
+  one. `--chrome-path`'s own `--help` text implies it downloads a
+  platform-appropriate binary by default when unset, but that plainly
+  didn't happen here (confirmed by reproducing the exact reported error
+  against this app's own image before touching anything).
+- `Dockerfile`: added `chromium` (Debian's package, much lighter than
+  installing real Google Chrome which isn't in Debian's default repos at
+  all) to the apt install list.
+- `oculus/tools/gowitness_tool.py`: new `_find_chrome()` — checks
+  `google-chrome`/`google-chrome-stable`/`chromium`/`chromium-browser` on
+  PATH, then macOS's Chrome/Chromium `.app` bundle paths (for a local
+  non-Docker dev machine) — and `build_command()` now passes
+  `--chrome-path <resolved>` explicitly whenever one is found, rather
+  than continuing to rely on gowitness's own unreliable-in-practice
+  auto-detection. No-op (unchanged command) when nothing is found
+  anywhere, same as before this fix.
+- **Found and fixed a real Docker-volume-orphaning incident along the
+  way, not just a hypothetical**: the local working directory had been
+  renamed from `SURVEIL` to `OCULUS` (by the user, outside this
+  session) since entry 45's rename work. Since `docker-compose.yml`'s
+  `surveil-data` volume key has no project-name override, Compose now
+  derives a *different* volume name (`oculus_surveil-data`) than the one
+  the pre-rename containers had been using (`surveil_surveil-data`) —
+  exactly the failure mode entry 45 flagged as a risk of ever renaming
+  the local folder or Compose project name. Confirmed directly: the
+  freshly-recreated `oculus-backend-1` container really was on a
+  different, near-empty volume, missing 3 of 4 real engagements
+  (`SecureBank`, `internal lab 2`, and one more). Fixed by copying the
+  missing engagement JSON files across from the old volume to the new
+  one with a temporary `alpine` container mounting both (`cp -n`, so it
+  never overwrites anything already in the new volume) — not a
+  compose-file change, since the new volume name is itself now stable
+  and correct for the renamed directory going forward.
+
+**Verified:**
+- Reproduced the exact reported error first, against this app's own
+  pre-fix image, before assuming the diagnosis was right.
+- `docker exec oculus-backend-1 chromium --version` → real Chromium
+  151.0.7922.173, confirming the apt package actually installed and is
+  runnable in the built image.
+- `GowitnessTool('192.168.2.11').build_command()` → confirmed
+  `--chrome-path /usr/bin/chromium` is now appended automatically.
+- **Full real run through the actual application code path**: called
+  `GowitnessTool('example.com').run(fast=True)` directly inside the
+  rebuilt live container — `exit_code: 0`,
+  `have-screenshot=true`, no Chrome-related error at all (the exact
+  failure mode reported is gone). Confirmed the screenshot file was
+  genuinely written to disk (`/app/screenshots/https---example.com.jpeg`)
+  — not just a claimed success in the log line.
+- Volume merge: listed both volumes' `.oculus/engagements/*.json`
+  contents before touching anything, confirmed the file sets didn't
+  collide (four distinct engagement IDs total), copied, then confirmed
+  via the live `/api/engagements` endpoint that all four real
+  engagements (`SecureBank`, `__test_style`, `internal lab 2`, `internal
+  lab1`) are visible again — including `__test_style` (methodology
+  `oscp`), which the user evidently created themselves to try out
+  entry 45's methodology picker.
+
+**Next steps for the next agent:**
+1. Incidental finding, not fixed here (out of scope for this report):
+   `docker-compose.yml`'s `backend` service sets `working_dir: /app`,
+   which overrides the `Dockerfile`'s `WORKDIR /data` — so gowitness's
+   default relative `./screenshots/` path resolves to `/app/screenshots`,
+   **outside** the persistent `/data` volume. Screenshots are lost on
+   every container recreation (confirmed: an old one,
+   `screenshots/http---192.168.2.15.jpeg`, ended up accidentally
+   committed into the repo itself in entry 45's rename commit, which is
+   how this was even noticed). Worth either passing gowitness
+   `--screenshot-path /data/screenshots` explicitly or changing the
+   compose `working_dir` — not attempted here since it's unrelated to
+   the reported Chrome error and touches a different, real design
+   question (should screenshots be gitignored-but-persisted, or
+   deliberately ephemeral?) that's worth asking about rather than
+   guessing.
+2. If the local directory or Docker Compose project name is ever renamed
+   again, the same volume-orphaning failure mode will recur — this entry
+   fixed the *data* (merged the volumes) but not the *structural* cause
+   (`docker-compose.yml`'s volume still has no `external: true` pin).
+   Entry 45 already discussed the tradeoffs of pinning it; still
+   unresolved.
+
+---
+
 ## 2026-09-01 (45) — Rename surveil -> OCULUS, engagement methodology tag, live-log noise filter
 
 **Done (user request, three parts — scoped via AskUserQuestion before

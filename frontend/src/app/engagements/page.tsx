@@ -17,6 +17,12 @@ import DialogTitle from "@mui/material/DialogTitle";
 import DialogContent from "@mui/material/DialogContent";
 import DialogActions from "@mui/material/DialogActions";
 import Stack from "@mui/material/Stack";
+import FormControl from "@mui/material/FormControl";
+import InputLabel from "@mui/material/InputLabel";
+import Select from "@mui/material/Select";
+import MenuItem from "@mui/material/MenuItem";
+import ListItemIcon from "@mui/material/ListItemIcon";
+import ListItemText from "@mui/material/ListItemText";
 import AddIcon from "@mui/icons-material/Add";
 import SearchIcon from "@mui/icons-material/Search";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
@@ -58,34 +64,37 @@ function IconPicker({
   onChange: (key: string) => void;
 }) {
   return (
-    <Box>
-      <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 0.75 }}>
-        Icon
-      </Typography>
-      <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-        {Object.entries(ENGAGEMENT_ICONS).map(([key, meta]) => {
-          const selected = key === value;
+    <FormControl fullWidth>
+      <InputLabel id="engagement-icon-label">Icon</InputLabel>
+      <Select
+        labelId="engagement-icon-label"
+        label="Icon"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        renderValue={(val) => {
+          const meta = engagementIcon(val);
           const { Icon } = meta;
           return (
-            <Tooltip key={key} title={meta.label}>
-              <IconButton
-                onClick={() => onChange(key)}
-                sx={{
-                  width: 40,
-                  height: 40,
-                  border: "1px solid",
-                  borderColor: selected ? meta.color : "divider",
-                  bgcolor: selected ? `${meta.color}22` : "transparent",
-                  color: meta.color,
-                }}
-              >
-                <Icon fontSize="small" />
-              </IconButton>
-            </Tooltip>
+            <Stack direction="row" alignItems="center" spacing={1}>
+              <Icon fontSize="small" sx={{ color: meta.color }} />
+              <span>{meta.label}</span>
+            </Stack>
+          );
+        }}
+      >
+        {Object.entries(ENGAGEMENT_ICONS).map(([key, meta]) => {
+          const { Icon } = meta;
+          return (
+            <MenuItem key={key} value={key}>
+              <ListItemIcon>
+                <Icon fontSize="small" sx={{ color: meta.color }} />
+              </ListItemIcon>
+              <ListItemText>{meta.label}</ListItemText>
+            </MenuItem>
           );
         })}
-      </Stack>
-    </Box>
+      </Select>
+    </FormControl>
   );
 }
 
@@ -98,42 +107,66 @@ function MethodologyPicker({
 }) {
   return (
     <Box>
-      <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 0.75 }}>
+      <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1 }}>
         Testing strategy / methodology
       </Typography>
-      <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap mb={0.75}>
+      <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
         {Object.entries(METHODOLOGIES).map(([key, meta]) => {
           const selected = key === value;
+          const { Icon } = meta;
           return (
-            <Box
+            <Paper
               key={key}
-              role="button"
-              tabIndex={0}
+              component="button"
+              type="button"
               onClick={() => onChange(key)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") onChange(key);
-              }}
+              elevation={0}
               sx={{
+                flex: 1,
+                textAlign: "left",
                 cursor: "pointer",
+                p: 1.5,
+                display: "flex",
+                flexDirection: "column",
+                gap: 0.75,
+                fontFamily: "inherit",
                 border: "1px solid",
-                borderColor: selected ? "primary.main" : "divider",
-                bgcolor: selected ? "rgba(94,234,212,0.1)" : "transparent",
-                borderRadius: 1,
-                px: 1.5,
-                py: 0.75,
-                "&:hover": { borderColor: "primary.main" },
+                borderColor: selected ? meta.color : "divider",
+                bgcolor: selected ? `${meta.color}14` : "background.paper",
+                boxShadow: selected
+                  ? `0 0 0 1px ${meta.color}59, 0 0 14px ${meta.color}2e`
+                  : "none",
+                transition: "border-color 0.15s, box-shadow 0.15s, background-color 0.15s",
+                "&:hover": { borderColor: meta.color },
               }}
             >
-              <Typography variant="body2" fontWeight={selected ? 700 : 400}>
-                {meta.label}
+              <Stack direction="row" spacing={1} alignItems="center">
+                <Box
+                  sx={{
+                    width: 28,
+                    height: 28,
+                    borderRadius: 1,
+                    flexShrink: 0,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    bgcolor: `${meta.color}22`,
+                    color: meta.color,
+                  }}
+                >
+                  <Icon fontSize="small" />
+                </Box>
+                <Typography variant="body2" fontWeight={700}>
+                  {meta.label}
+                </Typography>
+              </Stack>
+              <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.45 }}>
+                {meta.description}
               </Typography>
-            </Box>
+            </Paper>
           );
         })}
       </Stack>
-      <Typography variant="caption" color="text.secondary">
-        {METHODOLOGIES[value]?.description}
-      </Typography>
     </Box>
   );
 }
@@ -287,6 +320,8 @@ export default function EngagementsPage() {
   const [icon, setIcon] = useState(DEFAULT_ENGAGEMENT_ICON);
   const [methodology, setMethodology] = useState(DEFAULT_METHODOLOGY);
   const [creating, setCreating] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   async function refresh() {
     try {
@@ -317,14 +352,18 @@ export default function EngagementsPage() {
     }
   }
 
-  async function handleDelete(id: string, name: string) {
-    if (!confirm(`Delete engagement "${name}"? This cannot be undone.`)) return;
+  async function confirmDelete() {
+    if (!deleteTarget) return;
+    setDeleting(true);
     try {
-      await api.deleteEngagement(id);
-      toast.success(`Deleted "${name}"`);
+      await api.deleteEngagement(deleteTarget.id);
+      toast.success(`Deleted "${deleteTarget.name}"`);
+      setDeleteTarget(null);
       refresh();
     } catch {
       toast.error("Failed to delete engagement.");
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -516,13 +555,36 @@ export default function EngagementsPage() {
                   <EngagementCard
                     key={e.id}
                     engagement={e}
-                    onDelete={() => handleDelete(e.id, e.name)}
+                    onDelete={() => setDeleteTarget({ id: e.id, name: e.name })}
                     delay={Math.min(i * 0.04, 0.3)}
                   />
                 ))
               )}
         </Box>
       )}
+
+      <Dialog
+        open={deleteTarget !== null}
+        onClose={() => !deleting && setDeleteTarget(null)}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle>Delete engagement?</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary">
+            This will permanently delete <strong>&ldquo;{deleteTarget?.name}&rdquo;</strong> and
+            all of its checklist items, findings, and tool output. This cannot be undone.
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2.5 }}>
+          <Button onClick={() => setDeleteTarget(null)} disabled={deleting}>
+            Cancel
+          </Button>
+          <Button onClick={confirmDelete} color="error" variant="contained" disabled={deleting}>
+            {deleting ? "Deleting…" : "Delete"}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Container>
   );
 }

@@ -62,6 +62,21 @@ def _deduplicate_findings(engagement: Engagement) -> list[tuple[list[str], Findi
     return result
 
 
+# Mirrors frontend/src/lib/methodologies.ts's labels — the executive
+# summary should say what methodology actually drove this engagement's
+# checklist, not always claim WSTG regardless (a real inaccuracy an OSCP-
+# methodology report would otherwise have shipped with).
+_METHODOLOGY_LABELS = {
+    "wstg": "OWASP WSTG",
+    "oscp": "OSCP/PEN-200-style",
+    "other": "OWASP WSTG",
+}
+
+
+def _methodology_label(methodology: str) -> str:
+    return _METHODOLOGY_LABELS.get(methodology, "OWASP WSTG")
+
+
 def generate_markdown(engagement: Engagement, out_path: Optional[Path] = None) -> str:
     """Render *engagement* as a Markdown pentest report string."""
     lines: list[str] = []
@@ -87,8 +102,8 @@ def generate_markdown(engagement: Engagement, out_path: Optional[Path] = None) -
         "",
         "## Executive Summary",
         "",
-        f"This report presents findings from a deterministic, OWASP WSTG checklist-driven "
-        f"web application security assessment of **{engagement.target}**. "
+        f"This report presents findings from a deterministic, {_methodology_label(engagement.methodology)} "
+        f"checklist-driven assessment of **{engagement.target}**. "
         f"All enumeration was performed using standard open-source tools invoked directly; "
         f"no AI-driven decision-making was used in the enumeration phase.",
         "",

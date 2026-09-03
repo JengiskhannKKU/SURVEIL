@@ -4,12 +4,21 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from oculus import state
-from oculus.checklist import build_checklist
+from oculus.checklist import build_checklist, build_oscp_checklist
 from oculus.models import Engagement
 
 from ..deps import load_engagement
 
 router = APIRouter(prefix="/api/engagements", tags=["engagements"])
+
+# Methodology tag -> checklist builder. "other" intentionally falls back to
+# the WSTG checklist as a starting point (see frontend/src/lib/
+# methodologies.ts's own description of that option) rather than having a
+# third checklist shape with nothing to actually distinguish it.
+_CHECKLIST_BUILDERS = {
+    "wstg": build_checklist,
+    "oscp": build_oscp_checklist,
+}
 
 
 class NewEngagement(BaseModel):
@@ -27,13 +36,15 @@ def list_engagements() -> list[dict]:
 
 @router.post("")
 def create_engagement(body: NewEngagement) -> Engagement:
+    methodology = body.methodology or "wstg"
+    build = _CHECKLIST_BUILDERS.get(methodology, build_checklist)
     engagement = Engagement(
         target=body.target,
         name=body.name or body.target,
         icon=body.icon or "web",
-        methodology=body.methodology or "wstg",
+        methodology=methodology,
         scope_notes=body.notes,
-        checklist_items=build_checklist(),
+        checklist_items=build(),
     )
     state.save(engagement)
     return engagement

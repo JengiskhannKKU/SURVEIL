@@ -8,6 +8,11 @@ build/
 dist/
 .DS_Store
 
+# Next.js build output — frontend/.gitignore already covers this inside
+# frontend/, but a `next build` accidentally run from the repo root
+# (wrong cwd) creates one here too; ignore it at both levels.
+.next/
+
 *.txt
 Proposal.pdf
 

@@ -24,6 +24,7 @@ from .commix_tool import CommixTool
 from .curl_tool import CurlTool
 from .wget_tool import WgetTool
 from .zap_tool import ZapTool
+from .searchsploit_tool import SearchsploitTool
 
 TOOL_REGISTRY: dict[str, type] = {
     "nmap":      NmapTool,
@@ -50,6 +51,7 @@ TOOL_REGISTRY: dict[str, type] = {
     "curl":      CurlTool,
     "wget":      WgetTool,
     "zap":       ZapTool,
+    "searchsploit": SearchsploitTool,
 }
 
 __all__ = [
@@ -61,6 +63,6 @@ __all__ = [
     "FfufTool", "GobusterTool", "KatanaTool",
     "NiktoTool", "TestsslTool", "SqlmapTool", "HydraTool",
     "NaabuTool", "DalfoxTool", "CommixTool",
-    "CurlTool", "WgetTool", "ZapTool",
+    "CurlTool", "WgetTool", "ZapTool", "SearchsploitTool",
     "TOOL_REGISTRY",
 ]

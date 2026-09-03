@@ -37,6 +37,7 @@ export const TOOL_LOGOS: Record<string, ToolLogoMeta> = {
   curl:      { label: "CU", color: "#7c3aed" },
   wget:      { label: "WG", color: "#0d9488" },
   zap:       { label: "ZP", color: "#f59e0b" },
+  searchsploit: { label: "SX", color: "#b91c1c" },
 };
 
 export function toolLogo(name: string): ToolLogoMeta {

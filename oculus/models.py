@@ -123,14 +123,14 @@ class Engagement(BaseModel):
     # curated set (web/api/mobile/cloud/...) covers what a pentest target
     # actually is far better than an arbitrary icon library would anyway.
     icon: str = "web"
-    # Testing strategy/methodology tag chosen at creation (see
-    # frontend/src/lib/methodologies.ts) — "wstg" (default), "oscp", or
-    # "other". Every option currently builds the same real OWASP WSTG
-    # checklist below (checklist.build_checklist()); this is a tag for
-    # now, not yet a different checklist generator — a genuine distinct
-    # OSCP-style checklist needs its own properly-sourced content, not a
-    # guessed one, and is a deliberate follow-up rather than part of this
-    # change.
+    # Testing strategy/methodology chosen at creation (see
+    # frontend/src/lib/methodologies.ts and backend/routers/engagements.py's
+    # _CHECKLIST_BUILDERS) — "wstg" builds the OWASP WSTG checklist
+    # (checklist.build_checklist()), "oscp" builds the genuinely distinct
+    # phase-based OSCP/PEN-200-style checklist (checklist.
+    # build_oscp_checklist()), "other" falls back to WSTG as a starting
+    # point. This only decides which checklist gets built at creation
+    # time — it isn't re-consulted afterward.
     methodology: str = "wstg"
     scope_notes: str = ""
     created_at: datetime = Field(default_factory=datetime.now)

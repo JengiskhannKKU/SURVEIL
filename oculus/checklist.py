@@ -1655,6 +1655,328 @@ def build_checklist() -> list[ChecklistItem]:
     ]
 
 
+def build_oscp_checklist() -> list[ChecklistItem]:
+    """Return a fresh, ordered list of OSCP/PEN-200-style checklist items.
+
+    A genuinely different shape than build_checklist() above, not a
+    relabeled copy of it — OSCP methodology is phase-based (recon ->
+    enumeration -> vulnerability analysis -> exploitation -> privilege
+    escalation -> post-exploitation -> proof/reporting), not organized
+    around OWASP's web-application test categories, and "enumeration"
+    alone is conventionally ~80% of the actual work (a point repeated
+    across essentially every OSCP methodology writeup).
+
+    Automated (real tools already wrapped here) where this app's own
+    architecture genuinely allows it — it runs recon/enumeration tools
+    against a target over the network, same as the WSTG checklist above.
+    Left as `tools=[]` guidance-only where it structurally can't be: this
+    app never gets an interactive shell on a compromised host, so
+    exploitation, privilege escalation enumeration (LinPEAS/WinPEAS run
+    *on* the target, not against it), and post-exploitation are real
+    checklist items with real guidance in their description, not tools
+    that would just fail or lie about doing something they can't.
+
+    Privilege escalation is split into separate Linux/Windows categories
+    (OffSec's own phase list doesn't formally split it, but every
+    community methodology writeup treats them as two checklists in
+    practice, since the techniques/tools are entirely different) so a
+    tester working a Linux box isn't stuck scrolling past Windows-only
+    guidance and vice versa.
+    """
+    return [
+        # ================================================================
+        # RECONNAISSANCE
+        # ================================================================
+        ChecklistItem(
+            id="OSCP-RECON-01",
+            name="Target Scoping & Passive OSINT",
+            description=(
+                "Confirm the target(s) actually in scope for this engagement before "
+                "touching anything (rules of engagement, IP ranges, excluded hosts). "
+                "Passively gather whatever's publicly known about the organization/host "
+                "first — no wrapped tool automates this step; it's deliberately manual."
+            ),
+            category="Reconnaissance",
+            category_code="RECON",
+            tools=[],
+        ),
+        ChecklistItem(
+            id="OSCP-RECON-02",
+            name="Identify Live Hosts",
+            description=(
+                "Confirm the target actually responds before spending time enumerating "
+                "it in depth — a fast ping sweep / top-ports pass first, ahead of the "
+                "full port scan below."
+            ),
+            category="Reconnaissance",
+            category_code="RECON",
+            tools=["nmap", "naabu"],
+        ),
+        ChecklistItem(
+            id="OSCP-RECON-03",
+            name="DNS / Subdomain Enumeration",
+            description=(
+                "If the target is a domain (not a bare IP), passively enumerate "
+                "subdomains and DNS records — additional in-scope hosts are commonly "
+                "found this way and each expands the attack surface."
+            ),
+            category="Reconnaissance",
+            category_code="RECON",
+            tools=["subfinder", "amass", "dnsx"],
+        ),
+        # ================================================================
+        # ENUMERATION — conventionally the bulk of real OSCP exam/lab time
+        # ================================================================
+        ChecklistItem(
+            id="OSCP-ENUM-01",
+            name="Full TCP Port Scan (All 65535 Ports)",
+            description=(
+                "A top-1000/default nmap scan misses services on non-standard ports — "
+                "a real, commonly-cited exam mistake. Run a full-range scan first, then "
+                "feed exactly the open ports found into the detailed scan below."
+            ),
+            category="Enumeration",
+            category_code="ENUM",
+            tools=["nmap"],
+        ),
+        ChecklistItem(
+            id="OSCP-ENUM-02",
+            name="Service/Version Detection & Default Scripts",
+            description=(
+                "Detailed -sV -sC scan of every open port found above: exact service "
+                "versions (needed for the exploit-lookup step later) and nmap's default "
+                "NSE script set, which already covers several common misconfig checks "
+                "(anonymous FTP, some SMB checks) without a separate tool."
+            ),
+            category="Enumeration",
+            category_code="ENUM",
+            tools=["nmap"],
+        ),
+        ChecklistItem(
+            id="OSCP-ENUM-03",
+            name="UDP Port Scan",
+            description=(
+                "A TCP-only scan misses UDP services (SNMP, DNS, TFTP, ...) entirely — "
+                "commonly skipped under time pressure, also commonly where an easy win "
+                "is sitting."
+            ),
+            category="Enumeration",
+            category_code="ENUM",
+            tools=["nmap"],
+        ),
+        ChecklistItem(
+            id="OSCP-ENUM-04",
+            name="SMB / NetBIOS Enumeration",
+            description=(
+                "No CLI tool for this is wrapped here yet — run by hand: "
+                "`smbclient -L //<target>/ -N` and `smbclient //<target>/<share> -N` "
+                "for anonymous share access, `enum4linux -a <target>` (or crackmapexec) "
+                "for users/groups/OS info. A very common OSCP/PWK-lab foothold path."
+            ),
+            category="Enumeration",
+            category_code="ENUM",
+            tools=[],
+        ),
+        ChecklistItem(
+            id="OSCP-ENUM-05",
+            name="Web Server Directory/File Enumeration",
+            description=(
+                "Brute-force directories/files and crawl the site on every web port "
+                "found — the same web-enumeration tools as the WSTG checklist, just "
+                "run here because a web app is one of the most common OSCP-lab entry "
+                "points, not because this is a web-app-security test."
+            ),
+            category="Enumeration",
+            category_code="ENUM",
+            tools=["ffuf", "gobuster", "katana"],
+        ),
+        ChecklistItem(
+            id="OSCP-ENUM-06",
+            name="Web Technology Fingerprinting",
+            description=(
+                "Identify the exact web server/framework/CMS and version on each web "
+                "port — feeds directly into the exploit-lookup step below."
+            ),
+            category="Enumeration",
+            category_code="ENUM",
+            tools=["whatweb", "httpx", "nikto"],
+        ),
+        ChecklistItem(
+            id="OSCP-ENUM-07",
+            name="Default / Weak Credential Testing",
+            description=(
+                "Try default and commonly-weak credentials against every exposed login "
+                "(SSH, a web login form, FTP, ...) found so far."
+            ),
+            category="Enumeration",
+            category_code="ENUM",
+            tools=["hydra"],
+        ),
+        ChecklistItem(
+            id="OSCP-ENUM-08",
+            name="Other Service Enumeration (SNMP, etc.)",
+            description=(
+                "Any other open service nmap's scripts flagged but no wrapped tool "
+                "covers directly — e.g. `snmpwalk -c public -v1 <target>` if SNMP is "
+                "open. Manual by design; the specific commands depend entirely on "
+                "what actually turned up in the port scan."
+            ),
+            category="Enumeration",
+            category_code="ENUM",
+            tools=[],
+        ),
+        # ================================================================
+        # VULNERABILITY ANALYSIS
+        # ================================================================
+        ChecklistItem(
+            id="OSCP-VULN-01",
+            name="Automated Vulnerability Scan",
+            description="Run template-based vulnerability scanning against every identified service/web port.",
+            category="Vulnerability Analysis",
+            category_code="VULN",
+            tools=["nuclei"],
+        ),
+        ChecklistItem(
+            id="OSCP-VULN-02",
+            name="Exploit Lookup by Service/Version",
+            description=(
+                "For every specific product+version identified during enumeration, "
+                "search the local exploit-db mirror for a known, working exploit — "
+                "the direct payoff of doing enumeration thoroughly."
+            ),
+            category="Vulnerability Analysis",
+            category_code="VULN",
+            tools=["searchsploit"],
+        ),
+        ChecklistItem(
+            id="OSCP-VULN-03",
+            name="Web Application Vulnerability Scan",
+            description="If a web app is in scope, a dedicated web vulnerability scan on top of the generic template scan above.",
+            category="Vulnerability Analysis",
+            category_code="VULN",
+            tools=["nikto", "zap"],
+        ),
+        # ================================================================
+        # EXPLOITATION
+        # ================================================================
+        ChecklistItem(
+            id="OSCP-EXPLOIT-01",
+            name="Attempt Identified Exploit",
+            description=(
+                "Weaponize and run the exploit found above (a public PoC adapted to "
+                "this target, or a manual technique). Inherently manual and specific "
+                "to what was actually found — no generic tool automates \"exploit the "
+                "thing.\" Set up a listener (e.g. `nc -lvnp <port>`) before firing it."
+            ),
+            category="Exploitation",
+            category_code="EXPLOIT",
+            tools=[],
+        ),
+        ChecklistItem(
+            id="OSCP-EXPLOIT-02",
+            name="SQL Injection Testing",
+            description="If a web app with data-driven pages is in scope, test for and exploit SQL injection.",
+            category="Exploitation",
+            category_code="EXPLOIT",
+            tools=["sqlmap"],
+        ),
+        ChecklistItem(
+            id="OSCP-EXPLOIT-03",
+            name="Command Injection Testing",
+            description="Test any web app input that might reach a shell command for OS command injection.",
+            category="Exploitation",
+            category_code="EXPLOIT",
+            tools=["commix"],
+        ),
+        # ================================================================
+        # PRIVILEGE ESCALATION — split Linux/Windows: same phase in OffSec's
+        # own materials, but different techniques/tools in every practical
+        # writeup, so kept as two checklists rather than one mixed one.
+        # ================================================================
+        ChecklistItem(
+            id="OSCP-PRIVL-01",
+            name="Linux Privilege Escalation Enumeration",
+            description=(
+                "Run on the compromised host itself (this app only reaches the target "
+                "over the network, it doesn't get a shell on it) — LinPEAS or "
+                "linux-smart-enumeration, plus by hand: `sudo -l`, SUID/SGID binaries "
+                "(`find / -perm -4000 2>/dev/null`), writable cron jobs, kernel version, "
+                "readable credential files."
+            ),
+            category="Privilege Escalation (Linux)",
+            category_code="PRIVL",
+            tools=[],
+        ),
+        ChecklistItem(
+            id="OSCP-PRIVL-02",
+            name="Linux Kernel/Service Exploit Research",
+            description="Look up known local-privesc exploits for the exact kernel version and any locally-running services/cron scripts found above.",
+            category="Privilege Escalation (Linux)",
+            category_code="PRIVL",
+            tools=["searchsploit"],
+        ),
+        ChecklistItem(
+            id="OSCP-PRIVW-01",
+            name="Windows Privilege Escalation Enumeration",
+            description=(
+                "Run on the compromised host itself — WinPEAS, plus by hand: "
+                "`whoami /priv`, unquoted service paths, AlwaysInstallElevated, "
+                "stored credentials (`reg query`, scheduled tasks, saved sessions), "
+                "`systeminfo` for a missing-patch check."
+            ),
+            category="Privilege Escalation (Windows)",
+            category_code="PRIVW",
+            tools=[],
+        ),
+        ChecklistItem(
+            id="OSCP-PRIVW-02",
+            name="Windows Kernel/Service Exploit Research",
+            description="Look up known local-privesc exploits for the exact Windows build and any third-party services found running above.",
+            category="Privilege Escalation (Windows)",
+            category_code="PRIVW",
+            tools=["searchsploit"],
+        ),
+        # ================================================================
+        # POST-EXPLOITATION
+        # ================================================================
+        ChecklistItem(
+            id="OSCP-POST-01",
+            name="Credential Harvesting & Loot Collection",
+            description="Collect credentials, config files, and other loot from the compromised host — often the key to reaching further hosts.",
+            category="Post-Exploitation",
+            category_code="POST",
+            tools=[],
+        ),
+        ChecklistItem(
+            id="OSCP-POST-02",
+            name="Lateral Movement / Pivoting",
+            description="If other hosts are reachable only from the compromised box, pivot through it (e.g. chisel/ligolo/SSH tunneling) to reach them.",
+            category="Post-Exploitation",
+            category_code="POST",
+            tools=[],
+        ),
+        # ================================================================
+        # PROOF & REPORTING
+        # ================================================================
+        ChecklistItem(
+            id="OSCP-PROOF-01",
+            name="Capture Proof",
+            description="Capture proof.txt/local.txt contents and a screenshot showing the compromised host's hostname/IP alongside the proof file — the actual evidence an OSCP-style report is graded on.",
+            category="Proof & Reporting",
+            category_code="PROOF",
+            tools=[],
+        ),
+        ChecklistItem(
+            id="OSCP-PROOF-02",
+            name="Document Findings",
+            description="Write up every step that led to compromise, in order, with commands and evidence — use this app's own Findings panel and report export for each checklist item as you go, not from memory at the end.",
+            category="Proof & Reporting",
+            category_code="PROOF",
+            tools=[],
+        ),
+    ]
+
+
 def _validate_tool_references() -> None:
     """Catch a checklist item pointing at a tool name that doesn't actually
     exist (e.g. "wappalyzer-cli" sat here unregistered/unrunnable for a
@@ -1669,7 +1991,10 @@ def _validate_tool_references() -> None:
     from .tools import TOOL_REGISTRY  # local import: tools/ has no reason to import checklist.py, but avoid any load-order assumption
 
     known = set(TOOL_REGISTRY.keys())
-    items_by_id = {item.id: item for item in build_checklist()}
+    # Both checklists share the same tool registry and item-shape checks —
+    # validate them together so an unregistered tool reference in the OSCP
+    # checklist is caught at import time exactly like a WSTG one.
+    items_by_id = {item.id: item for item in build_checklist() + build_oscp_checklist()}
     for item in items_by_id.values():
         unknown = [t for t in item.tools if t not in known]
         if unknown:
