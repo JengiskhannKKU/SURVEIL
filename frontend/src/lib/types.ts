@@ -20,6 +20,16 @@ export interface Finding {
   created_at: string;
 }
 
+export interface EvidenceFile {
+  id: string;
+  filename: string;
+  stored_name: string;
+  content_type: string;
+  size_bytes: number;
+  description: string;
+  uploaded_at: string;
+}
+
 export interface ChecklistItem {
   id: string;
   name: string;
@@ -37,6 +47,7 @@ export interface ChecklistItem {
   owasp_ref: string;
   cwe_ids: string[];
   notes: string;
+  evidence: EvidenceFile[];
 }
 
 export interface ManualPathEntry {

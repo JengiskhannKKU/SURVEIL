@@ -20,7 +20,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=7.0", "pytest-asyncio"]
-web = ["fastapi>=0.110", "uvicorn[standard]>=0.29", "websockets>=12.0"]
+web = ["fastapi>=0.110", "uvicorn[standard]>=0.29", "websockets>=12.0", "python-multipart>=0.0.9"]
 
 [project.scripts]
 oculus = "oculus.cli:main"

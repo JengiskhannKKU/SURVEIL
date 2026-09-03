@@ -6,6 +6,511 @@ was verified, and what the next agent should pick up.
 
 ---
 
+## 2026-09-03 (57) — Three real gaps found by actually running the OSCP checklist against a live HTB target
+
+**Done (user: ran the app themselves against a real, authorized HTB
+target — HTB "Cap", 10.129.34.27 — and asked what OCULUS is missing;
+Claude-in-Chrome still wasn't connecting, so verification here was done
+by driving the same `/ws/engagements/{id}/items/{id}/run` WebSocket the
+UI itself uses, directly, against the live target over the tester's own
+HTB VPN):**
+
+1. **`OSCP-ENUM-02`'s default nmap command was hardcoded to web ports,
+   silently dropping whatever OSCP-ENUM-01 had already found.** Real
+   run: OSCP-ENUM-01/RECON-02 found 21 (ftp)/22 (ssh)/80 (http) open;
+   OSCP-ENUM-02's unedited "full" command (`-p
+   80,443,8080,8443,8000,8888,3000`) then only ever touched port 80,
+   even though its own description says "every open port found above."
+   Fixed in `oculus/checklist.py`: `apply_tool_overrides()` (already the
+   shared mechanism for wordlist-category/nuclei-tag/curl-wget
+   overrides — see entries 16 and earlier) gained an `engagement`
+   parameter and a new nmap branch, `_apply_nmap_override()`, that —
+   for `OSCP-ENUM-02` specifically — swaps `-p <web ports>` for every
+   port this engagement's own earlier nmap output already reported
+   open (`_discovered_ports()`), falling back to the original web-port
+   default when nothing's been scanned yet. Wired through
+   `Orchestrator.run_tool` (has `self.engagement` already) and the Run
+   Tool dialog's command-preview endpoint (`GET
+   /api/tools/{tool}/command`, which didn't have engagement context at
+   all before — added an `eng_id` query param, `backend/routers/tools.py`
+   loads the engagement if given; `frontend/src/lib/api.ts`'s
+   `previewCommand()` and its one call site in `RunToolDialog.tsx` now
+   pass `engagementId` through). Re-ran the real scan afterward:
+   command became `nmap -sV -sC -p 21,22,80 --open -T4 10.129.34.27`.
+2. **A tool's own non-zero exit code was always `Status.FAILED`, even
+   when that exit code is a normal, correct negative test result.**
+   Real run: the new `ftp` tool (entry 56) correctly found anonymous
+   FTP login denied (`530 Login incorrect`, curl exit 67 =
+   CURLE_LOGIN_DENIED) — a clean, completed test — but the checklist
+   item still showed red/FAILED, indistinguishable from the tool having
+   actually crashed. `ToolResult.success` (`oculus/tools/base.py`) is
+   no longer just `exit_code == 0`; `BaseTool` gained an overridable
+   `is_negative_result(exit_code) -> bool` hook (default: always
+   False, unchanged behavior for every existing tool) that a wrapper
+   can use for its own confirmed "ran fine, found nothing" codes.
+   `FtpTool` overrides it for curl's 67 specifically — every other
+   non-zero curl code (connection refused, timeout, ...) is still a
+   real failure. Re-ran for real afterward: same 530 response, now
+   `success=True`, item status `done`.
+3. **`_INTERESTING_PORTS` auto-finding (open FTP/MySQL/Redis/RDP/...
+   ports get flagged as a Finding automatically) only ever fired from
+   `extract_naabu`, never `extract_nmap`** — despite nmap being the
+   port scanner every checklist item in this app actually maps to. Real
+   run: nmap found port 21 open, zero Findings were generated for it.
+   `oculus/findings_extractor.py`: factored the shared per-port lookup
+   into `_interesting_port_findings(item_id, tool, ports, output)` (used
+   by both extractors now) and added the missing call from
+   `extract_nmap()` (parses nmap's own `21/tcp open ...` table lines).
+   Re-ran for real afterward: `OSCP-ENUM-02` now carries a "FTP Service
+   Exposed" (medium, CWE-16) Finding, tool="nmap".
+
+**Verified (all three against the same live, authorized target, not
+mocked — nmap runs take ~130s each over the tester's VPN, so this was
+genuinely slow to confirm, not assumed):**
+- `python3 -c "from oculus.checklist import build_checklist,
+  build_oscp_checklist"` still builds clean; `_discovered_ports()` /
+  `apply_tool_overrides()` tested directly against the real engagement's
+  already-saved nmap output (`['21','22','80']` recovered correctly).
+- `tsc --noEmit`, `eslint`, `next build` all clean on the frontend
+  changes (`api.ts`, `RunToolDialog.tsx`).
+- Rebuilt (`docker compose build backend frontend`) and recreated
+  (`docker compose up -d backend frontend`) both live containers.
+- Re-ran `ftp` on `OSCP-ENUM-11` for real: `success=True`, item status
+  `done` (was `failed` before the fix, same real 530 response both
+  times).
+- Re-ran `nmap` on `OSCP-ENUM-02` for real: command line confirmed as
+  `-p 21,22,80` (was the hardcoded web-port list before the fix); item
+  now carries an auto-extracted "FTP Service Exposed" Finding that
+  didn't exist before.
+
+**Next steps for the next agent:**
+1. `is_negative_result()` is only implemented for `ftp_tool.py`'s curl
+   exit 67 — hydra (no valid credential pair), sqlmap (not injectable),
+   nikto (clean scan) are the same likely-affected shape flagged in the
+   original report but *not yet confirmed* against a real non-zero exit
+   from any of them; add overrides only once actually confirmed, per
+   the docstring's own warning against guessing a code.
+2. `_apply_nmap_override()` is scoped to `OSCP-ENUM-02` only (the one
+   item whose own description explicitly asks for "every open port
+   found above"); the WSTG checklist is web-only by design (see
+   checklist.py's module docstring) so this wasn't extended there.
+3. The other gaps from the same live-testing report — evidence not in
+   Markdown/.docx export, metasploit/enum4linux/mysql/ftp/redis missing
+   findings-extractor entries, no PostgreSQL/MSSQL/Oracle client — are
+   still open, not part of this entry's scope (user asked specifically
+   for items 1-3).
+
+---
+
+## 2026-09-03 (56) — feat: mysql/ftp/redis service-enumeration tools
+
+**Done (user: "add database tools in project example mysql, ftp, other
+etc"):**
+- New wrapped tools, same `BaseTool` pattern as every other wrapper:
+  - `oculus/tools/mysql_tool.py` — `mysql -h <target> -u root` (blank
+    password), fast mode just proves the login, full mode also lists
+    every database plus `mysql.user`. Real, commonly-tested OSCP finding
+    (default-install blank root), distinct from web-app SQL injection
+    (`sqlmap` already covers that).
+  - `oculus/tools/ftp_tool.py` — anonymous FTP login check via `curl
+    ftp://<target>/ -u anonymous:anonymous@example.com` rather than the
+    interactive `ftp` client (non-interactive, scriptable, clean exit
+    code instead of a stuck prompt). Full mode adds `-v` to show the
+    actual login/PWD/LIST protocol exchange.
+  - `oculus/tools/redis_tool.py` — `redis-cli PING`/`INFO server`
+    against the target with no auth, since Redis ships with no
+    authentication by default and an exposed instance is a well-known
+    real foothold (CONFIG SET dir/dbfilename + SAVE).
+- Registered all three in `oculus/tools/__init__.py`'s `TOOL_REGISTRY`
+  — the backend's `/api/tools` endpoint and the frontend's Run Tool
+  dialog are both fully dynamic off this registry already, so no
+  frontend or router changes were needed.
+- `oculus/checklist.py`: `OSCP-ENUM-10` ("Database Service
+  Enumeration") had `tools=[]` with a comment "no CLI tool wrapped for
+  this yet" — wired it to `["mysql", "redis"]`, keeping the note about
+  PostgreSQL/MSSQL/Oracle still needing a manual client since those
+  weren't asked for. Added a new `OSCP-ENUM-11` ("FTP Anonymous Login
+  Check") item using `ftp`, distinct from nmap's own `-sC` default
+  script pass (which touches on the same check but doesn't confirm/list
+  as unambiguously).
+- `Dockerfile`: added `default-mysql-client` (provides the `mysql`
+  binary — confirmed the plain `mysql-client` package name is a
+  transitional/virtual package on Debian bookworm) and `redis-tools`
+  (provides `redis-cli`); `curl` was already installed for the ftp tool.
+
+**Verified:**
+- `python3 -c "from oculus.checklist import build_checklist,
+  build_oscp_checklist"` — both build without error (the module's own
+  `_validate_tool_references()` runs at import time and would raise on
+  an unregistered tool name), OSCP checklist now 34 items, no duplicate
+  IDs.
+- Printed each new tool's `build_command()`/`mock_output()` directly —
+  correct flags, no exceptions.
+- Rebuilt (`docker compose build backend`) and recreated (`docker
+  compose up -d backend`) the live backend container; confirmed via a
+  real `GET /api/tools` that `mysql`/`ftp`/`redis` are present (30
+  tools total, up from 27).
+- Created a real OSCP-methodology engagement via `POST
+  /api/engagements` against the live container and confirmed
+  `OSCP-ENUM-10`/`OSCP-ENUM-11` carry the new tools; deleted the test
+  engagement afterward.
+
+**Next steps for the next agent:**
+1. None of the three new tools have a `findings_extractor.py` entry
+   yet (same gap already flagged for metasploit/enum4linux in entry
+   52) — a real mysql blank-root hit or ftp anonymous-login hit
+   currently has to be read from raw output, not auto-flagged as a
+   Finding.
+2. `oculus`/`backend` service image was rebuilt and recreated;
+   `frontend` was untouched (no frontend code changed) and does not
+   need a rebuild for this entry.
+
+---
+
+## 2026-09-03 (55) — feat: nmap port-state column in the Ports summary
+
+**Done (user: "at Ports, can you add column that tell this nmap port
+states" — pasted nmap's own six-state definitions):**
+- `engagementPorts.ts`: added a `PortState` union (`open` / `closed` /
+  `filtered` / `unfiltered` / `open|filtered` / `closed|filtered`) and a
+  `PORT_STATE_INFO` map of the definitions the user pasted, and a
+  `state: PortState | null` field on `EngagementPortEntry`.
+- The nmap-table regex (`NMAP_PORT_RE`) already captured a `state` group
+  per match but immediately discarded it after an `if
+  (!state.startsWith("open")) continue` filter — so today, every entry
+  in this summary was silently assumed "open" with no way to tell
+  open from open|filtered, and no way for a non-`--open` nmap run to
+  surface the other four states at all. Now the real captured state is
+  kept and stored (validated against `PORT_STATE_INFO`'s keys), and the
+  `open`-only filter is gone — any of nmap's six real states will now
+  show up here if nmap reports it.
+- Confirmed via `nmap_tool.py` that `build_command()` passes `--open`
+  unconditionally in every mode today, so in practice only `open` and
+  `open|filtered` will actually appear until/unless a tester edits the
+  nmap command by hand (dropping `--open`, running a UDP/ACK scan,
+  etc.) — deliberately did *not* change `--open` itself, since removing
+  it turns a full-port scan into thousands of "closed" lines; that's a
+  scan-behavior tradeoff for the user to opt into, not something to
+  flip silently under a "add a column" request.
+- naabu-derived and manually-added entries have no real state signal
+  (naabu's bare `host:port` lines and a manual add both only ever mean
+  "confirmed open") — both default to `state: "open"`.
+- `PortsDialog.tsx`: new colored `Chip` per row (green open, amber
+  filtered/open|filtered, blue unfiltered, gray closed/closed|filtered),
+  each with a per-state tooltip; a small info icon next to the dialog's
+  "Ports" title opens a tooltip listing all six state definitions
+  (the user's own pasted text) for tester reference even though only
+  two will normally appear.
+
+**Verified:**
+- `npx tsc --noEmit`, `eslint`, `next build` all clean.
+- Rebuilt (`docker compose build frontend`) and recreated (`docker
+  compose up -d frontend`) the live frontend container; confirmed
+  `GET /` still returns 200 afterward.
+
+**Next steps for the next agent:**
+1. Browser E2E (open the Ports dialog against a real nmap run, confirm
+   the state chip and tooltip render correctly) not performed — same
+   outstanding Claude-in-Chrome connection issue as prior entries.
+2. If a future request wants the other four states to actually appear
+   in practice, that means changing `nmap_tool.py`'s `build_command()`
+   to drop `--open` (at least in one mode) — flagged here, not done,
+   per the reasoning above.
+
+---
+
+## 2026-09-03 (54) — Fix: "MUI: The `value` provided to the Tabs component is invalid"
+
+**Done (user report: a real browser console error — "None of the Tabs'
+children match with 'null'. You can provide one of the following values:
+nmap." — thrown from `ItemDetail.tsx`'s Tool output `<Tabs>`):**
+- Root cause: `activeOutput` was plain `useState` seeded once at mount
+  from `Object.keys(item.tool_outputs)[0] ?? null`. Two ways that goes
+  stale without anything re-syncing it: (1) the item has no tool output
+  yet at mount (a fresh checklist item), so it starts `null` — and stays
+  `null` even after `item.tool_outputs` later gains an entry through any
+  path other than `RunToolDialog`'s own `onDone` (the *only* place that
+  was manually calling `setActiveOutput` after the fact) — entry 53's
+  `EvidencePanel` is exactly such a path, since uploading evidence
+  replaces the whole `item` prop (including whatever `tool_outputs` now
+  has) via its own `onChange`. (2) Passing that raw `null` straight to
+  MUI's `<Tabs value=>` is itself invalid regardless — MUI wants `false`
+  for "nothing selected," not `null`.
+- Split the raw click/run-driven pick (`selectedOutput`, a tester
+  action, updated in exactly the two places it always was) from a new
+  *derived* `activeOutput` — computed at render time as `selectedOutput`
+  when it still names a real tab, else the first available one — same
+  "derive a safe fallback instead of syncing state via an effect" idiom
+  `effectiveOutputView` a few lines below already uses in this same
+  file, not a new pattern. `<Tabs value={activeOutput ?? false}>` fixes
+  the MUI-specific half of the bug on top.
+
+**Verified:**
+- `npx tsc --noEmit`, `eslint`, `next build` all clean.
+- Traced every `setActiveOutput` call site by hand (grep, not
+  assumption) — confirmed both real update paths (`selectOutputTab` on
+  a manual tab click, `RunToolDialog`'s `onDone` after a run finishes)
+  correctly now call `setSelectedOutput`, and that `activeOutput` itself
+  is never written to directly anywhere — it's purely derived.
+- Rebuilt (`docker compose build frontend`) and recreated
+  (`docker compose up -d frontend`) the live frontend container;
+  confirmed the engagement detail page (`GET /engagements/{id}`) still
+  returns 200 afterward.
+
+**Next steps for the next agent:**
+1. Browser E2E (reproducing the original crash scenario — a fresh item
+   with no tool output, upload evidence, confirm the console stays
+   clean, then run a real tool and confirm the tab still auto-selects)
+   not performed — same outstanding Claude-in-Chrome connection issue as
+   prior entries.
+
+---
+
+## 2026-09-03 (53) — Per-item evidence upload (drag-and-drop files/photos)
+
+**Done (user request: "each checklists can upload evidences, such as
+photos, descriptions, files anything... redirect to real path can drop
+and drag... easy to use"):**
+- New `oculus/models.py` `Evidence` model
+  (id/filename/stored_name/content_type/size_bytes/description/
+  uploaded_at), attached as `ChecklistItem.evidence: list[Evidence]`.
+  Deliberately **not** inlined file bytes into the engagement's own
+  JSON (base64 or otherwise) — that would bloat every load/save of the
+  engagement for files that can run into MBs each, the same reasoning
+  already applied to `tool_outputs` staying as plain text rather than
+  something heavier.
+- New `oculus/evidence_store.py`: the real path on disk —
+  `~/.oculus/evidence/<engagement id>/<item id>/<evidence id>_<
+  sanitized filename>`. Same `~/.oculus` home as engagement state/
+  config (via `_home.ensure_home()`), so it automatically gets entry
+  51's Docker-host bind-mount and entry 45's legacy-path migration for
+  free, not a second storage location to keep in sync by hand.
+  Filenames are sanitized (non-`[A-Za-z0-9._-]` chars stripped, any
+  directory components dropped) before touching the filesystem — an
+  uploaded file's *name* is tester-controlled input, not something to
+  trust as a raw path segment.
+- New `backend/routers/evidence.py`: `POST .../evidence` (multipart
+  upload, 25MB cap), `PATCH .../evidence/{id}` (description only),
+  `DELETE .../evidence/{id}` (removes the DB record *and* the file on
+  disk), `GET .../evidence/{id}/file` (serves the real file back,
+  `FileResponse` with the original filename/content-type — what an
+  `<img>` thumbnail or a "download" link points at).
+- `pyproject.toml`'s `web` extra gained `python-multipart` — FastAPI's
+  file-upload support silently depends on it at request time (not
+  import time), so its absence wasn't caught until a real upload
+  actually ran.
+- New `frontend/src/components/EvidencePanel.tsx`: a dashed dropzone
+  (drag-and-drop, or click to open a native file picker — real
+  accessibility fallback, not drag-only) uploads immediately on
+  drop/select; each uploaded file becomes a card below it — an inline
+  thumbnail for images, a generic file icon otherwise, filename, size,
+  and an editable description (save-on-blur, same UX pattern as the
+  existing per-item Notes field) — with a hover-revealed remove button.
+  Wired into `ItemDetail.tsx` between the Findings panel and Notes.
+- `frontend/src/lib/api.ts`'s `uploadEvidence()` bypasses the shared
+  `request()` helper on purpose — it always sets `Content-Type:
+  application/json`, which would break a real multipart upload (the
+  browser has to set its own `Content-Type` with the multipart
+  boundary for `FormData`, not have one forced on it).
+
+**Verified:**
+- **Real bug caught and fixed by actually running it, not just reading
+  the code**: the first real upload attempt returned a real `500`
+  (confirmed via `docker logs`, not guessed) — `Evidence.stored_name`
+  had no default, but the router constructs the object *before*
+  computing `stored_name` (which itself needs the object's own
+  generated `id`), so Pydantic validation failed at construction time
+  on every single upload. Fixed by defaulting `stored_name: str = ""`
+  in the model.
+- **Full real round-trip against the live backend**, not a unit test:
+  uploaded a real hand-built PNG via `curl -F file=@...` → confirmed
+  the file landed at the real path inside the container
+  (`/data/.oculus/evidence/<eng>/<item>/<id>_<name>.png`) *and* on the
+  real host filesystem at the same relative path under `~/.oculus/`
+  (proving entry 51's shared bind-mount extends to evidence
+  automatically, not just engagement JSON) *and* byte-identical when
+  fetched back via `GET .../file` (`diff` against the original — zero
+  differences). Updated its description via `PATCH`, confirmed the
+  change stuck. Deleted it via `DELETE`, confirmed both the JSON record
+  and the real file on disk were gone afterward.
+- `npx tsc --noEmit`, `eslint`, `next build` all clean.
+- Rebuilt both images and recreated both live containers; re-ran the
+  full upload/update/delete round-trip against the fresh build (not
+  just the hot-patched one used to find the bug) — same correct
+  result. Confirmed all pre-existing engagements survived every
+  rebuild throughout.
+
+**Next steps for the next agent:**
+1. Browser E2E (actually dragging a file onto the dropzone, watching
+   the thumbnail/description UI) not performed — same outstanding
+   Claude-in-Chrome connection issue as prior entries.
+2. No image thumbnail resizing/compression — a full-resolution photo
+   renders at its uploaded size inside a 110px-tall card via CSS
+   `object-fit: contain`, fine for typical screenshot sizes but would
+   waste bandwidth on a genuinely huge photo. Not optimized here; the
+   25MB upload cap is the only real ceiling in place.
+3. Evidence isn't included in the Markdown/.docx report export yet —
+   findings/tool_outputs are, evidence files aren't referenced at all.
+   Worth adding if a tester wants uploaded screenshots to show up in
+   the generated report, not just in the live UI.
+
+---
+
+## 2026-09-03 (52) — Deeper OSCP checklist + metasploit/enum4linux tools
+
+**Done (user request: "add more details checklist oscp style. and
+script and any want tools? if you want you can add such as
+metasploit"):**
+- `oculus/checklist.py`'s `build_oscp_checklist()` grew from 25 items/
+  8 categories to **33 items/9 categories**: new items for vhost/
+  subdomain fuzzing on web ports (`OSCP-ENUM-09`, ffuf `-H "Host:
+  FUZZ.<target>"`), database service enumeration (`OSCP-ENUM-10`,
+  manual), a Metasploit-based exploit lookup alongside searchsploit's
+  (`OSCP-VULN-04`, `OSCP-PRIVL-03`, `OSCP-PRIVW-03`), buffer overflow
+  exploitation (`OSCP-EXPLOIT-04`, manual — needs a debugger attached
+  to the target, genuinely outside what a network-facing recon
+  orchestrator can automate), and a new **Active Directory** category
+  (`OSCP-AD-01/02`: AD enumeration, Kerberoasting/AS-REP roasting) —
+  newer PEN-200 syllabus revisions weigh AD attack chains heavily, and
+  it didn't fit cleanly into either the generic Enumeration or a
+  single-host Privilege Escalation checklist. `OSCP-ENUM-04` (SMB
+  enumeration) switched from a `tools=[]` manual-guidance item to a
+  real `tools=["enum4linux"]` one, closing the exact gap entry 48
+  flagged as a known next step.
+- Two new tool wrappers:
+  - `oculus/tools/enum4linux_tool.py` — wraps `enum4linux-ng` (the
+    actively-maintained Python rewrite of the original enum4linux):
+    users/groups/shares/password-policy/OS-info via SMB. **Not on
+    PyPI** (confirmed the hard way: `pipx install enum4linux-ng`
+    really does fail with "No matching distribution found", tried
+    before falling back to a `git clone` install — same lesson as
+    entry 48's `exploitdb` apt-package assumption failing the same
+    way). Also needed `smbclient` *and* the separate `samba-common-bin`
+    Debian package (`smbclient` alone doesn't provide `net`/
+    `nmblookup` — confirmed via `dpkg -L smbclient` genuinely not
+    listing them, not assumed) — enum4linux-ng shells out to all four
+    at runtime and refuses to start without them.
+  - `oculus/tools/metasploit_tool.py` — Metasploit Framework module
+    search via `msfconsole -q -x "search <term>; exit"`. Same
+    Docker-based shape as `zap` (entry 46) rather than baked into this
+    app's own image — Metasploit's ~2500 Ruby modules make the
+    official image genuinely heavy (~1.7GB). Same honest-placeholder
+    default as `searchsploit` (entry 48): searches the bare target
+    string, documented as a harmless placeholder meant to be edited
+    with a real product/version.
+- `Dockerfile`: added `smbclient`/`samba-common-bin` (apt) and
+  enum4linux-ng's own `git clone` + `pip install -r requirements.txt`
+  (metasploit needs no Dockerfile change at all — it runs entirely via
+  the `docker run` passthrough already set up for `zap`).
+
+**Verified:**
+- `_validate_tool_references()` (the existing import-time guard)
+  passed clean against both checklists together — no unregistered
+  tool references snuck in.
+- **Two real build failures caught and fixed, not assumed to work**:
+  `apt install exploitdb`-style attempt for enum4linux-ng
+  (`pipx install enum4linux-ng`) really failed on a real build (not
+  on PyPI) — switched to git+requirements.txt. Then a real
+  `enum4linux-ng` run against `scanme.nmap.org` failed with "The
+  following dependend tools are missing: nmblookup, net, rpcclient,
+  smbclient" — `smbclient` the Debian package only provides two of
+  those four; added `samba-common-bin` for the other two, confirmed
+  via `dpkg -L smbclient` directly. Full real run afterward: exit code
+  0, correct real output (scanme.nmap.org genuinely doesn't run SMB).
+- **A third real bug caught the same way**: `docker run
+  metasploitframework/metasploit-framework msfconsole ...` failed with
+  `su-exec: msfconsole: No such file or directory` — the official
+  image never puts `msfconsole` on `PATH` (confirmed via `which
+  msfconsole` inside the image genuinely returning nothing); its own
+  default `CMD` uses the relative `./msfconsole` from its own
+  `WORKDIR`, which a custom command has to match too. Fixed and
+  re-verified: real `search vsftpd 2.3.4` inside a real container,
+  through `MetasploitTool.run()`, returned the exact real
+  `exploit/unix/ftp/vsftpd_234_backdoor` module — a real, well-known
+  CVE, not a fabricated result. (Also noted for the record: a real
+  `WARNING: image's platform (linux/amd64) does not match host
+  platform (linux/arm64/v8)` on Apple Silicon — works fine under
+  emulation, just slower than a native-arch image would be.)
+- Rebuilt both images from a clean build (not hot-patched) and
+  recreated both containers; confirmed via the live API that all 27
+  tools register correctly and `build_oscp_checklist()` returns 33
+  items/9 categories. All pre-existing engagements survived every
+  rebuild in this entry.
+
+**Next steps for the next agent:**
+1. Browser E2E not performed — same outstanding connection issue as
+   prior entries.
+2. `metasploit`/`enum4linux` aren't in `findings_extractor.py`'s
+   auto-extraction set — both have genuinely parseable output shapes
+   (msfconsole's module table, enum4linux-ng's structured sections),
+   a reasonable follow-up if wanted.
+3. OSCP-AD-02 (Kerberoasting/AS-REP Roasting) is guidance-only by
+   design (needs valid domain credentials and Kerberos-aware tooling
+   this app doesn't orchestrate) — if Impacket ever gets wrapped for
+   another reason, revisit whether `GetUserSPNs.py`/`GetNPUsers.py`
+   belong there as real tools instead.
+
+---
+
+## 2026-09-03 (51) — Fix: Docker and `./run.sh` had two entirely separate datasets
+
+**Done (user report: "database that saved at docker and run from the
+run.sh not at same here"):**
+- Root cause: engagement state resolves to `~/.oculus` (`Path.home() /
+  ".oculus"`, see `oculus/_home.py`), but "home" meant something
+  different in each run mode — the Docker `backend`/`oculus` services
+  set `HOME=/data` (a named Docker volume, `surveil-data`), while
+  `./run.sh`/`run-backend.sh` run a real process on the host, where
+  `Path.home()` is the tester's actual `~`. Two completely different
+  directories, silently diverging every time an engagement was created
+  in one mode and not the other. Confirmed directly, not assumed: the
+  host had 7 real engagements the Docker volume had never seen, and the
+  Docker volume had 6 the host had never seen — zero overlap.
+- **Merged both real datasets first**, before changing anything: copied
+  the Docker volume's `.oculus/engagements/*.json` into the host's real
+  `~/.oculus/engagements/` with `cp -n` (never overwrite — the ID sets
+  were disjoint anyway, so this was a pure union, not a case needing
+  conflict resolution) via a throwaway `alpine` container mounting both.
+  13 total engagements confirmed present afterward, not lost.
+- `docker-compose.yml`: both the `backend` and `oculus` (CLI) services
+  now bind-mount `${HOME}/.oculus:/data/.oculus` *in addition to* the
+  existing `surveil-data:/data` named volume — Docker lets a more
+  specific mount target shadow part of a broader one, so this redirects
+  just the engagement-state subpath to the host's real `~/.oculus` while
+  leaving everything else under `/data` (nuclei's template cache,
+  wpscan's API-token cache, other tool caches — real disk space worth
+  keeping, but nothing that needs to match the host) in the named
+  volume exactly as before. From here on, Docker and every local
+  `run.sh`/CLI invocation always read/write the exact same files.
+
+**Verified:**
+- Inspected both real datasets before touching anything (`docker run
+  --rm -v <volume>:/data alpine ls ...` for the Docker side, plain `ls`
+  for the host side) — confirmed the disjoint-set diagnosis was correct,
+  not assumed from the bug report alone.
+- After merging: recreated the backend container with the new bind
+  mount (`docker compose up -d backend`) and hit the real live API —
+  `GET /api/engagements` → all 13 engagements present. Ran the real
+  local CLI (`oculus list`, through the freshly-fixed `venv/` from entry
+  50) — same 13 IDs, confirmed by direct comparison, proving Docker and
+  the host are now genuinely reading the identical directory rather than
+  two directories that merely happen to match right after a one-time
+  merge.
+
+**Next steps for the next agent:**
+1. None outstanding — this closes out the storage-location split
+   cleanly at the config level, not just a one-time data merge that
+   would silently re-diverge on the next engagement created in either
+   mode.
+2. `${HOME}` in `docker-compose.yml` is a shell-environment substitution
+   Compose reads at `docker compose` invocation time — works correctly
+   on macOS/Linux where `$HOME` is always exported, but worth knowing
+   this specific mechanism if the project ever needs to run somewhere
+   `$HOME` isn't set (unusual, not a real concern for this project's
+   actual local-single-user use case).
+
+---
+
 ## 2026-09-03 (50) — Fix: CORS 400 when frontend runs on a non-3000 port
 
 **Done (user report: a real `./run.sh 8000 3001` session — frontend dev

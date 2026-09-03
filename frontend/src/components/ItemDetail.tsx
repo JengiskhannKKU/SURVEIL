@@ -26,6 +26,7 @@ import { motion } from "framer-motion";
 import { api } from "@/lib/api";
 import { StatusBadge } from "@/components/Badge";
 import { FindingsPanel } from "@/components/FindingsPanel";
+import { EvidencePanel } from "@/components/EvidencePanel";
 import { RunToolDialog } from "@/components/RunToolDialog";
 import { ChecklistItemDialog } from "@/components/ChecklistItemDialog";
 import { HighlightedOutput } from "@/components/HighlightedOutput";
@@ -84,9 +85,28 @@ export function ItemDetail({
   const [showEdit, setShowEdit] = useState(false);
   const [notes, setNotes] = useState(item.notes);
   const [savingNotes, setSavingNotes] = useState(false);
-  const [activeOutput, setActiveOutput] = useState<string | null>(
+  // The tester's own tab pick — kept separate from the *effective* active
+  // tab below because this only updates on an explicit action (clicking a
+  // tab, or a run finishing), not every time `item` changes. Without that
+  // split, a background poll/update that changes `item.tool_outputs`
+  // through any path other than those two (e.g. EvidencePanel's onChange
+  // after an upload) left this pointing at a key that may no longer be
+  // the first/only one, or — if `item.tool_outputs` was empty at mount —
+  // stayed `null` even after tabs actually appeared. `null` is also not a
+  // value MUI's Tabs accepts (confirmed via a real console error: "None
+  // of the Tabs' children match with 'null'"), so passing it straight to
+  // `value=` was doubly wrong.
+  const [selectedOutput, setSelectedOutput] = useState<string | null>(
     Object.keys(item.tool_outputs)[0] ?? null
   );
+  // Falls back to the first available tab whenever `selectedOutput` no
+  // longer names a real one — same "derive a safe value at render time
+  // instead of syncing state via an effect" idiom `effectiveOutputView`
+  // below already uses.
+  const activeOutput =
+    selectedOutput !== null && item.tool_outputs[selectedOutput] !== undefined
+      ? selectedOutput
+      : (Object.keys(item.tool_outputs)[0] ?? null);
   const [busyAction, setBusyAction] = useState<"markDone" | "skip" | "reset" | null>(null);
   const [outputView, setOutputView] = useState<"raw" | "tree" | "pretty">("raw");
   const [runAtPath, setRunAtPath] = useState<string | null>(null);
@@ -105,7 +125,7 @@ export function ItemDetail({
   const [zoom, setZoom] = useState(1);
 
   function selectOutputTab(name: string) {
-    setActiveOutput(name);
+    setSelectedOutput(name);
     // A status filter that made sense for ffuf shouldn't silently carry
     // over and hide everything in an unrelated nmap tab.
     setFilterQuery("");
@@ -475,7 +495,7 @@ export function ItemDetail({
                 </Stack>
               </Stack>
               <Tabs
-                value={activeOutput}
+                value={activeOutput ?? false}
                 onChange={(_, v) => selectOutputTab(v)}
                 variant="scrollable"
                 sx={{ minHeight: 32, mb: 1, "& .MuiTab-root": { minHeight: 32, py: 0.5 } }}
@@ -534,6 +554,10 @@ export function ItemDetail({
             <FindingsPanel engagementId={engagementId} item={item} onChange={onChange} />
           </Box>
 
+          <Box mb={3}>
+            <EvidencePanel engagementId={engagementId} item={item} onChange={onChange} />
+          </Box>
+
           <Box mb={2}>
             <Typography variant="subtitle2" fontWeight={700} mb={1}>
               Notes
@@ -580,7 +604,7 @@ export function ItemDetail({
           }}
           onDone={(updated) => {
             onChange(updated);
-            setActiveOutput(Object.keys(updated.tool_outputs).slice(-1)[0] ?? null);
+            setSelectedOutput(Object.keys(updated.tool_outputs).slice(-1)[0] ?? null);
           }}
           onStart={() => {
             if (item.status !== "running") onChange({ ...item, status: "running" });

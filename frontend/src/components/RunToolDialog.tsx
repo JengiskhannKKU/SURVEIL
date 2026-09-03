@@ -144,7 +144,7 @@ export function RunToolDialog({
   useEffect(() => {
     if (!toolName) return;
     api
-      .previewCommand(toolName, target, fast, hasModes ? mode : undefined, item.id)
+      .previewCommand(toolName, target, fast, hasModes ? mode : undefined, item.id, engagementId)
       .then((res) => {
         const cmd = res.command.join(" ");
         setCommand(cmd);

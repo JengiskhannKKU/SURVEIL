@@ -13,6 +13,18 @@ services:
       - "8000:8000"
     volumes:
       - surveil-data:/data
+      # Engagement state (~/.oculus, i.e. /data/.oculus with HOME=/data in
+      # the image) bind-mounted straight to the *host's real* ~/.oculus —
+      # more specific than the surveil-data volume above, so it shadows
+      # just this one subpath. Without this, an engagement created via
+      # `./run.sh` (a real host process, using the host's own ~/.oculus)
+      # was invisible from this container and vice versa — two entirely
+      # separate, silently diverging datasets (confirmed via a real user
+      # report: 7 engagements on the host, 6 different ones in the
+      # surveil-data volume, zero overlap). Now both paths — Docker and
+      # every local run.sh/CLI invocation — always read/write the exact
+      # same files on disk.
+      - ${HOME}/.oculus:/data/.oculus
       # Lets the `zap` tool wrapper's `docker run zaproxy/zap-stable ...`
       # (see oculus/tools/zap_tool.py) reach the *host's* Docker daemon
       # from inside this container — without it, `docker` isn't reachable
@@ -44,22 +56,23 @@ services:
     tty: true
     volumes:
       - surveil-data:/data
+      - ${HOME}/.oculus:/data/.oculus
     entrypoint: ["oculus"]
     command: ["--help"]
     profiles: ["cli"]
 
 volumes:
-  # Shared between backend and the CLI service — both resolve engagement
-  # state under $HOME/.oculus (HOME=/data in the image), so an
-  # engagement created via the web UI is also visible to `docker compose
-  # run --rm oculus ...` against the same volume, and vice versa.
+  # Everything under $HOME (/data, HOME=/data in the image) *except*
+  # .oculus itself — that subpath is bind-mounted straight to the host's
+  # real ~/.oculus above instead (engagement state needs to be genuinely
+  # shared with the host, not just between these two services). What's
+  # left here: nuclei's downloaded template cache, wpscan's API-token
+  # cache, pip/other tool caches — real disk space worth persisting
+  # across container restarts, but nothing that needs to match the host.
   #
   # Deliberately still named "surveil-data" (the project's old name) —
   # unlike every other renamed identifier in this repo, a Docker named
   # volume can't be renamed by just editing this key; changing it here
-  # would make Compose provision a brand-new *empty* volume and silently
-  # orphan every engagement already sitting in the existing one. The
-  # in-container ~/.surveil -> ~/.oculus migration (oculus/_home.py)
-  # handles the *filesystem path* inside the volume; this handles the
-  # volume identity itself. Not user-visible anywhere in the app.
+  # would make Compose provision a brand-new *empty* volume. Not user-
+  # visible anywhere in the app.
   surveil-data:

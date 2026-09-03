@@ -23,7 +23,9 @@ list `tools=[]` or the closest thing that provides *supporting* evidence
 """
 from __future__ import annotations
 
-from .models import ChecklistItem
+import re
+
+from .models import ChecklistItem, Engagement
 
 # Maps a checklist item ID to a wordlist category (see
 # oculus/wordlists.py's recommend_wordlist() and CATEGORY_LABELS below)
@@ -162,11 +164,72 @@ def _apply_wget_override(command: list[str], item_id: str) -> list[str]:
     return [*command[:-1], command[-1] + suffix]
 
 
+_NMAP_OPEN_PORT_RE = re.compile(r"^(\d+)/(tcp|udp)\s+open\S*", re.MULTILINE)
+
+# Items whose nmap default is meant to be "every open port found earlier
+# in the engagement" rather than a fixed port list — currently just
+# OSCP-ENUM-02 ("Detailed -sV -sC scan of every open port found above").
+# nmap_tool.py's own `fast=False` default is a *web*-port list
+# (80/443/8080/...) since that's the right default for the handful of
+# WSTG items that also map to nmap; without this override, following the
+# OSCP checklist in order after OSCP-ENUM-01 (a real full-range port scan)
+# silently re-scanned only those web ports and dropped everything else
+# OSCP-ENUM-01 had just found (FTP, SSH, ...) — confirmed against a real
+# target: OSCP-ENUM-01 found 21/22/80 open, OSCP-ENUM-02's unedited
+# "full" command only ever touched port 80.
+_NMAP_DISCOVERED_PORTS_ITEMS = frozenset({"OSCP-ENUM-02"})
+
+
+def _discovered_ports(engagement: Engagement) -> list[str]:
+    """Every open port nmap has already reported anywhere on this
+    engagement's checklist — numeric-sorted, deduplicated. naabu isn't
+    read here: it only ever confirms ports nmap would already have found
+    on the same engagement, and its bare "host:port" lines carry no
+    open/closed state to filter on in the first place.
+    """
+    ports: set[str] = set()
+    for other in engagement.checklist_items:
+        output = other.tool_outputs.get("nmap", "")
+        if not output:
+            continue
+        ports.update(m.group(1) for m in _NMAP_OPEN_PORT_RE.finditer(output))
+    return sorted(ports, key=int)
+
+
+def _apply_nmap_override(
+    command: list[str], item_id: str, engagement: Engagement | None
+) -> list[str]:
+    """Swap OSCP-ENUM-02's `-p <web ports>` for the real ports this
+    engagement's own earlier nmap runs already found open, if any exist
+    yet. Falls back to the tool's own default (the web-port list) for a
+    brand-new engagement with no prior scan to draw from — that default is
+    still a reasonable first pass, just not the "every open port found
+    above" the item actually asks for once one exists.
+    """
+    if item_id not in _NMAP_DISCOVERED_PORTS_ITEMS or engagement is None:
+        return command
+    ports = _discovered_ports(engagement)
+    if not ports:
+        return command
+    cmd = list(command)
+    for i, tok in enumerate(cmd):
+        if tok == "-p" and i + 1 < len(cmd):
+            cmd[i + 1] = ",".join(ports)
+            break
+    return cmd
+
+
 def apply_tool_overrides(
-    tool_name: str, item_id: str, command: list[str], *, uses_wordlist: bool
+    tool_name: str,
+    item_id: str,
+    command: list[str],
+    *,
+    uses_wordlist: bool,
+    engagement: Engagement | None = None,
 ) -> list[str]:
     """Swap this checklist item's recommended wordlist category / nuclei
-    tags / curl-wget path+flags into *command*, if any of those apply.
+    tags / curl-wget path+flags / nmap discovered-ports into *command*, if
+    any of those apply.
 
     Shared by the Run Tool dialog's command-preview endpoint AND the real
     execution path (oculus.orchestrator.Orchestrator.run_tool) — the
@@ -177,6 +240,11 @@ def apply_tool_overrides(
     was a real bug: WORDLIST_CATEGORY/NUCLEI_TAGS previously only affected
     the text shown in the dialog, not what actually executed, unless the
     tester happened to edit the command field first.
+
+    *engagement*, when given, lets the nmap override (see
+    _apply_nmap_override) look at this engagement's own already-recorded
+    scan output; omitted entirely (None) short-circuits that branch to a
+    no-op, for any caller that doesn't have an engagement loaded.
     """
     cmd = list(command)
     if uses_wordlist:
@@ -192,6 +260,8 @@ def apply_tool_overrides(
         cmd = _apply_curl_override(cmd, item_id)
     elif tool_name == "wget":
         cmd = _apply_wget_override(cmd, item_id)
+    elif tool_name == "nmap":
+        cmd = _apply_nmap_override(cmd, item_id, engagement)
     return cmd
 
 
@@ -1681,7 +1751,10 @@ def build_oscp_checklist() -> list[ChecklistItem]:
     community methodology writeup treats them as two checklists in
     practice, since the techniques/tools are entirely different) so a
     tester working a Linux box isn't stuck scrolling past Windows-only
-    guidance and vice versa.
+    guidance and vice versa. A separate Active Directory category covers
+    AD-specific enumeration/attack techniques (LDAP, Kerberos) that don't
+    fit either the generic network-service Enumeration category or a
+    single host's Privilege Escalation checklist.
     """
     return [
         # ================================================================
@@ -1768,14 +1841,16 @@ def build_oscp_checklist() -> list[ChecklistItem]:
             id="OSCP-ENUM-04",
             name="SMB / NetBIOS Enumeration",
             description=(
-                "No CLI tool for this is wrapped here yet — run by hand: "
-                "`smbclient -L //<target>/ -N` and `smbclient //<target>/<share> -N` "
-                "for anonymous share access, `enum4linux -a <target>` (or crackmapexec) "
-                "for users/groups/OS info. A very common OSCP/PWK-lab foothold path."
+                "Users, groups, shares (including anonymous/null-session access), "
+                "password policy, and OS/domain info via SMB (usually port 445) — a "
+                "very common OSCP/PWK-lab foothold path. Also worth a manual pass with "
+                "`smbclient -L //<target>/ -N` (list shares) and `smbclient "
+                "//<target>/<share> -N` (browse one) if enum4linux-ng's own share "
+                "listing doesn't cover everything."
             ),
             category="Enumeration",
             category_code="ENUM",
-            tools=[],
+            tools=["enum4linux"],
         ),
         ChecklistItem(
             id="OSCP-ENUM-05",
@@ -1825,6 +1900,54 @@ def build_oscp_checklist() -> list[ChecklistItem]:
             category_code="ENUM",
             tools=[],
         ),
+        ChecklistItem(
+            id="OSCP-ENUM-09",
+            name="Virtual Host / Subdomain Fuzzing on Web Ports",
+            description=(
+                "A single IP can quietly host several distinct sites, selected by the "
+                "HTTP Host header rather than a URL path — the directory brute-force "
+                "above won't find any of them. Fuzz the Host header itself (ffuf's "
+                "-H \"Host: FUZZ.<target>\" against a hostname wordlist) on every web "
+                "port; a real, commonly-tested OSCP-lab technique distinct from "
+                "OSCP-ENUM-05's path-based brute force."
+            ),
+            category="Enumeration",
+            category_code="ENUM",
+            tools=["ffuf"],
+        ),
+        ChecklistItem(
+            id="OSCP-ENUM-10",
+            name="Database Service Enumeration",
+            description=(
+                "If MySQL/Redis/MSSQL/PostgreSQL/Oracle turned up in the port scan, "
+                "check for unauthenticated or default-credential access directly "
+                "against the database service itself (not just via a web app's SQL "
+                "injection — see OSCP-EXPLOIT-02 for that). `mysql` and `redis` are "
+                "wrapped here (both default to a blank-credential/no-auth check); for "
+                "PostgreSQL/MSSQL/Oracle the right client and flags depend entirely on "
+                "which database turned up — `psql -h <target> -U postgres`, "
+                "Impacket's `mssqlclient.py` — no wrapper for those yet."
+            ),
+            category="Enumeration",
+            category_code="ENUM",
+            tools=["mysql", "redis"],
+        ),
+        ChecklistItem(
+            id="OSCP-ENUM-11",
+            name="FTP Anonymous Login Check",
+            description=(
+                "If port 21 turned up in the port scan, check for anonymous FTP "
+                "login directly — nmap's default -sC pass (OSCP-ENUM-02) covers this "
+                "too via its ftp-anon script, but a real login-and-list confirms it "
+                "unambiguously and surfaces what's actually sitting in the directory, "
+                "which is often the finding itself (world-readable backups, "
+                "credentials left in a file, a writable directory to drop a payload "
+                "into)."
+            ),
+            category="Enumeration",
+            category_code="ENUM",
+            tools=["ftp"],
+        ),
         # ================================================================
         # VULNERABILITY ANALYSIS
         # ================================================================
@@ -1855,6 +1978,20 @@ def build_oscp_checklist() -> list[ChecklistItem]:
             category="Vulnerability Analysis",
             category_code="VULN",
             tools=["nikto", "zap"],
+        ),
+        ChecklistItem(
+            id="OSCP-VULN-04",
+            name="Exploit Lookup via Metasploit",
+            description=(
+                "Search the Metasploit Framework's own module database for the "
+                "product/version identified above — a different (and often more "
+                "current) database than exploit-db, and one that goes straight from "
+                "'found a module' to configuring and running it in the same session "
+                "if OSCP-EXPLOIT-01 confirms it's the right one."
+            ),
+            category="Vulnerability Analysis",
+            category_code="VULN",
+            tools=["metasploit"],
         ),
         # ================================================================
         # EXPLOITATION
@@ -1888,6 +2025,23 @@ def build_oscp_checklist() -> list[ChecklistItem]:
             category_code="EXPLOIT",
             tools=["commix"],
         ),
+        ChecklistItem(
+            id="OSCP-EXPLOIT-04",
+            name="Buffer Overflow Exploitation",
+            description=(
+                "The classic OSCP topic: a vulnerable Windows service crashes on a "
+                "long/malformed input, controllable well enough to hijack execution. "
+                "Needs a debugger (Immunity Debugger + mona.py, or x64dbg) attached to "
+                "the *target* process — genuinely outside what this app (a recon/"
+                "enumeration orchestrator against a target over the network) can ever "
+                "automate. Real workflow: fuzz -> find the crash offset -> confirm "
+                "EIP/RIP control -> find bad chars -> pick a JMP ESP/return gadget -> "
+                "generate shellcode -> weaponize."
+            ),
+            category="Exploitation",
+            category_code="EXPLOIT",
+            tools=[],
+        ),
         # ================================================================
         # PRIVILEGE ESCALATION — split Linux/Windows: same phase in OffSec's
         # own materials, but different techniques/tools in every practical
@@ -1916,6 +2070,14 @@ def build_oscp_checklist() -> list[ChecklistItem]:
             tools=["searchsploit"],
         ),
         ChecklistItem(
+            id="OSCP-PRIVL-03",
+            name="Linux Privesc — Metasploit Local Exploit Search",
+            description="Same lookup as OSCP-PRIVL-02, against Metasploit's module database instead of exploit-db — check both, they don't always overlap.",
+            category="Privilege Escalation (Linux)",
+            category_code="PRIVL",
+            tools=["metasploit"],
+        ),
+        ChecklistItem(
             id="OSCP-PRIVW-01",
             name="Windows Privilege Escalation Enumeration",
             description=(
@@ -1935,6 +2097,51 @@ def build_oscp_checklist() -> list[ChecklistItem]:
             category="Privilege Escalation (Windows)",
             category_code="PRIVW",
             tools=["searchsploit"],
+        ),
+        ChecklistItem(
+            id="OSCP-PRIVW-03",
+            name="Windows Privesc — Metasploit Local Exploit Search",
+            description="Same lookup as OSCP-PRIVW-02, against Metasploit's module database instead of exploit-db — check both, they don't always overlap.",
+            category="Privilege Escalation (Windows)",
+            category_code="PRIVW",
+            tools=["metasploit"],
+        ),
+        # ================================================================
+        # ACTIVE DIRECTORY — newer PEN-200 syllabus revisions weigh AD
+        # attack chains heavily; kept as its own category rather than
+        # folded into Enumeration/Privilege Escalation since AD techniques
+        # (LDAP/Kerberos-specific) are genuinely distinct from either.
+        # ================================================================
+        ChecklistItem(
+            id="OSCP-AD-01",
+            name="Active Directory Enumeration",
+            description=(
+                "If the target is a domain controller (or joined to one), enumerate "
+                "domain users/groups/computers/trusts and shares — enum4linux-ng "
+                "covers the SMB/RPC side; for the LDAP side by hand: `ldapsearch -x -H "
+                "ldap://<target> -b \"dc=...,dc=...\"`, `rpcclient -U '' -N <target>`, "
+                "or BloodHound for the full attack-path graph (no wrapped tool for "
+                "BloodHound's own collectors here — it needs valid domain creds and "
+                "produces a graph this app doesn't render, not a simple stdout scan)."
+            ),
+            category="Active Directory",
+            category_code="AD",
+            tools=["enum4linux"],
+        ),
+        ChecklistItem(
+            id="OSCP-AD-02",
+            name="Kerberoasting / AS-REP Roasting",
+            description=(
+                "With any valid domain credentials (even a low-privilege user), request "
+                "TGS tickets for accounts with an SPN set (Kerberoasting) or find "
+                "accounts with pre-authentication disabled (AS-REP Roasting) — both "
+                "yield an offline-crackable hash. Needs domain credentials and "
+                "Kerberos-aware tooling (Impacket's GetUserSPNs.py/GetNPUsers.py) this "
+                "app doesn't orchestrate; manual by design."
+            ),
+            category="Active Directory",
+            category_code="AD",
+            tools=[],
         ),
         # ================================================================
         # POST-EXPLOITATION

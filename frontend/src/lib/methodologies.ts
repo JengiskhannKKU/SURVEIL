@@ -26,7 +26,7 @@ export const METHODOLOGIES: Record<string, MethodologyMeta> = {
   oscp: {
     label: "OSCP-style",
     description:
-      "OSCP/PEN-200-style engagement",
+      "OSCP/PEN-200-style engagement.",
     Icon: TerminalIcon,
     color: "#f97316",
   },

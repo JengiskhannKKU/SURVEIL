@@ -47,6 +47,14 @@ LABEL org.opencontainers.image.title="oculus" \
 #     path help text implies — Debian's `chromium` package provides that
 #     binary; oculus/tools/gowitness_tool.py locates it and passes
 #     --chrome-path explicitly so gowitness doesn't have to guess.
+#   - smbclient / samba-common-bin: not themselves wrapped tools, but
+#     enum4linux-ng shells out to nmblookup/net/rpcclient/smbclient at
+#     runtime and refuses to run at all without them (confirmed via a
+#     real run: "[!] The following dependend tools are missing:
+#     nmblookup, net, rpcclient, smbclient") — smbclient the Debian
+#     package only provides rpcclient/smbclient; net/nmblookup are a
+#     *separate* package, samba-common-bin (confirmed via `dpkg -L
+#     smbclient` genuinely not listing them, not assumed).
 RUN apt-get update && apt-get install -y --no-install-recommends \
         nmap \
         whatweb \
@@ -69,6 +77,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates \
         docker.io \
         chromium \
+        smbclient \
+        samba-common-bin \
+        default-mysql-client \
+        redis-tools \
     && rm -rf /var/lib/apt/lists/*
 
 # nikto — not packaged for Debian bookworm; install from source.
@@ -104,6 +116,18 @@ COPY --from=gotools /root/go/bin/dalfox /usr/local/bin/dalfox
 RUN gem install wpscan --no-document \
     && pipx install arjun \
     && ln -s /root/.local/bin/arjun /usr/local/bin/arjun
+
+# enum4linux-ng — confirmed NOT on PyPI (`pipx install enum4linux-ng`
+# really does fail with "No matching distribution found", tried before
+# falling back to this, same lesson as entry 48's exploitdb apt attempt);
+# install from its real source instead, same pattern as nikto/testssl
+# above, plus its own requirements.txt (impacket/ldap3/pyyaml) via plain
+# pip into the system interpreter (this image already does that for
+# oculus itself further down, so it's a proven-working install path here).
+RUN git clone --depth 1 https://github.com/cddmp/enum4linux-ng.git /opt/enum4linux-ng \
+    && pip install --no-cache-dir -r /opt/enum4linux-ng/requirements.txt \
+    && chmod +x /opt/enum4linux-ng/enum4linux-ng.py \
+    && ln -s /opt/enum4linux-ng/enum4linux-ng.py /usr/local/bin/enum4linux-ng
 
 # testssl.sh — plain shell script, no build step required.
 RUN git clone --depth 1 https://github.com/testssl/testssl.sh.git /opt/testssl.sh \

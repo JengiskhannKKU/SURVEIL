@@ -6,7 +6,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from oculus import seclists_remote
+from oculus import seclists_remote, state
 from oculus.checklist import (
     CATEGORY_LABELS,
     NUCLEI_TAGS,
@@ -53,6 +53,7 @@ def preview_command(
     fast: bool = False,
     mode: Optional[str] = None,
     item_id: Optional[str] = None,
+    eng_id: Optional[str] = None,
 ) -> dict:
     tool_cls = TOOL_REGISTRY.get(tool_name)
     if tool_cls is None:
@@ -71,13 +72,27 @@ def preview_command(
     category = WORDLIST_CATEGORY.get(item_id or "") if tool_cls.uses_wordlist else None
     nuclei_tags = NUCLEI_TAGS.get(item_id or "") if tool_name == "nuclei" else None
 
+    # eng_id, when given, lets the nmap override (OSCP-ENUM-02 — see
+    # apply_tool_overrides) show the tester the *real* discovered-ports
+    # command it's about to run, not just the fallback web-port guess;
+    # silently ignored (falls back to None) for a bad/missing id, since a
+    # stale preview is the same failure mode as not passing eng_id at all.
+    engagement = None
+    if eng_id:
+        try:
+            engagement = state.load(eng_id)
+        except FileNotFoundError:
+            pass
+
     # The actual command swap (wordlist category / nuclei tags / curl-wget
-    # overrides) lives in oculus.checklist.apply_tool_overrides() — shared
-    # with the real execution path (oculus.orchestrator.Orchestrator) so a
-    # recommendation actually takes effect on an unedited run, not just in
-    # this preview text.
+    # / nmap discovered-ports overrides) lives in
+    # oculus.checklist.apply_tool_overrides() — shared with the real
+    # execution path (oculus.orchestrator.Orchestrator) so a recommendation
+    # actually takes effect on an unedited run, not just in this preview
+    # text.
     command = apply_tool_overrides(
-        tool_name, item_id or "", command, uses_wordlist=tool_cls.uses_wordlist
+        tool_name, item_id or "", command,
+        uses_wordlist=tool_cls.uses_wordlist, engagement=engagement,
     )
 
     return {

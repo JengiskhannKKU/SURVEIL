@@ -158,9 +158,67 @@ export const api = {
       method: "DELETE",
     }),
 
+  // Bypasses the shared request() helper — it always sets
+  // Content-Type: application/json, which would break a multipart
+  // upload (the browser needs to set its own Content-Type with the
+  // multipart boundary for FormData, not have one forced on it).
+  uploadEvidence: async (
+    engId: string,
+    itemId: string,
+    file: File,
+    description: string
+  ): Promise<ChecklistItem> => {
+    const form = new FormData();
+    form.append("file", file);
+    form.append("description", description);
+    const res = await fetch(`${API_BASE}/api/engagements/${engId}/items/${itemId}/evidence`, {
+      method: "POST",
+      body: form,
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      let detail: string | undefined;
+      try {
+        detail = JSON.parse(body)?.detail;
+      } catch {
+        // not JSON — fall through
+      }
+      throw new Error(detail ?? `${res.status} ${res.statusText}: ${body}`);
+    }
+    return res.json() as Promise<ChecklistItem>;
+  },
+
+  updateEvidenceDescription: (engId: string, itemId: string, evidenceId: string, description: string) => {
+    const form = new FormData();
+    form.append("description", description);
+    return fetch(
+      `${API_BASE}/api/engagements/${engId}/items/${itemId}/evidence/${evidenceId}`,
+      { method: "PATCH", body: form }
+    ).then((res) => {
+      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+      return res.json() as Promise<ChecklistItem>;
+    });
+  },
+
+  deleteEvidence: (engId: string, itemId: string, evidenceId: string) =>
+    request<ChecklistItem>(
+      `/api/engagements/${engId}/items/${itemId}/evidence/${evidenceId}`,
+      { method: "DELETE" }
+    ),
+
+  evidenceFileUrl: (engId: string, itemId: string, evidenceId: string) =>
+    `${API_BASE}/api/engagements/${engId}/items/${itemId}/evidence/${evidenceId}/file`,
+
   listTools: () => request<ToolInfo[]>("/api/tools"),
 
-  previewCommand: (tool: string, target: string, fast: boolean, mode?: string, itemId?: string) =>
+  previewCommand: (
+    tool: string,
+    target: string,
+    fast: boolean,
+    mode?: string,
+    itemId?: string,
+    engId?: string
+  ) =>
     request<{
       command: string[];
       available: boolean;
@@ -170,7 +228,8 @@ export const api = {
     }>(
       `/api/tools/${tool}/command?target=${encodeURIComponent(target)}&fast=${fast}` +
         (mode ? `&mode=${encodeURIComponent(mode)}` : "") +
-        (itemId ? `&item_id=${encodeURIComponent(itemId)}` : "")
+        (itemId ? `&item_id=${encodeURIComponent(itemId)}` : "") +
+        (engId ? `&eng_id=${encodeURIComponent(engId)}` : "")
     ),
 
   getToolHelp: (tool: string) =>

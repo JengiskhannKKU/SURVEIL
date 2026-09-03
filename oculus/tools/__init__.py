@@ -25,6 +25,11 @@ from .curl_tool import CurlTool
 from .wget_tool import WgetTool
 from .zap_tool import ZapTool
 from .searchsploit_tool import SearchsploitTool
+from .metasploit_tool import MetasploitTool
+from .enum4linux_tool import Enum4linuxTool
+from .mysql_tool import MysqlTool
+from .ftp_tool import FtpTool
+from .redis_tool import RedisTool
 
 TOOL_REGISTRY: dict[str, type] = {
     "nmap":      NmapTool,
@@ -52,6 +57,11 @@ TOOL_REGISTRY: dict[str, type] = {
     "wget":      WgetTool,
     "zap":       ZapTool,
     "searchsploit": SearchsploitTool,
+    "metasploit": MetasploitTool,
+    "enum4linux": Enum4linuxTool,
+    "mysql":      MysqlTool,
+    "ftp":        FtpTool,
+    "redis":      RedisTool,
 }
 
 __all__ = [
@@ -64,5 +74,7 @@ __all__ = [
     "NiktoTool", "TestsslTool", "SqlmapTool", "HydraTool",
     "NaabuTool", "DalfoxTool", "CommixTool",
     "CurlTool", "WgetTool", "ZapTool", "SearchsploitTool",
+    "MetasploitTool", "Enum4linuxTool",
+    "MysqlTool", "FtpTool", "RedisTool",
     "TOOL_REGISTRY",
 ]

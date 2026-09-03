@@ -61,7 +61,8 @@ class Orchestrator:
         default_command = None
         if custom_command is None:
             default_command = apply_tool_overrides(
-                tool_name, item.id, tool.build_command(fast=fast), uses_wordlist=tool_cls.uses_wordlist
+                tool_name, item.id, tool.build_command(fast=fast),
+                uses_wordlist=tool_cls.uses_wordlist, engagement=self.engagement,
             )
         result = tool.run(
             on_line=on_line,

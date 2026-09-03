@@ -50,10 +50,21 @@ class ToolResult:
     exit_code: int
     elapsed_seconds: float
     simulated: bool = False          # True when tool not installed → mock data
+    # True when a non-zero exit_code is a known, expected "ran fine, tested
+    # negative" outcome for this specific tool+code (see
+    # BaseTool.is_negative_result) rather than a real execution failure —
+    # e.g. curl's CURLE_LOGIN_DENIED (67) from ftp_tool.py's anonymous-login
+    # check, confirmed against a real vsftpd instance that correctly denied
+    # the login (530) and still counts as a completed, clean test. Without
+    # this, every tool whose own exit code doubles as "nothing found" (not
+    # just ftp — hydra/sqlmap/nikto-shaped tools too) marks the checklist
+    # item FAILED (red) for a legitimate negative result, indistinguishable
+    # from the tool having actually crashed.
+    negative_result: bool = False
 
     @property
     def success(self) -> bool:
-        return self.exit_code == 0
+        return self.exit_code == 0 or self.negative_result
 
 
 def _extra_bin_dirs() -> list[Path]:
@@ -295,6 +306,20 @@ class BaseTool(ABC):
     def get_timeout(self, fast: bool = False) -> int:
         return self.timeout_seconds
 
+    def is_negative_result(self, exit_code: int) -> bool:
+        """True when *exit_code* means "ran fine, tested negative" rather
+        than a real execution failure.
+
+        Default: never (matches the previous plain exit_code==0 behavior).
+        Override per tool for the specific non-zero codes that are
+        confirmed, expected outcomes of a clean/negative test — e.g.
+        curl's CURLE_LOGIN_DENIED (67) in FtpTool for "anonymous login was
+        correctly refused". Only add a code here once its meaning has
+        actually been confirmed against a real run; a guessed code risks
+        masking a genuine failure as a clean result.
+        """
+        return False
+
     def postprocess_output(self, output: str, exit_code: int) -> str:
         """Optionally annotate a *real* run's output before it's stored.
 
@@ -436,4 +461,5 @@ class BaseTool(ABC):
             exit_code=exit_code,
             elapsed_seconds=elapsed,
             simulated=False,
+            negative_result=self.is_negative_result(exit_code),
         )

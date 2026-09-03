@@ -72,6 +72,31 @@ class Finding(BaseModel):
     created_at: datetime = Field(default_factory=datetime.now)
 
 
+class Evidence(BaseModel):
+    """A file (screenshot, PoC output, log, anything) a tester attaches to
+    a checklist item as supporting evidence — separate from `notes`
+    (free text) and `tool_outputs` (raw automated-tool stdout), for
+    whatever those two don't cover: a screenshot of a working exploit, a
+    downloaded PoC file, a photo of a physical access finding.
+
+    The actual file bytes live on disk under ~/.oculus/evidence/<engagement
+    id>/<item id>/ (see oculus/evidence_store.py) — never inlined into the
+    engagement's own JSON, which would bloat every load/save of the
+    engagement for files that can run into MBs each.
+    """
+    id: str = Field(default_factory=lambda: str(uuid.uuid4())[:8])
+    filename: str            # original filename, as uploaded
+    # Actual filename on disk (id-prefixed, collision-proof) — defaults to
+    # "" because the router constructs this object *before* it knows its
+    # own id-derived stored_name (evidence_store.save_file() needs the id
+    # this object generates), then fills it in right after construction.
+    stored_name: str = ""
+    content_type: str = "application/octet-stream"
+    size_bytes: int = 0
+    description: str = ""
+    uploaded_at: datetime = Field(default_factory=datetime.now)
+
+
 class ChecklistItem(BaseModel):
     id: str                          # e.g. "WSTG-INFO-02"
     name: str
@@ -89,6 +114,7 @@ class ChecklistItem(BaseModel):
     owasp_ref: str = ""
     cwe_ids: list[str] = []
     notes: str = ""
+    evidence: list[Evidence] = []
 
 
 class ManualPathEntry(BaseModel):

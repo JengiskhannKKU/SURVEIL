@@ -62,6 +62,17 @@ def extract_nmap(item_id: str, output: str) -> list[Finding]:
     """Extract findings from nmap output."""
     findings: list[Finding] = []
 
+    # Sensitive/management ports nmap found open (databases, caches, RDP/
+    # VNC/Telnet, ...) — see _interesting_port_findings/_INTERESTING_PORTS
+    # further down. Confirmed against a real target this was previously
+    # missing entirely: _INTERESTING_PORTS only ever got called from
+    # extract_naabu, even though nmap is the port scanner every checklist
+    # item actually maps to — a real run against a live host with port 21
+    # open produced zero auto-findings for it.
+    open_ports = {int(m.group(1)) for m in re.finditer(r"^(\d+)/(?:tcp|udp)\s+open\S*", output, re.MULTILINE)}
+    if open_ports:
+        findings.extend(_interesting_port_findings(item_id, "nmap", open_ports, output))
+
     # Detect TRACE method
     if re.search(r"risky methods:.*TRACE", output, re.IGNORECASE):
         findings.append(_make_finding(
@@ -743,28 +754,41 @@ _INTERESTING_PORTS: tuple[tuple[int, str, Severity, str], ...] = (
 )
 
 
-def extract_naabu(item_id: str, output: str) -> list[Finding]:
-    """Extract findings from naabu output (real -silent mode prints one bare
-    'host:port' line per open port — nothing else)."""
+def _interesting_port_findings(
+    item_id: str, tool: str, ports: set[int], output: str
+) -> list[Finding]:
+    """Shared by extract_nmap and extract_naabu: one Finding per port in
+    *ports* that's also in _INTERESTING_PORTS. *output* is only used to
+    pull an evidence line — each caller's own port-parsing regex already
+    decided what counts as "open" for that tool's output shape.
+    """
     findings: list[Finding] = []
-    ports = {int(p) for p in re.findall(r":(\d+)\s*$", output, re.MULTILINE)}
-
     for port, title, severity, cwe in _INTERESTING_PORTS:
         if port not in ports:
             continue
+        # nmap's table lines look like "21/tcp   open  ftp ..."; naabu's
+        # are bare "host:21" — the port-then-separator token differs, but
+        # searching for both catches whichever this *output* actually is.
+        evidence = _grep_context(output, f"{port}/", context=0) or _grep_context(output, f":{port}", context=0)
         findings.append(_make_finding(
             item_id=item_id,
             title=title,
             severity=severity,
             description=f"Port {port} is open and reachable — {title.lower()}.",
-            evidence=_grep_context(output, f":{port}", context=0),
+            evidence=evidence,
             owasp_category="WSTG-CONF-01",
             cwe_id=cwe,
-            tool="naabu",
+            tool=tool,
             remediation=f"Firewall port {port} from the internet, or bind the service to localhost/an internal network only.",
         ))
-
     return findings
+
+
+def extract_naabu(item_id: str, output: str) -> list[Finding]:
+    """Extract findings from naabu output (real -silent mode prints one bare
+    'host:port' line per open port — nothing else)."""
+    ports = {int(p) for p in re.findall(r":(\d+)\s*$", output, re.MULTILINE)}
+    return _interesting_port_findings(item_id, "naabu", ports, output)
 
 
 # ---------------------------------------------------------------------------

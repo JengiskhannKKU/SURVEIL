@@ -16,8 +16,37 @@ import Collapse from "@mui/material/Collapse";
 import AddIcon from "@mui/icons-material/Add";
 import RestoreIcon from "@mui/icons-material/Restore";
 import CloseIcon from "@mui/icons-material/Close";
-import { sensitivePortLabel } from "@/lib/engagementPorts";
-import type { EngagementPortEntry } from "@/lib/engagementPorts";
+import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
+import { sensitivePortLabel, PORT_STATE_INFO } from "@/lib/engagementPorts";
+import type { EngagementPortEntry, PortState } from "@/lib/engagementPorts";
+
+// nmap reports "open" and "open|filtered" almost exclusively in this app
+// (nmap_tool.py runs with --open by default) — green/amber for those two,
+// with closed/filtered/unfiltered/closed|filtered colored too in case a
+// tester runs a custom nmap command without --open.
+const STATE_COLOR: Record<PortState, string> = {
+  open: "#22c55e",
+  "open|filtered": "#f59e0b",
+  filtered: "#f59e0b",
+  unfiltered: "#60a5fa",
+  closed: "#6b7280",
+  "closed|filtered": "#6b7280",
+};
+
+const STATE_TOOLTIP = (
+  <Box sx={{ maxWidth: 280 }}>
+    <Typography variant="caption" fontWeight={700} display="block" mb={0.5}>
+      Nmap port states
+    </Typography>
+    <Stack spacing={0.5}>
+      {(Object.keys(PORT_STATE_INFO) as PortState[]).map((s) => (
+        <Typography key={s} variant="caption" display="block" sx={{ fontSize: 11 }}>
+          <strong>{s}</strong> — {PORT_STATE_INFO[s]}
+        </Typography>
+      ))}
+    </Stack>
+  </Box>
+);
 
 export function PortsDialog({
   entries,
@@ -64,11 +93,16 @@ export function PortsDialog({
         sx={{ px: 2.5, py: 1.5, borderBottom: "1px solid", borderColor: "divider" }}
       >
         <Box>
-          <Typography variant="subtitle1" fontWeight={700}>
-            Ports
-          </Typography>
+          <Stack direction="row" alignItems="center" spacing={0.5}>
+            <Typography variant="subtitle1" fontWeight={700}>
+              Ports
+            </Typography>
+            <Tooltip title={STATE_TOOLTIP} slotProps={{ tooltip: { sx: { bgcolor: "#1a1a1a", border: "1px solid rgba(255,255,255,0.1)" } } }}>
+              <InfoOutlinedIcon sx={{ fontSize: 14, color: "text.disabled", cursor: "help" }} />
+            </Tooltip>
+          </Stack>
           <Typography variant="caption" color="text.secondary">
-            {entries.length} open across every tool run in this engagement — updates live as scans
+            {entries.length} found across every tool run in this engagement — updates live as scans
             finish.
           </Typography>
         </Box>
@@ -158,6 +192,22 @@ export function PortsDialog({
                     >
                       {e.port}/{e.protocol}
                     </Typography>
+                    {e.state && (
+                      <Tooltip title={PORT_STATE_INFO[e.state]}>
+                        <Chip
+                          label={e.state}
+                          size="small"
+                          sx={{
+                            height: 18,
+                            fontSize: 10,
+                            width: 92,
+                            color: STATE_COLOR[e.state],
+                            borderColor: STATE_COLOR[e.state],
+                          }}
+                          variant="outlined"
+                        />
+                      </Tooltip>
+                    )}
                     <Typography variant="body2" color="text.secondary" sx={{ fontSize: 12.5, width: 100 }} noWrap>
                       {e.service || "—"}
                     </Typography>
