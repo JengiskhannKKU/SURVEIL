@@ -6,6 +6,55 @@ was verified, and what the next agent should pick up.
 
 ---
 
+## 2026-09-03 (62) — Run Tool dialog: multi-line Command box, Tab-to-indent
+
+**Done (user hit the exact "quotes matter" issue entry 60 fixed
+server-side, but by typing the command themselves *without* quoting
+the multi-word `-Y` filter at all — real tshark error, correctly:
+"Display filters were specified both with '-Y' and with additional
+command-line arguments" — then asked: "can you increase size on
+command input can tab enter down for / script that prettier"):**
+- The real ask here wasn't another parsing bug — the Command field was
+  a cramped single-line `TextField`, so a long multi-flag command was
+  nearly impossible to read or edit accurately by hand (exactly how a
+  tester ends up dropping a quote). `frontend/src/components/
+  RunToolDialog.tsx`: made it `multiline` (`minRows={2}`,
+  `maxRows={10}`, auto-grows), so Enter now adds a real line instead of
+  submitting/doing nothing, and a long command can be laid out one flag
+  per line to actually read it.
+- Added a `Tab` keydown handler: Tab normally jumps focus to the next
+  field (unhelpful mid-command), so it's intercepted to insert a
+  literal tab character at the cursor instead, same as any code editor.
+  Safe by construction: `backend/ws.py` parses this field with
+  `shlex.split()` (entry 60), which treats `\t`/`\n` exactly like a
+  space — laying a command out across lines or indenting it never
+  changes what argv it becomes. Confirmed this directly: `shlex.split()`
+  on a real multi-line, tab-indented string produces the identical
+  token list as the single-line version.
+- `copyCommand()` collapses whitespace (`\s+` → single space) before
+  writing to the clipboard — a real shell treats a bare newline as "end
+  this command, run it now," not as whitespace the way `shlex.split()`
+  does, so copying the raw multi-line text into a real terminal would
+  have fired each line as its own broken command. What gets copied is
+  now always a single safe line, regardless of how it's laid out in the
+  box.
+
+**Verified:**
+- `tsc`/`eslint` clean (one real type error caught and fixed along the
+  way: `e.currentTarget` on MUI's multiline `TextField` keydown handler
+  types as the wrapping `HTMLDivElement`, not the actual `<textarea>` —
+  needed an explicit cast to reach `.selectionStart`/`.selectionEnd`).
+  `next build` clean.
+- Rebuilt (`docker compose build frontend`) and recreated (`docker
+  compose up -d frontend`) the live frontend container.
+- Confirmed in the real browser: reopened `tshark`'s Run Tool dialog on
+  `OSCP-EXPLOIT-01` — command box now multi-line and wraps; clicked in,
+  pressed Tab, then read `document.activeElement` via a JS eval to
+  confirm focus stayed on the `<textarea>` (didn't jump to Help) and a
+  literal `\t` was actually inserted into the value.
+
+---
+
 ## 2026-09-03 (61) — Fix: Finding evidence text overflowing its box
 
 **Done (user: "แก้ ui ตรงที่ add findings หน่อยคับ ... ข้อความเขาเลยกรอบมา"

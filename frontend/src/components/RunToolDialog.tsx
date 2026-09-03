@@ -198,7 +198,14 @@ export function RunToolDialog({
   }
 
   function copyCommand() {
-    navigator.clipboard?.writeText(command);
+    // The Command box is multi-line for readability (see below — lines/
+    // tabs are just whitespace to the backend's shlex parser), but a real
+    // shell treats a bare newline as "end this command, run it" rather
+    // than as whitespace — pasting the raw multi-line text into a real
+    // terminal would fire each line as its own broken command instead of
+    // one. Collapse to a single space-separated line so what's copied is
+    // exactly what actually runs, safe to paste anywhere.
+    navigator.clipboard?.writeText(command.replace(/\s+/g, " ").trim());
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   }
@@ -533,26 +540,58 @@ export function RunToolDialog({
         <Typography variant="body2" mb={0.5}>
           Command
         </Typography>
-        <Stack direction="row" spacing={1} mb={2}>
+        <Stack direction="row" spacing={1} mb={2} alignItems="flex-start">
           <TextField
             fullWidth
-            size="small"
+            multiline
+            minRows={2}
+            maxRows={10}
             value={command}
             disabled={running}
             onChange={(e) => setCommand(e.target.value)}
-            slotProps={{ input: { sx: { fontFamily: "var(--font-geist-mono)", fontSize: 13 } } }}
+            onKeyDown={(e) => {
+              // Tab normally jumps focus to the next field — inside a
+              // command that's rarely what a tester wants while lining up
+              // flags readably across several lines; insert a literal tab
+              // at the cursor instead, same as any code editor. Safe to
+              // do: the backend parses this field with shlex.split()
+              // (see backend/ws.py), which treats \t/\n exactly like a
+              // space — splitting a command across lines or indenting it
+              // never changes what argv it becomes.
+              if (e.key !== "Tab") return;
+              e.preventDefault();
+              const el = e.currentTarget as unknown as HTMLTextAreaElement;
+              const start = el.selectionStart ?? command.length;
+              const end = el.selectionEnd ?? command.length;
+              const next = command.slice(0, start) + "\t" + command.slice(end);
+              setCommand(next);
+              requestAnimationFrame(() => {
+                el.selectionStart = el.selectionEnd = start + 1;
+              });
+            }}
+            slotProps={{
+              input: {
+                sx: {
+                  fontFamily: "var(--font-geist-mono)",
+                  fontSize: 13,
+                  alignItems: "flex-start",
+                },
+              },
+            }}
           />
-          <IconButton onClick={copyCommand} title="Copy command" sx={{ border: "1px solid", borderColor: "divider" }}>
-            {copied ? <CheckIcon fontSize="small" color="success" /> : <ContentCopyIcon fontSize="small" />}
-          </IconButton>
-          <IconButton
-            onClick={resetCommand}
-            disabled={running}
-            title="Reset to default"
-            sx={{ border: "1px solid", borderColor: "divider" }}
-          >
-            <RestartAltIcon fontSize="small" />
-          </IconButton>
+          <Stack spacing={1}>
+            <IconButton onClick={copyCommand} title="Copy command" sx={{ border: "1px solid", borderColor: "divider" }}>
+              {copied ? <CheckIcon fontSize="small" color="success" /> : <ContentCopyIcon fontSize="small" />}
+            </IconButton>
+            <IconButton
+              onClick={resetCommand}
+              disabled={running}
+              title="Reset to default"
+              sx={{ border: "1px solid", borderColor: "divider" }}
+            >
+              <RestartAltIcon fontSize="small" />
+            </IconButton>
+          </Stack>
         </Stack>
 
         <Box display="flex" justifyContent="flex-end" gap={1} mb={2}>
