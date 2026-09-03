@@ -6,6 +6,74 @@ was verified, and what the next agent should pick up.
 
 ---
 
+## 2026-09-03 (63) — Fix: `linpeas` unreachable from a real foothold shell over Docker on macOS
+
+**Done (user got a real shell — `nathan@cap:/tmp$` — on the live test
+target using the credential recovered in entry 60, then tried pulling
+linpeas from it and hit `curl: (7) Failed to connect ... Connection
+refused`; asked to investigate, then to fix + commit + push):**
+- Root cause, confirmed layer by layer against the real setup, not
+  guessed:
+  1. `docker-compose.yml`'s `backend` service only ever published port
+     `8000` — `linpeas_tool.py`'s `python3 -m http.server 8022` (entry
+     59) bound `0.0.0.0:8022` *inside the container's own network
+     namespace only*, unreachable from anywhere outside the container,
+     including this host's own real interfaces. Published `8022:8022`
+     to fix this half.
+  2. That alone wasn't enough — confirmed via a real test that even
+     the *already-working* port 8000 fails the identical way when hit
+     via the host's HTB VPN tunnel IP (`10.10.17.74`) specifically,
+     while the exact same request over `localhost` or the host's real
+     LAN IP (`192.168.1.115`) both return `200`. This is a genuine
+     Docker Desktop for macOS platform limitation — its port-forwarding
+     proxy doesn't bridge VPN tunnel interfaces (`utun*`) at all,
+     regardless of what's published in docker-compose.yml. Not fixable
+     from inside this repo; `network_mode: host` (the usual Linux fix)
+     doesn't apply either, since Docker Desktop's "host" networking
+     still runs inside its own Linux VM on macOS, not the real host.
+- Since the underlying platform limitation can't be code-fixed,
+  documented it clearly in the two places a tester will actually hit
+  it: `oculus/tools/linpeas_tool.py`'s `description` (static, read
+  before running) and a new `postprocess_output()` override that
+  appends the same warning to every *real* run's own output (a tester
+  is far more likely to read the live output after clicking Run than
+  to have scrolled back up to the description first) — both point at
+  the actual fix: run OCULUS via the local non-Docker `./run.sh`/CLI
+  install for this specific workflow (a plain host process binds
+  macOS's real network stack directly, which does see the VPN
+  interface normally), or just run `python3 -m http.server 8022`
+  directly in a normal terminal outside Docker as the fastest one-off
+  workaround. Also expanded the `docker-compose.yml` port comment
+  itself with the same finding, for the next person reading it fresh.
+
+**Verified:**
+- `docker compose port backend 8022` confirms the publish took effect
+  after rebuild+recreate.
+- Direct, real reachability tests from this host's own terminal (not
+  `docker exec`) against a genuinely-running `linpeas` instance:
+  `localhost:8022` → `200` (file, correct size); host's real LAN IP →
+  `200`; the HTB VPN tunnel IP → connection refused/timeout — same
+  three-way result independently reproduced against port 8000, which
+  had never been tested this way before (only ever accessed via
+  `localhost` all session), confirming this is a general Docker-
+  Desktop-on-macOS behavior and not specific to the new port.
+- Rebuilt (`docker compose build backend`) and recreated (`docker
+  compose up -d backend`); confirmed the updated description text is
+  live via a real `GET /api/tools` call.
+
+**Next steps for the next agent:**
+1. This is a real, structural limitation of running this app's Docker
+   deployment specifically on macOS against a VPN-routed target — there
+   is no code fix available for it from inside this repo. If it comes
+   up again, point at this entry rather than re-diagnosing from
+   scratch.
+2. The same limitation would affect any *future* tool that needs the
+   target to connect back to this host (a reverse-shell listener
+   wrapper, say) the identical way — worth remembering before wrapping
+   one, not just for `linpeas`.
+
+---
+
 ## 2026-09-03 (62) — Run Tool dialog: multi-line Command box, Tab-to-indent
 
 **Done (user hit the exact "quotes matter" issue entry 60 fixed

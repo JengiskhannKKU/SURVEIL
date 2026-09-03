@@ -11,6 +11,23 @@ services:
     entrypoint: ["python", "-m", "uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000"]
     ports:
       - "8000:8000"
+      # linpeas_tool.py's `python3 -m http.server 8022` (see
+      # oculus/tools/linpeas_tool.py) binds 0.0.0.0:8022 *inside this
+      # container's own network namespace* — without publishing it here,
+      # that's completely unreachable from anywhere outside the
+      # container, including this host's own real network interfaces.
+      # Necessary but NOT sufficient on Docker Desktop for macOS: confirmed
+      # via a real run that its port-forwarding proxy doesn't bridge VPN
+      # tunnel interfaces (utun*, e.g. HTB's VPN) at all — a real foothold
+      # shell still got "Connection refused" curling this host's VPN IP on
+      # 8022 with this publish in place and the server genuinely running;
+      # the exact same request over the host's real LAN IP or localhost
+      # worked fine (confirmed against port 8000 too, which has the
+      # identical limitation — it just never mattered before since nothing
+      # needed the *target* to reach *this host* over the VPN until
+      # linpeas). See linpeas_tool.py's own description for the actual
+      # workaround (run via ./run.sh instead of Docker on macOS).
+      - "8022:8022"
     volumes:
       - surveil-data:/data
       # Engagement state (~/.oculus, i.e. /data/.oculus with HOME=/data in
